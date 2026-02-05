@@ -5,7 +5,6 @@
 
 // ── Configuration ──
 const CONFIG = {
-    SERVER_URL: 'http://localhost:3000',
     MAX_WRONG_GUESSES: 6,
     MAX_USERNAME_LENGTH: 20,
     MAX_ROOM_NAME_LENGTH: 30,
@@ -448,7 +447,7 @@ function checkServerAndShowError() {
     }
     return true;
 }
-r
+
 function connectSocket(username) {
     let connectionTimeout;
     
@@ -457,7 +456,7 @@ function connectSocket(username) {
         socket.disconnect();
     }
     
-    socket = io(CONFIG.SERVER_URL, {
+    socket = io({
         timeout: 5000,
         reconnection: true,
         reconnectionAttempts: CONFIG.RECONNECTION_ATTEMPTS,
