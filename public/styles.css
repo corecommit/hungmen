@@ -2961,11 +2961,6 @@ select option {
         gap: 12px;
         margin-bottom: 15px;
     }
-    
-    /* .chat-input-area button,
-    .mini-chat-input button{
-        
-    } */
 
     .header-left,
     .header-center,
@@ -3102,6 +3097,7 @@ select option {
     .lobby-chat-section {
         height: 400px !important;
         order: 1;
+        backdrop-filter: none;
     }
     
     .lobby-main {
