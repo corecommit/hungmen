@@ -1,0 +1,264 @@
+/* ═══════════════════════════════════════════════════════════════════════
+   MOBILE FIXES FOR HANGMAN GAME
+   Add these fixes to your existing styles.css or replace the affected sections
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* ── FIX 1: Remove scrollbar width allocation ── */
+::-webkit-scrollbar {
+    width: 0px;  /* Already set to 0, keep this */
+}
+
+/* Force overlay scrollbars on all browsers */
+* {
+    scrollbar-width: none;  /* Firefox */
+    -ms-overflow-style: none;  /* IE and Edge */
+}
+
+/* ── FIX 2: Fix viewport height issues ── */
+body {
+    font-family: 'Poppins', sans-serif;
+    background: linear-gradient(135deg, #000000 0%, #1a1a1a 50%, #000000 100%);
+    background-attachment: fixed;
+    min-height: 100vh;
+    min-height: -webkit-fill-available;  /* ADD THIS for Safari mobile */
+    color: var(--text-primary);
+    overflow-x: hidden;
+    position: relative;
+    margin: 0;
+    padding: 0;
+}
+
+html {
+    height: -webkit-fill-available;  /* ADD THIS for Safari mobile */
+}
+
+/* ── FIX 3: Fix lobby chat section height ── */
+.lobby-chat-section {
+    background: rgba(26, 26, 26, 0.7);
+    backdrop-filter: blur(20px);
+    border-radius: 20px;
+    display: flex;
+    flex-direction: column;
+    height: 500px;
+    max-height: 500px;  /* ADD THIS */
+    overflow: hidden;
+    border: 1px solid var(--border-color);
+    box-shadow: var(--shadow);
+    width: 100%;
+    animation: slideInLeft 0.6s ease;
+    flex: 1 1 auto;  /* CHANGE from flex: 1 */
+    min-height: 400px;
+}
+
+/* ── FIX 4: Ensure chat messages container doesn't overflow ── */
+.lobby-chat-section .chat-messages {
+    flex: 1 1 auto;  /* CHANGE to allow flexible sizing */
+    overflow-y: auto;
+    overflow-x: hidden;  /* ADD THIS */
+    padding: 15px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-height: 0;  /* IMPORTANT: Allows flex child to shrink */
+    user-select: text;
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    -ms-user-select: text;
+    -webkit-overflow-scrolling: touch;  /* ADD THIS for smooth scrolling on iOS */
+}
+
+/* ── FIX 5: User stats card should not expand ── */
+.user-stats-card {
+    background: rgba(26, 26, 26, 0.7);
+    backdrop-filter: blur(20px);
+    border-radius: 20px;
+    padding: 25px;
+    border: 1px solid var(--border-color);
+    box-shadow: var(--shadow);
+    animation: slideInLeft 0.5s ease;
+    flex-shrink: 0;  /* ADD THIS to prevent shrinking */
+}
+
+/* ── FIX 6: Mobile-specific adjustments ── */
+@media (max-width: 768px) {
+    /* Fix container padding */
+    .container {
+        padding: 10px;
+        min-height: 100vh;
+        min-height: -webkit-fill-available;  /* ADD THIS */
+    }
+    
+    /* Ensure lobby chat takes proper space on mobile */
+    .lobby-chat-section {
+        height: 400px !important;
+        max-height: 400px !important;  /* ADD THIS */
+        order: 1;
+        flex: 0 0 auto;  /* CHANGE: Don't grow or shrink */
+    }
+    
+    /* Stats card should be compact on mobile */
+    .user-stats-card {
+        order: 3;
+        flex: 0 0 auto;  /* ADD THIS */
+    }
+    
+    /* Main lobby should fill remaining space */
+    .lobby-main {
+        order: 2;
+        flex: 1 1 auto;  /* ADD THIS */
+        min-height: 0;  /* ADD THIS */
+    }
+    
+    /* Lobby container should use flexbox properly */
+    .lobby-container {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+        height: auto;  /* ADD THIS */
+        min-height: 0;  /* ADD THIS */
+    }
+    
+    /* Fix sidebar to not expand */
+    .lobby-sidebar {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+        order: 3;
+        width: 100%;
+        flex-shrink: 0;  /* ADD THIS */
+    }
+}
+
+@media (max-width: 480px) {
+    /* Further mobile optimizations */
+    .lobby-chat-section {
+        height: 350px !important;  /* CHANGE from 300px */
+        max-height: 350px !important;
+        border-radius: 12px;
+    }
+    
+    /* Ensure input doesn't cause zoom on mobile */
+    .chat-input-area input,
+    .mini-chat-input input,
+    .lobby-chat-section .chat-input-area input {
+        font-size: 16px !important;  /* Prevent iOS zoom */
+    }
+    
+    /* Fix chat message container */
+    .chat-messages,
+    .mini-chat-messages,
+    .lobby-chat-section .chat-messages {
+        padding: 12px;
+        gap: 10px;
+    }
+}
+
+/* ── FIX 7: Prevent horizontal overflow ── */
+.lobby-container,
+.room-container,
+.multiplayer-game {
+    max-width: 100%;
+    overflow-x: hidden;
+}
+
+/* ── FIX 8: Fix touch scrolling for all scroll containers ── */
+.chat-messages,
+.mini-chat-messages,
+.lobby-chat-section .chat-messages,
+.rooms-list,
+.modal-content {
+    -webkit-overflow-scrolling: touch;
+    overflow-x: hidden;
+}
+
+/* ── FIX 9: Ensure proper spacing on very small screens ── */
+@media (max-width: 360px) {
+    .container {
+        padding: 5px;
+    }
+    
+    .lobby-chat-section {
+        height: 300px !important;
+        max-height: 300px !important;
+    }
+    
+    .lobby-container {
+        gap: 15px;
+    }
+    
+    /* Prevent text from breaking layout */
+    .lobby-main,
+    .user-stats-card,
+    .lobby-chat-section {
+        word-wrap: break-word;
+        overflow-wrap: break-word;
+    }
+}
+
+/* ── FIX 10: Safe area insets (for phones with notches) ── */
+@supports (padding-top: env(safe-area-inset-top)) {
+    body {
+        padding-top: env(safe-area-inset-top);
+        padding-bottom: env(safe-area-inset-bottom);
+        padding-left: env(safe-area-inset-left);
+        padding-right: env(safe-area-inset-right);
+    }
+    
+    .game-header {
+        padding-top: max(15px, calc(env(safe-area-inset-top) + 15px));
+    }
+}
+
+/* ── FIX 11: Fix input focus zoom on iOS ── */
+input[type="text"],
+input[type="password"],
+textarea {
+    font-size: 16px;  /* Minimum size to prevent iOS zoom */
+}
+
+@media (max-width: 768px) {
+    input[type="text"],
+    input[type="password"],
+    textarea {
+        font-size: 16px !important;
+    }
+}
+
+/* ── FIX 12: Prevent content jumping when virtual keyboard appears ── */
+@media (max-width: 768px) {
+    .lobby-container {
+        max-height: none;  /* Allow container to adjust */
+    }
+    
+    /* When input is focused, allow page to resize */
+    body.keyboard-open {
+        height: 100vh;
+        height: -webkit-fill-available;
+    }
+}
+
+/* ── FIX 13: Fix message overflow in chat ── */
+.chat-message .message-content {
+    max-width: 100%;
+    word-break: break-word;
+    overflow-wrap: break-word;
+    white-space: pre-wrap;  /* Preserve formatting but allow wrapping */
+}
+
+/* ── FIX 14: Ensure proper touch targets on mobile ── */
+@media (hover: none) and (pointer: coarse) {
+    /* All interactive elements should be at least 44x44px */
+    .btn,
+    .chat-tab,
+    button {
+        min-height: 44px;
+        min-width: 44px;
+        touch-action: manipulation;
+        -webkit-tap-highlight-color: transparent;
+    }
+    
+    /* Prevent double-tap zoom */
+    * {
+        touch-action: manipulation;
+    }
+}
