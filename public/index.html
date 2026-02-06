@@ -2,7 +2,12 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="theme-color" content="#0a0a0a">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="description" content="Play Hangman with friends! Multiplayer word guessing game with custom words and team modes.">
     <title>Hangman - Multiplayer Word Game</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -216,26 +221,6 @@
 
                             <!-- Room Actions (Host Only) -->
                             <div id="roomActions" class="room-actions hidden">
-                                <!-- Game Mode Selection -->
-                                <div class="game-mode-select">
-                                    <label>Game Mode:</label>
-                                    <div class="game-mode-buttons">
-                                        <button class="game-mode-btn" data-game-mode="easy">Easy</button>
-                                        <button class="game-mode-btn active" data-game-mode="medium">Medium</button>
-                                        <button class="game-mode-btn" data-game-mode="hard">Hard</button>
-                                        <button class="game-mode-btn" data-game-mode="custom">Custom Word</button>
-                                    </div>
-                                </div>
-
-                                <!-- Hint Count Selection (Only for Custom Word mode) -->
-                                <div id="hintCountSection" class="hint-count-select hidden">
-                                    <label>Number of Hints:</label>
-                                    <div class="hint-count-buttons">
-                                        <button class="hint-count-btn active" data-hint-count="5">5 Hints</button>
-                                        <button class="hint-count-btn" data-hint-count="7">7 Hints</button>
-                                    </div>
-                                </div>
-
                                 <button id="startGameBtn" class="btn btn-primary btn-full">
                                     <i class="fas fa-play"></i>
                                     Start Game
@@ -411,7 +396,7 @@
                     
                     <div class="form-group">
                         <label>Game Mode</label>
-                        <div class="mode-selector">
+                        <div class="mode-selector" id="gameModeSelector">
                             <button type="button" class="mode-btn active" data-mode="solo">
                                 <span>Solo</span>
                                 <small>1 Player</small>
@@ -431,6 +416,36 @@
                             <button type="button" class="mode-btn" data-mode="4v4">
                                 <span>4v4</span>
                                 <small>8 Players</small>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Difficulty Mode</label>
+                        <div class="difficulty-selector" id="difficultySelector">
+                            <button type="button" class="difficulty-btn active" data-difficulty="easy">
+                                <span>Easy</span>
+                            </button>
+                            <button type="button" class="difficulty-btn" data-difficulty="medium">
+                                <span>Medium</span>
+                            </button>
+                            <button type="button" class="difficulty-btn" data-difficulty="hard">
+                                <span>Hard</span>
+                            </button>
+                            <button type="button" class="difficulty-btn" data-difficulty="custom" id="customDifficultyBtn">
+                                <span>Custom Word</span>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group hidden" id="hintCountSection">
+                        <label>Hints</label>
+                        <div class="hint-selector">
+                            <button type="button" class="hint-btn active" data-hints="5">
+                                <span>5 Hints</span>
+                            </button>
+                            <button type="button" class="hint-btn" data-hints="7">
+                                <span>7 Hints</span>
                             </button>
                         </div>
                     </div>

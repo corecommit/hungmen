@@ -117,13 +117,6 @@ class Room {
         this.selectedHintCount = 5; // Default hint count for custom mode
     }
 
-    getMaskedWord() {
-        return this.gameState.word
-        .split('')
-        .map(l => this.gameState.guessedLetters.includes(l) ? l : '_')
-        .join('');
-    }
-
     addPlayer(player) {
         if (this.players.length >= this.maxPlayers) {
             return false;
@@ -595,7 +588,7 @@ io.on('connection', (socket) => {
     });
 
     socket.on('createRoom', (data) => {
-        const { name, mode, password, username } = data;
+        const { name, mode, password, username, difficulty, hintCount } = data;
         
         if (!name || name.trim().length === 0) {
             socket.emit('createRoomError', { message: 'Room name is required' });
@@ -614,6 +607,11 @@ io.on('connection', (socket) => {
                           mode === '3v3' ? 6 : 8;
         
         const room = new Room(roomId, name, mode, maxPlayers, password, socket.id);
+        
+        // Store selected difficulty and hint count
+        room.selectedGameMode = difficulty || 'medium';
+        room.selectedHintCount = hintCount || 5;
+        
         rooms.set(roomId, room);
         
         socket.emit('roomCreated', { roomId, name });
@@ -775,13 +773,17 @@ io.on('connection', (socket) => {
     });
 
     socket.on('startGame', (data) => {
-        const { roomId, gameMode, hintCount } = data;
+        const { roomId } = data;
         const room = rooms.get(roomId);
         
         if (!room || room.hostId !== socket.id) {
             socket.emit('startGameError', { message: 'Only the host can start the game' });
             return;
         }
+        
+        // Use stored difficulty and hint count from room creation
+        const gameMode = room.selectedGameMode;
+        const hintCount = room.selectedHintCount;
         
         room.startGame(gameMode, hintCount);
         
@@ -799,7 +801,7 @@ io.on('connection', (socket) => {
             // Regular game starts immediately
             io.to(roomId).emit('gameStarted', {
                 gameState: {
-                    maskedWord: room.getMaskedWord(),
+                    word: room.gameState.word,
                     wordLength: room.gameState.word.length,
                     hint: room.gameState.hint,
                     guessedLetters: room.gameState.guessedLetters,
@@ -991,7 +993,7 @@ io.on('connection', (socket) => {
                 wrongLetters: room.gameState.wrongLetters,
                 currentTurn: room.gameState.currentTurn,
                 scores: room.gameState.scores,
-                maskedWord: room.getMaskedWord(),// Send full word so client can update display
+                word: result.word, // Send full word so client can update display
                 isWin: result.isWin,
                 isLose: result.isLose
             });

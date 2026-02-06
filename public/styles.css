@@ -2297,8 +2297,27 @@ select option {
     border: 1px solid var(--border-color);
     transform: scale(0.9);
     transition: transform var(--transition-normal);
-    max-height: 90vh;
+    max-height: 85vh;
     overflow-y: auto;
+    overflow-x: hidden;
+}
+
+/* Custom scrollbar for modals */
+.modal-content::-webkit-scrollbar {
+    width: 0px;
+}
+
+.modal-content::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.modal-content::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.15);
+  border-radius: 10px;
+}
+
+.modal-content::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.25);
 }
 
 .modal.show .modal-content {
@@ -2403,6 +2422,90 @@ select option {
 .mode-btn:hover:not(.active) {
     border-color: rgba(255, 255, 255, 0.5);
     transform: translateY(-3px);
+    background: var(--bg-hover);
+}
+
+/* Difficulty selector styling */
+.difficulty-selector {
+    display: grid;
+    gap: 10px;
+}
+
+.difficulty-btn {
+    padding: 10px 10px;
+    background: var(--bg-input);
+    border: 2px solid var(--border-color);
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all var(--transition-normal);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-secondary);
+    font-family: 'Poppins', sans-serif;
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+
+.difficulty-btn span {
+    font-weight: 600;
+}
+
+.difficulty-btn.active {
+    border-color: #ffffff;
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-primary);
+    box-shadow: 0 0 15px rgba(255, 255, 255, 0.2);
+}
+
+.difficulty-btn:hover:not(.active) {
+    border-color: rgba(255, 255, 255, 0.5);
+    transform: translateY(-2px);
+    background: var(--bg-hover);
+}
+
+.difficulty-btn.hidden {
+    display: none;
+}
+
+/* Hint selector styling */
+.hint-selector {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+}
+
+.hint-btn {
+    padding: 12px 10px;
+    background: var(--bg-input);
+    border: 2px solid var(--border-color);
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all var(--transition-normal);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-secondary);
+    font-family: 'Poppins', sans-serif;
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+
+.hint-btn span {
+    font-weight: 600;
+}
+
+.hint-btn.active {
+    border-color: #ffffff;
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-primary);
+    box-shadow: 0 0 15px rgba(255, 255, 255, 0.2);
+}
+
+.hint-btn:hover:not(.active) {
+    border-color: rgba(255, 255, 255, 0.5);
     background: var(--bg-hover);
 }
 
@@ -2738,23 +2841,24 @@ select option {
    ═══════════════════════════════════════════════════════════════════════ */
 
 ::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
+  width: 0px;
 }
 
 ::-webkit-scrollbar-track {
-    background: var(--bg-input);
-    border-radius: 4px;
+  background: rgba(15, 15, 26, 0.5);
 }
 
 ::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.3);
-    border-radius: 4px;
-    transition: background var(--transition-normal);
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 10px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.5);
+  background: rgba(255, 255, 255, 0.5);
+  border: 2px solid transparent;
+  background-clip: padding-box;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -3435,5 +3539,63 @@ textarea:focus-visible {
     :root {
         --border-color: rgba(255, 255, 255, 0.5);
         --bg-input: rgba(255, 255, 255, 0.1);
+    }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   MOBILE TOUCH IMPROVEMENTS
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* Prevent zoom on input focus for iOS */
+@media screen and (max-width: 768px) {
+    input[type="text"],
+    input[type="password"],
+    textarea {
+        font-size: 16px !important;
+    }
+}
+
+/* Touch-friendly button sizes */
+@media (hover: none) and (pointer: coarse) {
+    .btn,
+    .mode-btn,
+    .difficulty-btn,
+    .hint-btn,
+    .key {
+        min-height: 44px;
+        min-width: 44px;
+    }
+    
+    .room-card {
+        min-height: 80px;
+    }
+    
+    .player-card {
+        min-height: 60px;
+    }
+}
+
+/* Smooth scrolling for iOS */
+html {
+    -webkit-overflow-scrolling: touch;
+}
+
+/* Prevent text size adjustment on orientation change */
+html {
+    -webkit-text-size-adjust: 100%;
+    -ms-text-size-adjust: 100%;
+}
+
+/* Safe area insets for notched phones */
+@supports (padding-top: env(safe-area-inset-top)) {
+    .game-header {
+        padding-top: max(15px, env(safe-area-inset-top));
+    }
+    
+    .modal {
+        padding-top: env(safe-area-inset-top);
+        padding-bottom: env(safe-area-inset-bottom);
+        padding-left: env(safe-area-inset-left);
+        padding-right: env(safe-area-inset-right);
     }
 }
