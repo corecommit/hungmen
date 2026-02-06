@@ -3555,15 +3555,6 @@ textarea:focus-visible {
    MOBILE TOUCH IMPROVEMENTS
    ═══════════════════════════════════════════════════════════════════════ */
 
-/* Prevent zoom on input focus for iOS */
-@media screen and (max-width: 768px) {
-    input[type="text"],
-    input[type="password"],
-    textarea {
-        font-size: 16px !important;
-    }
-}
-
 /* Touch-friendly button sizes */
 @media (hover: none) and (pointer: coarse) {
     .btn,
