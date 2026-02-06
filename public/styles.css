@@ -2970,11 +2970,10 @@ select option {
         gap: 12px;
         margin-bottom: 15px;
     }
-    
-    /* .chat-input-area button,
-    .mini-chat-input button{
-        
-    } */
+
+   .chat-input-area input, .mini-chat-input input {
+       font-size: 0.6rem;
+   {
 
     .header-left,
     .header-center,
