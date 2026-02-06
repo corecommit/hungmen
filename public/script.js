@@ -400,6 +400,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    // Load build number from server
+    loadBuildNumber();
+
     const savedUsername = getSession();
     if (savedUsername) {
         currentUser = { username: savedUsername };
@@ -410,6 +413,29 @@ document.addEventListener('DOMContentLoaded', () => {
     
     initEventListeners();
 });
+
+// ═══════════════════════════════════════════════════════════════════════
+// BUILD NUMBER
+// ═══════════════════════════════════════════════════════════════════════
+
+async function loadBuildNumber() {
+    try {
+        const response = await fetch('/api/build');
+        if (response.ok) {
+            const buildInfo = await response.json();
+            const buildNumberEl = document.getElementById('buildNumber');
+            if (buildNumberEl) {
+                buildNumberEl.textContent = buildInfo.buildNumber || 'dev';
+            }
+        }
+    } catch (error) {
+        log('Failed to load build number:', error);
+        const buildNumberEl = document.getElementById('buildNumber');
+        if (buildNumberEl) {
+            buildNumberEl.textContent = 'dev';
+        }
+    }
+}
 
 // ═══════════════════════════════════════════════════════════════════════
 // SERVER CONNECTION
