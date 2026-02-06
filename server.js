@@ -4,6 +4,7 @@ const socketIo = require('socket.io');
 const cors = require('cors');
 const { v4: uuidv4 } = require('uuid');
 const path = require('path');
+const { execSync } = require('child_process');
 
 const app = express();
 const server = http.createServer(app);
@@ -13,6 +14,110 @@ const io = socketIo(server, {
         methods: ["GET", "POST"]
     }
 });
+
+// Get build info from Git
+function getBuildInfo() {
+    try {
+        // Get the latest commit hash (short version)
+        let commitHash;
+        try {
+            commitHash = execSync('git rev-parse --short HEAD', { 
+                encoding: 'utf8', 
+                cwd: __dirname,
+                stdio: ['pipe', 'pipe', 'ignore']
+            }).trim();
+        } catch (e) {
+            commitHash = null;
+        }
+        
+        // If no commit hash, return dev build
+        if (!commitHash || commitHash === 'unknown') {
+            return {
+                version: process.env.npm_package_version || '1.0.0',
+                commit: 'unknown',
+                date: new Date().toISOString(),
+                branch: 'main',
+                buildNumber: 'dev'
+            };
+        }
+        
+        // Get the commit date
+        let commitDate;
+        try {
+            commitDate = execSync('git log -1 --format=%cd --date=iso', { 
+                encoding: 'utf8', 
+                cwd: __dirname,
+                stdio: ['pipe', 'pipe', 'ignore']
+            }).trim();
+        } catch (e) {
+            commitDate = new Date().toISOString();
+        }
+        
+        // Get the branch name
+        let branch;
+        try {
+            branch = execSync('git rev-parse --abbrev-ref HEAD', { 
+                encoding: 'utf8', 
+                cwd: __dirname,
+                stdio: ['pipe', 'pipe', 'ignore']
+            }).trim();
+        } catch (e) {
+            branch = 'main';
+        }
+        
+        return {
+            version: process.env.npm_package_version || '1.0.0',
+            commit: commitHash,
+            date: commitDate || new Date().toISOString(),
+            branch: branch || 'main',
+            buildNumber: commitHash
+        };
+    } catch (error) {
+        // Fallback if git is not available
+        return {
+            version: process.env.npm_package_version || '1.0.0',
+            commit: 'unknown',
+            date: new Date().toISOString(),
+            branch: 'main',
+            buildNumber: 'dev'
+        };
+    }
+}
+
+const buildInfo = getBuildInfo();
+
+// Function to fetch latest commit from GitHub
+async function getGitHubBuildInfo() {
+    try {
+        // Replace with your actual GitHub username and repo name
+        const githubUsername = 'werheq';
+        const repoName = 'hungmen';
+        const branch = 'main';
+        
+        const response = await fetch(`https://api.github.com/repos/${githubUsername}/${repoName}/commits/${branch}`);
+        
+        if (!response.ok) {
+            throw new Error('Failed to fetch from GitHub');
+        }
+        
+        const commit = await response.json();
+        const shortSha = commit.sha.substring(0, 7);
+        
+        return {
+            version: process.env.npm_package_version || '1.0.0',
+            commit: commit.sha,
+            date: commit.commit.committer.date,
+            branch: branch,
+            buildNumber: shortSha,
+            author: commit.commit.author.name,
+            message: commit.commit.message.split('\n')[0] // First line only
+        };
+    } catch (error) {
+        console.log('GitHub API fetch failed, using local build info:', error.message);
+        // Fallback to local build info
+        return buildInfo;
+    }
+}
 
 app.use(cors());
 app.use(express.json());
@@ -79,6 +184,16 @@ app.get('/api/rooms', (req, res) => {
         hasPassword: !!room.password
     }));
     res.json(roomList);
+});
+
+// API endpoint to get build info
+app.get('/api/build', async (req, res) => {
+    try {
+        const githubBuildInfo = await getGitHubBuildInfo();
+        res.json(githubBuildInfo);
+    } catch (error) {
+        res.json(buildInfo);
+    }
 });
 
 function isUsernameTaken(username) {
