@@ -5,13 +5,14 @@
 
 // ── Configuration ──
 const CONFIG = {
+    SERVER_URL: window.location.hostname === 'localhost' ? 'http://localhost:3000' : '', // Auto-detect for production
     MAX_WRONG_GUESSES: 6,
     MAX_USERNAME_LENGTH: 20,
     MAX_ROOM_NAME_LENGTH: 30,
     MAX_MESSAGE_LENGTH: 200,
     MAX_AVATAR_SIZE: 5 * 1024 * 1024, // 5MB
     RECONNECTION_ATTEMPTS: 5,
-    DEBUG: true
+    DEBUG: false // Set to false in production to hide console logs
 };
 
 // ── Global State ──
@@ -447,7 +448,7 @@ function checkServerAndShowError() {
     }
     return true;
 }
-r
+
 function connectSocket(username) {
     let connectionTimeout;
     
@@ -456,7 +457,7 @@ function connectSocket(username) {
         socket.disconnect();
     }
     
-    socket = io({
+    socket = io(CONFIG.SERVER_URL, {
         timeout: 5000,
         reconnection: true,
         reconnectionAttempts: CONFIG.RECONNECTION_ATTEMPTS,
@@ -626,7 +627,6 @@ function setupSocketListeners(username, connectionTimeout) {
     
     // Word selection phase for custom word mode
     socket.on('wordSelectionPhase', (data) => {
-        log('Word selection phase started');
         isWordSetter = (data.wordSetter.id === mySocketId);
         hintsRemaining = data.hintCount || 5;
         
@@ -650,7 +650,6 @@ function setupSocketListeners(username, connectionTimeout) {
     
     // Word was accepted
     socket.on('wordAccepted', () => {
-        log('Word accepted by server');
         hideModal('wordSelectionModal');
         showNotification('Word submitted successfully!', 'success');
     });
@@ -666,17 +665,12 @@ function setupSocketListeners(username, connectionTimeout) {
     });
     
     socket.on('gameStarted', (data) => {
-        log('Game started:', data);
         hideModal('waitingForWordModal');
         gameState = data.gameState;
         
         // Store players array for turn lookups
         // IMPORTANT: Must use the full players array from server, not filtered activePlayers
         gameState.players = data.players;
-        log('Game started - players count:', data.players?.length, 'currentTurn:', gameState.currentTurn);
-        if (gameState.players && gameState.players[gameState.currentTurn]) {
-            log('Current player at start:', gameState.players[gameState.currentTurn].username);
-        }
         
         // Initialize word for tracking
         if (!gameState.word && gameState.wordLength) {
@@ -709,9 +703,6 @@ function setupSocketListeners(username, connectionTimeout) {
             isOnWordSetterTeam = false;
         }
         
-        log('Team check - mode:', data.mode, 'isTeamMode:', isTeamMode, 'myTeam:', myTeam, 'wordSetterTeam:', gameState.wordSetterTeam, 'isOnWordSetterTeam:', isOnWordSetterTeam);
-        log('All players and teams:', data.players.map(p => ({id: p.id.slice(-4), username: p.username, team: p.team})));
-        
         // Build active players list (excluding word setter's team in custom mode)
         // This is for display purposes only - server manages turns using full players array
         activePlayers = [];
@@ -736,13 +727,11 @@ function setupSocketListeners(username, connectionTimeout) {
     
     // Hint request received (for word setter)
     socket.on('hintRequested', (data) => {
-        log('Hint requested:', data);
         showHintRequestModal(data.requesterName);
     });
     
     // Hint provided (for all players)
     socket.on('hintProvided', (data) => {
-        log('Hint provided:', data);
         displayReceivedHint(data.hint, data.hintNumber);
         hintsRemaining = data.hintsRemaining;
         updateHintsDisplay();
@@ -754,7 +743,6 @@ function setupSocketListeners(username, connectionTimeout) {
 
     // Hint dismissed by word setter
     socket.on('hintDismissed', (data) => {
-        log('Hint dismissed:', data);
         const askHintBtn = document.getElementById('askHintBtn');
         if (askHintBtn && hintsRemaining > 0) {
             askHintBtn.disabled = false;
@@ -814,8 +802,43 @@ function setupSocketListeners(username, connectionTimeout) {
 
 function initAuth() {
     const usernameForm = document.getElementById('usernameForm');
+    const usernameInput = document.getElementById('usernameInput');
+    const joinButton = usernameForm?.querySelector('button[type="submit"]');
+    
     if (usernameForm) {
+        // Handle form submission
         usernameForm.addEventListener('submit', handleJoinGame);
+        
+        // Also handle button click directly for mobile
+        if (joinButton) {
+            joinButton.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleJoinGame(e);
+            });
+            
+            // Handle touch events for mobile
+            joinButton.addEventListener('touchend', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleJoinGame(e);
+            }, { passive: false });
+        }
+        
+        // Handle Enter key on input
+        if (usernameInput) {
+            usernameInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleJoinGame(e);
+                }
+            });
+            
+            // Auto-focus on mobile after a short delay
+            setTimeout(() => {
+                usernameInput.focus();
+            }, 500);
+        }
     }
 }
 
@@ -996,9 +1019,9 @@ function showJoinRoomModal(roomId) {
     showModal('joinRoomModal');
 }
 
-function createRoom(name, mode, password) {
+function createRoom(name, mode, password, difficulty, hintCount) {
     if (!checkServerAndShowError()) return;
-    socket.emit('createRoom', { name, mode, password, username: currentUser.username });
+    socket.emit('createRoom', { name, mode, password, username: currentUser.username, difficulty, hintCount });
 }
 
 function joinRoom(roomId, password) {
@@ -1042,10 +1065,9 @@ function startGame() {
         }
     }
     
+    // Server will use stored difficulty and hint count from room creation
     socket.emit('startGame', { 
-        roomId: currentRoom.roomId, 
-        gameMode: currentGameMode,
-        hintCount: currentHintCount
+        roomId: currentRoom.roomId
     });
 }
 
@@ -1248,47 +1270,13 @@ function updateTeamCounts() {
 function updateRoomControls() {
     const roomActions = document.getElementById('roomActions');
     const waitingMessage = document.getElementById('waitingMessage');
-    const hintCountSection = document.getElementById('hintCountSection');
     
     if (isHost) {
         roomActions.classList.remove('hidden');
         waitingMessage.classList.add('hidden');
-        
-        updateGameModeVisibility();
-        
-        if (currentGameMode === 'custom') {
-            hintCountSection.classList.remove('hidden');
-        } else {
-            hintCountSection.classList.add('hidden');
-        }
     } else {
         roomActions.classList.add('hidden');
         waitingMessage.classList.remove('hidden');
-    }
-}
-
-function updateGameModeVisibility() {
-    if (!currentRoom) return;
-    
-    const customModeBtn = document.querySelector('.game-mode-btn[data-game-mode="custom"]');
-    if (!customModeBtn) return;
-    
-    const isTeamMode = currentRoom.mode === '1v1' || currentRoom.mode === '2v2' || currentRoom.mode === '3v3' || currentRoom.mode === '4v4';
-    
-    if (isTeamMode) {
-        customModeBtn.style.display = '';
-    } else {
-        customModeBtn.style.display = 'none';
-        
-        if (currentGameMode === 'custom') {
-            currentGameMode = 'medium';
-            document.querySelectorAll('.game-mode-btn').forEach(btn => {
-                btn.classList.remove('active');
-                if (btn.dataset.gameMode === 'medium') {
-                    btn.classList.add('active');
-                }
-            });
-        }
     }
 }
 
@@ -1609,7 +1597,6 @@ function makeGuess(letter) {
     
     // Safety check - ensure players array exists
     if (!allPlayers || !Array.isArray(allPlayers) || allPlayers.length === 0) {
-        log('ERROR: gameState.players is missing or empty!');
         showNotification('Game error - please refresh', 'error');
         return;
     }
@@ -1617,31 +1604,18 @@ function makeGuess(letter) {
     const currentPlayer = allPlayers[gameState.currentTurn];
     const currentPlayerId = currentPlayer?.id;
     
-    log('makeGuess check - currentTurn:', gameState.currentTurn, 'currentPlayerId:', currentPlayerId, 'mySocketId:', mySocketId, 'myUsername:', currentUser?.username);
-    log('allPlayers length:', allPlayers.length);
-    
-    // Debug: Show current player lookup details
-    log('Player at currentTurn index:', currentPlayer);
-    log('All player IDs:', allPlayers.map((p, i) => `(${i})${p.id?.slice(-4) || '????'}`).join(', '));
-    log('Full gameState:', { hasPlayers: !!gameState.players, playersCount: gameState.players?.length, currentTurn: gameState.currentTurn, isCustomWord: gameState.isCustomWord, wordSetter: gameState.wordSetter?.slice(-4) });
-    
     if (currentPlayerId !== mySocketId) {
-        log('Turn check FAILED - not your turn. Current player:', currentPlayer?.username);
         showNotification('Wait for your turn!', 'warning');
         return;
     }
-    log('Turn check PASSED - it is your turn!');
     
     socket.emit('makeGuess', { roomId: currentRoom.roomId, letter: letter });
 }
 
 function updateGameState(data) {
-    log('updateGameState called - currentTurn:', data.currentTurn, 'players available:', !!gameState.players);
-    
-    // FIX: Always update word from server
-    if (data.maskedWord) {
-        gameState.maskedWord = data.maskedWord;
-        updateWordDisplay(gameState.maskedWord);
+    // FIX: Always update word from server (word is not logged to console for security)
+    if (data.word) {
+        gameState.word = data.word;
     }
     
     gameState.guessedLetters = data.guessedLetters;
@@ -1699,18 +1673,6 @@ function updateGameState(data) {
     if (currentPlayer) {
         updateTurnIndicator(currentPlayer);
     }
-}
-
-function updateWordDisplay(maskedWord) {
-  const container = document.getElementById('wordDisplay');
-  container.innerHTML = '';
-
-  maskedWord.split('').forEach(char => {
-    const box = document.createElement('div');
-    box.className = 'letter-box';
-    box.textContent = char === '_' ? '' : char;
-    container.appendChild(box);
-  });
 }
 
 function updateScores(players) {
@@ -2149,52 +2111,74 @@ function initEventListeners() {
     
     document.getElementById('createRoomBtn').addEventListener('click', () => showModal('createRoomModal'));
     
+    // Create room form with difficulty and hint count
+    let selectedDifficulty = 'easy';
+    let selectedHintCount = 5;
+    
     document.getElementById('createRoomForm').addEventListener('submit', (e) => {
         e.preventDefault();
         const name = document.getElementById('newRoomName').value.trim();
         const errorElement = document.getElementById('roomNameError');
         if (!name) { errorElement.style.display = 'block'; return; }
         errorElement.style.display = 'none';
-        createRoom(name, document.querySelector('.mode-btn.active').dataset.mode, document.getElementById('newRoomPassword').value);
+        
+        const gameMode = document.querySelector('.mode-btn.active').dataset.mode;
+        const difficulty = document.querySelector('.difficulty-btn.active').dataset.difficulty;
+        const hintCount = difficulty === 'custom' ? selectedHintCount : 5;
+        
+        createRoom(name, gameMode, document.getElementById('newRoomPassword').value, difficulty, hintCount);
     });
     
+    // Game mode selection (solo, 1v1, 2v2, etc.)
     document.querySelectorAll('.mode-btn').forEach(btn => {
         btn.addEventListener('click', () => { 
             document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active')); 
-            btn.classList.add('active'); 
-        });
-    });
-    
-    document.querySelectorAll('.game-mode-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            document.querySelectorAll('.game-mode-btn').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
-            currentGameMode = btn.dataset.gameMode;
-            updateRoomControls();
             
-            // Notify server of game mode change so lobby can display it
-            if (currentRoom && isHost && socket) {
-                socket.emit('setGameMode', { 
-                    roomId: currentRoom.roomId, 
-                    gameMode: currentGameMode 
-                });
+            // Show/hide custom difficulty option based on game mode
+            const customBtn = document.getElementById('customDifficultyBtn');
+            const hintSection = document.getElementById('hintCountSection');
+            
+            if (btn.dataset.mode === 'solo') {
+                // Hide custom option for solo mode
+                customBtn.classList.add('hidden');
+                // If custom was selected, switch to easy
+                if (customBtn.classList.contains('active')) {
+                    customBtn.classList.remove('active');
+                    document.querySelector('[data-difficulty="easy"]').classList.add('active');
+                    selectedDifficulty = 'easy';
+                    hintSection.classList.add('hidden');
+                }
+            } else {
+                // Show custom option for other modes
+                customBtn.classList.remove('hidden');
             }
         });
     });
     
-    document.querySelectorAll('.hint-count-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            document.querySelectorAll('.hint-count-btn').forEach(b => b.classList.remove('active'));
+    // Difficulty mode selection (easy, medium, hard, custom)
+    document.querySelectorAll('.difficulty-btn').forEach(btn => {
+        btn.addEventListener('click', () => { 
+            document.querySelectorAll('.difficulty-btn').forEach(b => b.classList.remove('active')); 
             btn.classList.add('active');
-            currentHintCount = parseInt(btn.dataset.hintCount);
+            selectedDifficulty = btn.dataset.difficulty;
             
-            // Notify server of hint count change so lobby can display it
-            if (currentRoom && isHost && socket) {
-                socket.emit('setHintCount', { 
-                    roomId: currentRoom.roomId, 
-                    hintCount: currentHintCount 
-                });
+            // Show/hide hint count section
+            const hintSection = document.getElementById('hintCountSection');
+            if (btn.dataset.difficulty === 'custom') {
+                hintSection.classList.remove('hidden');
+            } else {
+                hintSection.classList.add('hidden');
             }
+        });
+    });
+    
+    // Hint count selection (5 or 7)
+    document.querySelectorAll('.hint-btn').forEach(btn => {
+        btn.addEventListener('click', () => { 
+            document.querySelectorAll('.hint-btn').forEach(b => b.classList.remove('active')); 
+            btn.classList.add('active');
+            selectedHintCount = parseInt(btn.dataset.hints);
         });
     });
     

@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#0a0a0a">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="description" content="Play Hangman with friends! Multiplayer word guessing game with custom words and team modes.">
+    <title>Hangman - Multiplayer Word Game</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- Auth Screen -->
+    <div id="authScreen" class="auth-screen">
+        <div class="username-container">
+            <div class="game-logo">
+                <span class="title">
+                    <span class="title-letter title-part-text-1">H</span>
+                    <span class="title-letter title-part-text-2">A</span>
+                    <span class="title-letter title-part-text-3">N</span>
+                    <span class="title-letter title-part-text-4">G</span>
+                    <span class="title-letter title-part-text-5">M</span>
+                    <span class="title-letter title-part-text-6">A</span>
+                    <span class="title-letter title-part-text-7">N</span>
+                    <span class="title-hangman-inline">
+                        <svg class="title-hangman-svg" viewBox="0 0 100 120">
+                            <!-- Gallows -->
+                            <line class="title-draw-part title-part-1" x1="10" y1="110" x2="90" y2="110" />
+                            <line class="title-draw-part title-part-2" x1="30" y1="110" x2="30" y2="10" />
+                            <line class="title-draw-part title-part-3" x1="30" y1="10" x2="70" y2="10" />
+                            <line class="title-draw-part title-part-4" x1="70" y1="10" x2="70" y2="25" />
+                            <!-- Head -->
+                            <circle class="title-man-part title-part-5" cx="70" cy="35" r="10" />
+                            <!-- Body -->
+                            <line class="title-man-part title-part-6" x1="70" y1="45" x2="70" y2="75" />
+                            <!-- Left Arm -->
+                            <line class="title-man-part title-part-7" x1="70" y1="55" x2="55" y2="65" />
+                            <!-- Right Arm -->
+                            <line class="title-man-part title-part-8" x1="70" y1="55" x2="85" y2="65" />
+                            <!-- Left Leg -->
+                            <line class="title-man-part title-part-9" x1="70" y1="75" x2="55" y2="95" />
+                            <!-- Right Leg -->
+                            <line class="title-man-part title-part-10" x1="70" y1="75" x2="85" y2="95" />
+                        </svg>
+                    </span>
+                </span>
+            </div>
+            
+            <form id="usernameForm" class="username-form">
+                <div class="username-input-group">
+                    <input 
+                        type="text" 
+                        id="usernameInput" 
+                        placeholder="Enter your username" 
+                        maxlength="20"
+                        autocomplete="off"
+                    >
+                    <p class="username-hint">2-20 characters, letters, numbers, dots, hyphens, and underscores only</p>
+                </div>
+                <button type="submit" class="btn-large">
+                    <i class="fas fa-play"></i>
+                    Join Game
+                </button>
+            </form>
+            <p id="authError" class="auth-error"></p>
+        </div>
+    </div>
+
+    <!-- Game Screen -->
+    <div id="gameScreen" class="game-screen hidden">
+        <div class="container">
+            <!-- Header -->
+            <header class="game-header">
+                <div class="header-left">
+                    <h1 class="title">
+                        <span class="title-letter">H</span>
+                        <span class="title-letter">A</span>
+                        <span class="title-letter">N</span>
+                        <span class="title-letter">G</span>
+                        <span class="title-letter">M</span>
+                        <span class="title-letter">A</span>
+                        <span class="title-letter">N</span>
+                    </h1>
+                </div>
+                <div class="header-center">
+                    <div class="online-status">
+                        <span class="online-dot"></span>
+                        <span><span id="onlineCount">0</span> Online</span>
+                    </div>
+                </div>
+                <div class="header-right">
+                    <div class="user-menu">
+                        <span id="currentUsername">Player</span>
+                        <button class="btn-icon" id="settingsBtn" title="Settings">
+                            <i class="fas fa-cog"></i>
+                        </button>
+                        <button class="btn btn-secondary" id="logoutBtn">
+                            <i class="fas fa-sign-out-alt"></i>
+                            Logout
+                        </button>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Lobby View -->
+            <div id="lobbyView" class="view active">
+                <div class="lobby-container">
+                    <!-- Sidebar -->
+                    <aside class="lobby-sidebar">
+                        <div id="userStatsContainer">
+                            <!-- User stats will be populated here -->
+                        </div>
+
+                        <!-- Global Lobby Chat -->
+                        <div class="lobby-chat-section">
+                            <div class="chat-header">
+                                <h3><i class="fas fa-globe"></i> Global Chat</h3>
+                                <span class="online-count"><span id="globalChatOnline">0</span> online</span>
+                            </div>
+                            <div class="chat-messages" id="lobbyChatMessages"></div>
+                            <div class="chat-input-area">
+                                <input type="text" id="lobbyChatInput" placeholder="Type a message to everyone..." maxlength="200">
+                                <button class="btn btn-icon" id="sendLobbyChatBtn">
+                                    <i class="fas fa-paper-plane"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </aside>
+
+                    <!-- Main Content -->
+                    <main class="lobby-main">
+                        <div class="rooms-header">
+                            <h2>Available Rooms</h2>
+                            <div class="rooms-filter">
+                                <select id="roomFilter">
+                                    <option value="all">All Rooms</option>
+                                    <option value="waiting">Waiting</option>
+                                    <option value="1v1">1v1</option>
+                                    <option value="2v2">2v2</option>
+                                    <option value="3v3">3v3</option>
+                                    <option value="4v4">4v4</option>
+                                </select>
+                                <button class="btn btn-icon" id="refreshRooms" title="Refresh">
+                                    <i class="fas fa-sync-alt"></i>
+                                </button>
+                                <button class="btn btn-primary" id="createRoomBtn">
+                                    <i class="fas fa-plus"></i>
+                                    Create Room
+                                </button>
+                            </div>
+                        </div>
+                        <div id="roomsList" class="rooms-list">
+                            <!-- Rooms will be populated here -->
+                        </div>
+                    </main>
+                </div>
+            </div>
+
+            <!-- Room View -->
+            <div id="roomView" class="view">
+                <div class="room-container">
+                    <div class="room-header">
+                        <div class="room-header-left">
+                            <h2 id="roomName">Room Name</h2>
+                        </div>
+                        <div class="room-info-center">
+                            <span id="roomMode" class="room-mode">1v1</span>
+                            <span class="room-players">
+                                <i class="fas fa-users"></i>
+                                <span id="playerCount">1</span>/<span id="maxPlayers">2</span>
+                            </span>
+                        </div>
+                        <button class="btn btn-secondary" id="leaveRoomBtn">
+                            <i class="fas fa-door-open"></i>
+                            Leave
+                        </button>
+                    </div>
+
+                    <div class="room-content">
+                        <div class="players-section">
+                            <h3>Players</h3>
+                            <div id="playersList" class="players-list">
+                                <!-- Players will be populated here -->
+                            </div>
+
+                            <!-- Teams Section -->
+                            <div id="teamsSection" class="teams-section hidden">
+                                <div class="team team-1">
+                                    <div class="team-header">
+                                        <h4>Team 1</h4>
+                                        <span id="team1Count" class="team-count">0</span>
+                                    </div>
+                                    <div id="team1Players" class="team-players">
+                                        <!-- Team 1 players will be populated here -->
+                                    </div>
+                                </div>
+                                <div class="team team-2">
+                                    <div class="team-header">
+                                        <h4>Team 2</h4>
+                                        <span id="team2Count" class="team-count">0</span>
+                                    </div>
+                                    <div id="team2Players" class="team-players">
+                                        <!-- Team 2 players will be populated here -->
+                                    </div>
+                                </div>
+                                
+                                <div id="teamSelection" class="team-selection hidden">
+                                    <p class="team-hint">Choose your team:</p>
+                                    <div class="team-buttons">
+                                        <button id="joinTeam1" class="btn btn-team btn-team-1">Join Team 1</button>
+                                        <button id="joinTeam2" class="btn btn-team btn-team-2">Join Team 2</button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Room Actions (Host Only) -->
+                            <div id="roomActions" class="room-actions hidden">
+                                <button id="startGameBtn" class="btn btn-primary btn-full">
+                                    <i class="fas fa-play"></i>
+                                    Start Game
+                                </button>
+                            </div>
+                            <div id="waitingMessage" class="waiting-message">
+                                Waiting for host to start the game...
+                            </div>
+                        </div>
+
+                        <!-- Chat Section -->
+                        <div class="chat-section">
+                            <div class="chat-header">
+                                <h3><i class="fas fa-comments"></i> Chat</h3>
+                                <div id="chatTabs" class="chat-tabs">
+                                    <button class="chat-tab active" data-chat-type="global">
+                                        Game
+                                        <span class="notification-badge" id="globalChatBadge" style="display: none;">0</span>
+                                    </button>
+                                    <button class="chat-tab" data-chat-type="team">
+                                        Team
+                                        <span class="notification-badge" id="teamChatBadge" style="display: none;">0</span>
+                                    </button>
+                                </div>
+                            </div>
+                            <div id="chatMessages" class="chat-messages">
+                                <!-- Messages will be populated here -->
+                            </div>
+                            <div class="chat-input-area">
+                                <input type="text" id="chatInput" placeholder="Type a message..." maxlength="200">
+                                <button id="sendMessageBtn" class="btn btn-primary">
+                                    <i class="fas fa-paper-plane"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Game View -->
+            <div id="gameView" class="view">
+                <div class="multiplayer-game">
+                    <div class="game-top-bar">
+                        <div id="turnIndicator" class="turn-indicator">Waiting...</div>
+                        <div id="hintsContainer" class="hints-container hidden">
+                            <span class="hints-label">Hints Remaining:</span>
+                            <span id="hintsRemaining" class="hints-count">5</span>
+                        </div>
+                        <button id="leaveGameBtn" class="btn btn-secondary">
+                            <i class="fas fa-door-open"></i>
+                            Leave Game
+                        </button>
+                    </div>
+
+                    <div class="game-main-area">
+                        <div class="game-left">
+                            <!-- Current Player -->
+                            <div class="current-players">
+                                <h3>Current Turn</h3>
+                                <div id="currentPlayer" class="current-player">
+                                    <!-- Current player will be shown here -->
+                                </div>
+                            </div>
+
+                            <!-- Hangman -->
+                            <div class="hangman-container">
+                                <svg class="hangman-svg" viewBox="0 0 200 250">
+                                    <!-- Gallows -->
+                                    <line class="draw-part" x1="20" y1="230" x2="180" y2="230" />
+                                    <line class="draw-part" x1="60" y1="230" x2="60" y2="20" />
+                                    <line class="draw-part" x1="60" y1="20" x2="140" y2="20" />
+                                    <line class="draw-part" x1="140" y1="20" x2="140" y2="50" />
+                                    <!-- Head -->
+                                    <circle class="man-part part-1" cx="140" cy="70" r="20" />
+                                    <!-- Body -->
+                                    <line class="man-part part-2" x1="140" y1="90" x2="140" y2="150" />
+                                    <!-- Left Arm -->
+                                    <line class="man-part part-3" x1="140" y1="110" x2="110" y2="130" />
+                                    <!-- Right Arm -->
+                                    <line class="man-part part-4" x1="140" y1="110" x2="170" y2="130" />
+                                    <!-- Left Leg -->
+                                    <line class="man-part part-5" x1="140" y1="150" x2="110" y2="190" />
+                                    <!-- Right Leg -->
+                                    <line class="man-part part-6" x1="140" y1="150" x2="170" y2="190" />
+                                </svg>
+                            </div>
+
+                            <!-- Word Display -->
+                            <div class="word-container">
+                                <div id="wordDisplay" class="word-display">
+                                    <!-- Letter boxes will be populated here -->
+                                </div>
+                                <p id="wordHint" class="word-hint">Hint: Loading...</p>
+                                
+                                <!-- Ask Hint Button (For Players) -->
+                                <div id="askHintSection" class="ask-hint-section hidden">
+                                    <button id="askHintBtn" class="btn btn-hint-request">
+                                        <i class="fas fa-question-circle"></i>
+                                        Ask for Hint
+                                    </button>
+                                </div>
+                                
+                                <!-- Received Hints Display -->
+                                <div id="receivedHints" class="received-hints hidden">
+                                    <h4>Hints Received:</h4>
+                                    <div id="hintsList" class="hints-list">
+                                        <!-- Hints will appear here -->
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Wrong Letters -->
+                            <div class="wrong-letters-container">
+                                <p class="wrong-letters-label">Wrong Letters</p>
+                                <div id="wrongLetters" class="wrong-letters">
+                                    <!-- Wrong letters will be populated here -->
+                                </div>
+                            </div>
+
+                            <!-- Keyboard -->
+                            <div id="keyboard" class="keyboard">
+                                <!-- Keys will be populated here -->
+                            </div>
+                        </div>
+
+                        <div class="game-right">
+                            <!-- Scoreboard -->
+                            <div class="scoreboard" id="scoreboard">
+                                <h3>Scores</h3>
+                                <div id="scoresList" class="scores-list">
+                                    <!-- Scores will be populated here -->
+                                </div>
+                            </div>
+
+                            <!-- Mini Chat -->
+                            <div class="mini-chat">
+                                <div id="miniChatTabs" class="mini-chat-tabs">
+                                    <button class="chat-tab active" data-chat-type="global">
+                                        Game
+                                        <span class="notification-badge" id="miniGlobalChatBadge" style="display: none;">0</span>
+                                    </button>
+                                    <button class="chat-tab" data-chat-type="team">
+                                        Team
+                                        <span class="notification-badge" id="miniTeamChatBadge" style="display: none;">0</span>
+                                    </button>
+                                </div>
+                                <div id="miniChatMessages" class="mini-chat-messages">
+                                    <!-- Messages will be populated here -->
+                                </div>
+                                <div class="mini-chat-input">
+                                    <input type="text" id="miniChatInput" placeholder="Type..." maxlength="200">
+                                    <button id="sendMiniChatBtn" class="btn btn-primary">
+                                        <i class="fas fa-paper-plane"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Create Room Modal -->
+        <div class="modal" id="createRoomModal">
+            <div class="modal-content">
+                <h2>Create New Room</h2>
+                <form id="createRoomForm" novalidate autocomplete="off">
+                    <div class="form-group">
+                        <label for="newRoomName">Room Name</label>
+                        <input type="text" id="newRoomName" name="roomname" maxlength="30" placeholder="Enter room name" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+                        <p class="form-error" id="roomNameError" style="display: none; color: var(--error); font-size: 0.85rem; margin-top: 5px;">Please Enter The Name</p>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Game Mode</label>
+                        <div class="mode-selector" id="gameModeSelector">
+                            <button type="button" class="mode-btn active" data-mode="solo">
+                                <span>Solo</span>
+                                <small>1 Player</small>
+                            </button>
+                            <button type="button" class="mode-btn" data-mode="1v1">
+                                <span>1v1</span>
+                                <small>2 Players</small>
+                            </button>
+                            <button type="button" class="mode-btn" data-mode="2v2">
+                                <span>2v2</span>
+                                <small>4 Players</small>
+                            </button>
+                            <button type="button" class="mode-btn" data-mode="3v3">
+                                <span>3v3</span>
+                                <small>6 Players</small>
+                            </button>
+                            <button type="button" class="mode-btn" data-mode="4v4">
+                                <span>4v4</span>
+                                <small>8 Players</small>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Difficulty Mode</label>
+                        <div class="difficulty-selector" id="difficultySelector">
+                            <button type="button" class="difficulty-btn active" data-difficulty="easy">
+                                <span>Easy</span>
+                            </button>
+                            <button type="button" class="difficulty-btn" data-difficulty="medium">
+                                <span>Medium</span>
+                            </button>
+                            <button type="button" class="difficulty-btn" data-difficulty="hard">
+                                <span>Hard</span>
+                            </button>
+                            <button type="button" class="difficulty-btn" data-difficulty="custom" id="customDifficultyBtn">
+                                <span>Custom Word</span>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group hidden" id="hintCountSection">
+                        <label>Hints</label>
+                        <div class="hint-selector">
+                            <button type="button" class="hint-btn active" data-hints="5">
+                                <span>5 Hints</span>
+                            </button>
+                            <button type="button" class="hint-btn" data-hints="7">
+                                <span>7 Hints</span>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="newRoomPassword">Password (Optional)</label>
+                        <input type="password" id="newRoomPassword" maxlength="20" placeholder="Leave empty for public room">
+                    </div>
+                    
+                    <div class="modal-actions">
+                        <button type="button" class="btn btn-secondary" id="cancelCreateRoom">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Create Room</button>
+                    </div>
+                    <p id="createRoomError" class="modal-error"></p>
+                </form>
+            </div>
+        </div>
+
+        <!-- Join Room Modal -->
+        <div class="modal" id="joinRoomModal">
+            <div class="modal-content">
+                <h2>Enter Room Password</h2>
+                <form id="joinRoomForm">
+                    <div class="form-group">
+                        <label for="joinRoomPassword">Password</label>
+                        <input type="password" id="joinRoomPassword" required placeholder="Enter room password">
+                    </div>
+                    <div class="modal-actions">
+                        <button type="button" class="btn btn-secondary" id="cancelJoinRoom">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Join Room</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Word Selection Modal (Custom Word Mode) -->
+        <div class="modal" id="wordSelectionModal">
+            <div class="modal-content word-selection-modal">
+                <div class="modal-icon" style="font-size: 4rem; text-align: center; margin-bottom: 20px;">✏️</div>
+                <h2>Choose Your Secret Word</h2>
+                <p class="modal-description">You are the word setter! Choose a word for other players to guess.</p>
+                
+                <form id="wordSelectionForm">
+                    <div class="form-group">
+                        <label for="customWord">Secret Word *</label>
+                        <input 
+                            type="text" 
+                            id="customWord" 
+                            placeholder="Enter a word (letters only)" 
+                            maxlength="20"
+                            required
+                            autocomplete="off"
+                        >
+                        <small class="form-hint">3-20 letters, no spaces or numbers</small>
+                    </div>
+                    
+                    <div class="modal-actions">
+                        <button type="submit" class="btn btn-primary btn-full" id="submitWordBtn">
+                            <i class="fas fa-check"></i>
+                            Submit Word
+                        </button>
+                    </div>
+                    <p id="wordSelectionError" class="modal-error"></p>
+                </form>
+            </div>
+        </div>
+
+        <!-- Waiting for Word Modal -->
+        <div class="modal" id="waitingForWordModal">
+            <div class="modal-content">
+                <div class="modal-icon" style="font-size: 4rem; text-align: center; margin-bottom: 20px;">⏳</div>
+                <h2>Waiting for Word</h2>
+                <p id="waitingForWordMessage" style="text-align: center; color: var(--text-secondary);">
+                    Waiting for the word setter to choose a word...
+                </p>
+                <div class="loading-spinner">
+                    <i class="fas fa-spinner fa-spin" style="font-size: 3rem; color: var(--text-secondary);"></i>
+                </div>
+            </div>
+        </div>
+
+        <!-- Hint Request Modal (For Word Setter) -->
+        <div class="modal" id="hintRequestModal">
+            <div class="modal-content">
+                <div class="modal-icon" style="font-size: 3rem; text-align: center; margin-bottom: 15px;">💡</div>
+                <h2>Hint Requested!</h2>
+                <p id="hintRequestPlayer" style="text-align: center; color: var(--text-secondary); margin-bottom: 20px;">
+                    A player has requested a hint
+                </p>
+                
+                <form id="provideHintForm">
+                    <div class="form-group">
+                        <label for="hintInput">Provide a Hint</label>
+                        <textarea 
+                            id="hintInput" 
+                            placeholder="Type your hint here..."
+                            maxlength="200"
+                            rows="4"
+                            required
+                        ></textarea>
+                        <small class="form-hint">Give a helpful clue about the word</small>
+                    </div>
+                    
+                    <div class="modal-actions">
+                        <button type="button" class="btn btn-secondary" id="cancelHint">Ignore</button>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-paper-plane"></i>
+                            Send Hint
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Game Over Modal -->
+        <div class="modal" id="gameOverModal">
+            <div class="modal-content">
+                <div id="modalIcon" class="modal-icon" style="font-size: 4rem; margin-bottom: 20px; text-align: center;">🎉</div>
+                <h2 id="modalTitle" class="modal-title" style="text-align: center;">Game Over</h2>
+                <p id="modalMessage" class="modal-message" style="text-align: center; margin: 15px 0;">The word was guessed!</p>
+                <div style="text-align: center; margin: 20px 0;">
+                    <p style="color: var(--text-secondary);">The word was:</p>
+                    <p id="modalWord" class="modal-word">WORD</p>
+                </div>
+                <div id="finalScores" class="final-scores">
+                    <!-- Final scores will be populated here -->
+                </div>
+                <div class="modal-actions">
+                    <button id="backToLobby" class="btn btn-secondary">Back to Lobby</button>
+                    <button id="playAgainBtn" class="btn btn-primary">Play Again</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Settings Modal -->
+        <div class="modal" id="settingsModal">
+            <div class="modal-content settings-modal">
+                <h2>Settings</h2>
+                
+                <div class="settings-section">
+                    <h3>Profile Picture</h3>
+                    <div class="avatar-upload-container">
+                        <div class="current-avatar-preview" id="currentAvatarPreview">
+                            <img id="avatarPreviewImg" src="" alt="Current Avatar" style="display: none;">
+                            <span class="avatar-placeholder" id="avatarPlaceholder">👤</span>
+                        </div>
+                        <div class="upload-controls">
+                            <input type="file" id="avatarInput" accept="image/jpeg,image/jpg,image/png" style="display: none;">
+                            <button class="btn btn-primary" id="uploadAvatarBtn">Upload New Picture</button>
+                            <p class="upload-hint">Max size: 5MB. Supported: JPG, PNG</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="settings-section">
+                    <h3>Username</h3>
+                    <div class="username-change-container">
+                        <div class="form-group">
+                            <label for="newUsernameInput">Change Username</label>
+                            <input type="text" id="newUsernameInput" placeholder="Enter new username" maxlength="20" autocomplete="off">
+                            <span class="error-message" id="usernameError" style="display: none;"></span>
+                        </div>
+                        <button class="btn btn-primary" id="changeUsernameBtn">Change Username</button>
+                    </div>
+                </div>
+                
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-secondary" id="closeSettings">Close</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Notification Toast -->
+        <div id="notificationToast" class="notification-toast hidden">
+            <i class="fas fa-info-circle"></i>
+            <span id="notificationMessage"></span>
+        </div>
+    </div>
+
+    <!-- Socket.io Client -->
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
