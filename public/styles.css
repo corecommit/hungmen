@@ -819,7 +819,7 @@ select option {
     border-radius: 20px;
     color: var(--text-primary);
     font-family: 'Poppins', sans-serif;
-    font-size: 0.9rem;
+    font-size: 0.7rem;
     transition: all var(--transition-normal);
     user-select: text;
     -webkit-user-select: text;
