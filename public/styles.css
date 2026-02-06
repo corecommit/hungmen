@@ -265,11 +265,14 @@ body::before {
     border: 3px solid var(--border-color);
     border-radius: 20px;
     color: var(--text-primary);
-    font-size: 1.3rem;
+    font-size: 16px; /* Prevent iOS zoom on focus */
     font-family: 'Poppins', sans-serif;
     text-align: center;
     transition: all var(--transition-normal);
     font-weight: 600;
+    -webkit-appearance: none;
+    appearance: none;
+    touch-action: manipulation;
 }
 
 .username-input-group input:focus {
@@ -303,6 +306,12 @@ body::before {
     font-family: 'Poppins', sans-serif;
     display: inline-flex;
     align-items: center;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+    -webkit-user-select: none;
+    min-height: 60px;
+    min-width: 200px;
     justify-content: center;
     gap: 12px;
     background: linear-gradient(135deg, #ffffff 0%, #e0e0e0 100%);
@@ -2961,6 +2970,11 @@ select option {
         gap: 12px;
         margin-bottom: 15px;
     }
+    
+    /* .chat-input-area button,
+    .mini-chat-input button{
+        
+    } */
 
     .header-left,
     .header-center,
@@ -3097,7 +3111,6 @@ select option {
     .lobby-chat-section {
         height: 400px !important;
         order: 1;
-        backdrop-filter: none;
     }
     
     .lobby-main {

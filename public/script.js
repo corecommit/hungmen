@@ -802,8 +802,43 @@ function setupSocketListeners(username, connectionTimeout) {
 
 function initAuth() {
     const usernameForm = document.getElementById('usernameForm');
+    const usernameInput = document.getElementById('usernameInput');
+    const joinButton = usernameForm?.querySelector('button[type="submit"]');
+    
     if (usernameForm) {
+        // Handle form submission
         usernameForm.addEventListener('submit', handleJoinGame);
+        
+        // Also handle button click directly for mobile
+        if (joinButton) {
+            joinButton.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleJoinGame(e);
+            });
+            
+            // Handle touch events for mobile
+            joinButton.addEventListener('touchend', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleJoinGame(e);
+            }, { passive: false });
+        }
+        
+        // Handle Enter key on input
+        if (usernameInput) {
+            usernameInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleJoinGame(e);
+                }
+            });
+            
+            // Auto-focus on mobile after a short delay
+            setTimeout(() => {
+                usernameInput.focus();
+            }, 500);
+        }
     }
 }
 
