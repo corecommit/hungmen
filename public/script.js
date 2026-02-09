@@ -75,17 +75,454 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
-function showNotification(message, type = 'info') {
+function showNotification(message, type = 'info', duration = 3000) {
     const toast = document.getElementById('notificationToast');
     const messageEl = document.getElementById('notificationMessage');
-    
+
     toast.className = `notification-toast ${type}`;
     messageEl.textContent = message;
     toast.classList.remove('hidden');
-    
+
     setTimeout(() => {
         toast.classList.add('hidden');
-    }, 3000);
+    }, duration);
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// ADMIN FUNCTIONS
+// ═══════════════════════════════════════════════════════════════════════
+
+function showAdminIndicator() {
+    // Add admin badge to header
+    const header = document.querySelector('.header-content');
+    if (header) {
+        const adminBadge = document.createElement('div');
+        adminBadge.className = 'admin-badge';
+        adminBadge.innerHTML = '<i class="fas fa-shield-alt"></i> ADMIN';
+        adminBadge.style.cssText = 'background: linear-gradient(135deg, #f59e0b, #d97706); color: #000; padding: 6px 12px; border-radius: 20px; font-size: 0.75rem; font-weight: 700; display: flex; align-items: center; gap: 6px; margin-left: 10px;';
+
+        const usernameElement = header.querySelector('.current-user');
+        if (usernameElement) {
+            usernameElement.appendChild(adminBadge);
+        }
+    }
+
+    // Show admin panel button for mobile/desktop
+    const adminPanelBtn = document.getElementById('adminPanelBtn');
+    if (adminPanelBtn) {
+        adminPanelBtn.classList.remove('hidden');
+    }
+
+    showNotification('Logged in as Admin - Special permissions enabled', 'info');
+}
+
+function isAdmin() {
+    return currentUser && currentUser.isAdmin;
+}
+
+function showAdminPanel() {
+    if (!isAdmin()) return;
+
+    // Close existing panel if open
+    const existingPanel = document.getElementById('adminPanel');
+    if (existingPanel) {
+        existingPanel.remove();
+        return;
+    }
+
+    const panel = document.createElement('div');
+    panel.id = 'adminPanel';
+    panel.className = 'admin-panel';
+    panel.innerHTML = `
+        <div class="admin-panel-header">
+            <h3><i class="fas fa-shield-alt"></i> Admin Panel</h3>
+            <button onclick="closeAdminPanel()" class="close-btn"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="admin-panel-content">
+            <div class="admin-section">
+                <h4>Room Management</h4>
+                <button onclick="showDeleteRoomModal()" class="admin-btn">
+                    <i class="fas fa-trash"></i> Delete Room
+                </button>
+                <button onclick="showKickPlayerModal()" class="admin-btn">
+                    <i class="fas fa-user-times"></i> Kick Player
+                </button>
+                <button onclick="showBanPlayerModal()" class="admin-btn">
+                    <i class="fas fa-ban"></i> Ban Player
+                </button>
+                <button onclick="showClearChatModal()" class="admin-btn">
+                    <i class="fas fa-broom"></i> Clear Chat
+                </button>
+            </div>
+            <div class="admin-section">
+                <h4>Announcements</h4>
+                <button onclick="showBroadcastModal()" class="admin-btn">
+                    <i class="fas fa-bullhorn"></i> Broadcast Message
+                </button>
+            </div>
+            <div class="admin-section">
+                <h4>Server Tools</h4>
+                <button onclick="requestServerInfo()" class="admin-btn">
+                    <i class="fas fa-info-circle"></i> Server Info
+                </button>
+                <button onclick="refreshAllRooms()" class="admin-btn">
+                    <i class="fas fa-sync-alt"></i> Refresh All Rooms
+                </button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(panel);
+}
+
+function closeAdminPanel() {
+    const panel = document.getElementById('adminPanel');
+    if (panel) {
+        panel.remove();
+    }
+}
+
+function showDeleteRoomModal() {
+    if (!isAdmin()) return;
+
+    const modal = document.createElement('div');
+    modal.className = 'modal admin-modal';
+    modal.id = 'adminDeleteRoomModal';
+    modal.innerHTML = `
+        <div class="modal-content">
+            <div class="modal-icon"><i class="fas fa-trash"></i></div>
+            <h2>Delete Room</h2>
+            <div class="form-group">
+                <label>Room ID or Name</label>
+                <input type="text" id="adminDeleteRoomInput" placeholder="Enter room ID or name">
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-secondary" onclick="hideModal('adminDeleteRoomModal')">Cancel</button>
+                <button type="button" class="btn btn-danger" onclick="adminDeleteRoom()">Delete Room</button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+    showModal('adminDeleteRoomModal');
+}
+
+function adminDeleteRoom() {
+    const roomInput = document.getElementById('adminDeleteRoomInput');
+    const roomIdOrName = roomInput.value.trim();
+
+    if (!roomIdOrName) {
+        showNotification('Please enter a room ID or name', 'error');
+        return;
+    }
+
+    socket.emit('adminDeleteRoom', { roomIdOrName });
+    hideModal('adminDeleteRoomModal');
+}
+
+function showKickPlayerModal() {
+    if (!isAdmin()) return;
+
+    const modal = document.createElement('div');
+    modal.className = 'modal admin-modal';
+    modal.id = 'adminKickPlayerModal';
+    modal.innerHTML = `
+        <div class="modal-content">
+            <div class="modal-icon"><i class="fas fa-user-times"></i></div>
+            <h2>Kick Player</h2>
+            <div class="form-group">
+                <label>Username</label>
+                <input type="text" id="adminKickUsernameInput" placeholder="Enter username to kick">
+            </div>
+            <div class="form-group">
+                <label>Reason (optional)</label>
+                <input type="text" id="adminKickReasonInput" placeholder="Reason for kicking">
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-secondary" onclick="hideModal('adminKickPlayerModal')">Cancel</button>
+                <button type="button" class="btn btn-warning" onclick="adminKickPlayer()">Kick Player</button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+    showModal('adminKickPlayerModal');
+}
+
+function adminKickPlayer() {
+    const usernameInput = document.getElementById('adminKickUsernameInput');
+    const reasonInput = document.getElementById('adminKickReasonInput');
+    const username = usernameInput.value.trim();
+    const reason = reasonInput.value.trim() || 'Kicked by admin';
+
+    if (!username) {
+        showNotification('Please enter a username', 'error');
+        return;
+    }
+
+    socket.emit('adminKickPlayer', { username, reason });
+    hideModal('adminKickPlayerModal');
+}
+
+function showBanPlayerModal() {
+    if (!isAdmin()) return;
+
+    const modal = document.createElement('div');
+    modal.className = 'modal admin-modal';
+    modal.id = 'adminBanPlayerModal';
+    modal.innerHTML = `
+        <div class="modal-content">
+            <div class="modal-icon"><i class="fas fa-ban" style="color: var(--error);"></i></div>
+            <h2>Ban Player</h2>
+            <div class="form-group">
+                <label>Username</label>
+                <input type="text" id="adminBanUsernameInput" placeholder="Enter username to ban">
+            </div>
+            <div class="form-group">
+                <label>Duration (hours)</label>
+                <select id="adminBanDurationInput" style="width: 100%; padding: 12px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-primary);">
+                    <option value="1">1 hour</option>
+                    <option value="24">24 hours</option>
+                    <option value="168">7 days</option>
+                    <option value="720">30 days</option>
+                    <option value="0">Permanent</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Reason (optional)</label>
+                <input type="text" id="adminBanReasonInput" placeholder="Reason for banning">
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-secondary" onclick="hideModal('adminBanPlayerModal')">Cancel</button>
+                <button type="button" class="btn btn-danger" onclick="adminBanPlayer()">Ban Player</button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+    showModal('adminBanPlayerModal');
+}
+
+function adminBanPlayer() {
+    const usernameInput = document.getElementById('adminBanUsernameInput');
+    const durationInput = document.getElementById('adminBanDurationInput');
+    const reasonInput = document.getElementById('adminBanReasonInput');
+    const username = usernameInput.value.trim();
+    const duration = parseInt(durationInput.value);
+    const reason = reasonInput.value.trim() || 'Banned by admin';
+
+    if (!username) {
+        showNotification('Please enter a username', 'error');
+        return;
+    }
+
+    socket.emit('adminBanPlayer', { username, duration, reason });
+    hideModal('adminBanPlayerModal');
+}
+
+function showClearChatModal() {
+    if (!isAdmin()) return;
+
+    const modal = document.createElement('div');
+    modal.className = 'modal admin-modal';
+    modal.id = 'adminClearChatModal';
+    modal.innerHTML = `
+        <div class="modal-content">
+            <div class="modal-icon"><i class="fas fa-broom" style="color: var(--info);"></i></div>
+            <h2>Clear Chat</h2>
+            <p style="color: var(--text-secondary); margin-bottom: 20px;">Select which chat to clear:</p>
+            <div class="modal-actions" style="flex-direction: column; gap: 10px;">
+                <button type="button" class="btn btn-primary" onclick="adminClearChat('lobby')">
+                    <i class="fas fa-comments"></i> Clear Lobby Chat
+                </button>
+                <button type="button" class="btn btn-primary" onclick="adminClearChat('current')">
+                    <i class="fas fa-door-open"></i> Clear Current Room Chat
+                </button>
+                <button type="button" class="btn btn-secondary" onclick="hideModal('adminClearChatModal')">Cancel</button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+    showModal('adminClearChatModal');
+}
+
+function adminClearChat(type) {
+    socket.emit('adminClearChat', { type });
+    hideModal('adminClearChatModal');
+}
+
+function showBroadcastModal() {
+    if (!isAdmin()) return;
+
+    const modal = document.createElement('div');
+    modal.className = 'modal admin-modal';
+    modal.id = 'adminBroadcastModal';
+    modal.innerHTML = `
+        <div class="modal-content">
+            <div class="modal-icon"><i class="fas fa-bullhorn" style="color: var(--warning);"></i></div>
+            <h2>Broadcast Message</h2>
+            <div class="form-group">
+                <label>Message</label>
+                <textarea id="adminBroadcastMessageInput" placeholder="Enter message to broadcast to all users..." rows="4" style="resize: vertical;"></textarea>
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-secondary" onclick="hideModal('adminBroadcastModal')">Cancel</button>
+                <button type="button" class="btn btn-warning" onclick="adminBroadcastMessage()">
+                    <i class="fas fa-paper-plane"></i> Broadcast
+                </button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+    showModal('adminBroadcastModal');
+}
+
+function adminBroadcastMessage() {
+    const messageInput = document.getElementById('adminBroadcastMessageInput');
+    const message = messageInput.value.trim();
+
+    if (!message) {
+        showNotification('Please enter a message', 'error');
+        return;
+    }
+
+    socket.emit('adminBroadcast', { message });
+    hideModal('adminBroadcastModal');
+}
+
+function refreshAllRooms() {
+    if (!isAdmin()) return;
+    socket.emit('getRooms');
+    showNotification('Refreshing rooms list...', 'info');
+    closeAdminPanel();
+}
+
+function requestServerInfo() {
+    if (!isAdmin()) return;
+    socket.emit('adminGetServerInfo');
+}
+
+function displayAdminServerInfo(data) {
+    const modal = document.createElement('div');
+    modal.className = 'modal admin-modal';
+    modal.id = 'adminServerInfoModal';
+
+    let roomsHtml = data.rooms.map(room => `
+        <div class="admin-info-item">
+            <strong>${escapeHtml(room.name)}</strong> (${room.mode})<br>
+            <small>Players: ${room.players}/${room.maxPlayers} | Status: ${room.status} | Host: ${escapeHtml(room.host)}</small>
+        </div>
+    `).join('');
+
+    let usersHtml = data.users.map(user => `
+        <div class="admin-info-item">
+            <strong>${escapeHtml(user.username)}</strong> ${user.isAdmin ? '<span style="color: var(--warning);">[ADMIN]</span>' : ''}<br>
+            <small>Room: ${user.room ? 'In room' : 'Lobby'}</small>
+        </div>
+    `).join('');
+
+    modal.innerHTML = `
+        <div class="modal-content" style="max-width: 600px; max-height: 80vh; overflow-y: auto;">
+            <div class="modal-icon"><i class="fas fa-server"></i></div>
+            <h2>Server Information</h2>
+
+            <div class="admin-info-section">
+                <h4>Overview</h4>
+                <div class="admin-info-item">
+                    <strong>Online Users:</strong> ${data.onlineUsers}
+                </div>
+                <div class="admin-info-item">
+                    <strong>Total Rooms:</strong> ${data.totalRooms}
+                </div>
+            </div>
+
+            <div class="admin-info-section">
+                <h4>Rooms (${data.rooms.length})</h4>
+                ${roomsHtml || '<p style="color: var(--text-secondary);">No active rooms</p>'}
+            </div>
+
+            <div class="admin-info-section">
+                <h4>Users (${data.users.length})</h4>
+                ${usersHtml || '<p style="color: var(--text-secondary);">No online users</p>'}
+            </div>
+
+            <div class="modal-actions">
+                <button type="button" class="btn btn-primary" onclick="hideModal('adminServerInfoModal')">Close</button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+    showModal('adminServerInfoModal');
+}
+
+// Admin chat command handler
+function handleAdminCommand(message) {
+    const parts = message.split(' ');
+    const command = parts[0].toLowerCase();
+
+    switch(command) {
+        case '/kick':
+            if (parts.length < 2) {
+                showNotification('Usage: /kick <username> [reason]', 'error');
+                return true;
+            }
+            const kickUsername = parts[1];
+            const kickReason = parts.slice(2).join(' ') || 'Kicked by admin';
+            socket.emit('adminKickPlayer', { username: kickUsername, reason: kickReason });
+            return true;
+
+        case '/deleteroom':
+            if (parts.length < 2) {
+                showNotification('Usage: /deleteroom <roomId or room name>', 'error');
+                return true;
+            }
+            const roomIdOrName = parts[1];
+            socket.emit('adminDeleteRoom', { roomIdOrName });
+            return true;
+
+        case '/adminpanel':
+            showAdminPanel();
+            return true;
+
+        case '/broadcast':
+            if (parts.length < 2) {
+                showNotification('Usage: /broadcast <message>', 'error');
+                return true;
+            }
+            const broadcastMessage = parts.slice(1).join(' ');
+            socket.emit('adminBroadcast', { message: broadcastMessage });
+            return true;
+
+        case '/ban':
+            if (parts.length < 2) {
+                showNotification('Usage: /ban <username> [duration_hours] [reason]', 'error');
+                return true;
+            }
+            const banUsername = parts[1];
+            const banDuration = parseInt(parts[2]) || 24;
+            const banReason = parts.slice(3).join(' ') || 'Banned by admin';
+            socket.emit('adminBanPlayer', { username: banUsername, duration: banDuration, reason: banReason });
+            return true;
+
+        case '/clearchat':
+            const clearType = parts[1] || 'lobby';
+            socket.emit('adminClearChat', { type: clearType });
+            return true;
+
+        case '/serverinfo':
+            requestServerInfo();
+            return true;
+
+        case '/help':
+            showNotification('Admin commands: /kick, /ban, /deleteroom, /broadcast, /clearchat, /serverinfo, /adminpanel, /help', 'info');
+            return true;
+
+        default:
+            return false;
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -475,7 +912,7 @@ function checkServerAndShowError() {
     return true;
 }
 
-function connectSocket(username) {
+function connectSocket(username, adminPassword = null) {
     let connectionTimeout;
     
     if (socket) {
@@ -502,15 +939,15 @@ function connectSocket(username) {
         }
     }, 5000);
     
-    setupSocketListeners(username, connectionTimeout);
+    setupSocketListeners(username, connectionTimeout, adminPassword);
 }
 
-function setupSocketListeners(username, connectionTimeout) {
+function setupSocketListeners(username, connectionTimeout, adminPassword = null) {
     socket.on('connect', () => {
         clearTimeout(connectionTimeout);
         mySocketId = socket.id;
         log('Connected to server:', socket.id);
-        socket.emit('authenticate', { username });
+        socket.emit('authenticate', { username, adminPassword });
     });
     
     socket.on('connect_error', (error) => {
@@ -535,13 +972,80 @@ function setupSocketListeners(username, connectionTimeout) {
         log('Reconnected after', attemptNumber, 'attempts');
         showNotification('Reconnected to server!', 'success');
     });
-    
-    socket.on('authenticated', () => {
+
+    // Admin response handlers
+    socket.on('adminSuccess', (data) => {
+        showNotification(data.message, 'success');
+    });
+
+    socket.on('adminError', (data) => {
+        showNotification(data.message, 'error');
+    });
+
+    socket.on('adminServerInfo', (data) => {
+        displayAdminServerInfo(data);
+    });
+
+    socket.on('adminBroadcast', (data) => {
+        showNotification(`[ADMIN] ${data.from}: ${data.message}`, 'info', 5000);
+    });
+
+    // Kicked handler
+    socket.on('kicked', (data) => {
+        showNotification(`You have been kicked by ${data.by}. Reason: ${data.reason}`, 'error', 5000);
+        socket.disconnect();
+        clearSession();
+        setTimeout(() => location.reload(), 2000);
+    });
+
+    // Room deleted handler
+    socket.on('roomDeleted', (data) => {
+        showNotification(`Room "${data.roomName}" has been deleted by an admin`, 'error', 5000);
+        if (currentRoom) {
+            leaveRoom();
+        }
+    });
+
+    // Banned handler
+    socket.on('banned', (data) => {
+        const durationText = data.duration === 0 ? 'permanently' : `for ${data.duration} hour(s)`;
+        showNotification(`You have been banned ${durationText} by ${data.by}. Reason: ${data.reason}`, 'error', 8000);
+        socket.disconnect();
+        clearSession();
+        setTimeout(() => location.reload(), 3000);
+    });
+
+    // Chat cleared handler
+    socket.on('lobbyChatCleared', (data) => {
+        const lobbyChatMessages = document.getElementById('lobbyChatMessages');
+        if (lobbyChatMessages) {
+            lobbyChatMessages.innerHTML = '';
+        }
+        showNotification(`Lobby chat has been cleared by ${data.by}`, 'info', 3000);
+    });
+
+    socket.on('roomChatCleared', (data) => {
+        const chatMessages = document.getElementById('chatMessages');
+        const miniChatMessages = document.getElementById('miniChatMessages');
+        if (chatMessages) chatMessages.innerHTML = '';
+        if (miniChatMessages) miniChatMessages.innerHTML = '';
+        showNotification(`Room chat has been cleared by ${data.by}`, 'info', 3000);
+    });
+
+    socket.on('authenticated', (data) => {
         log('Authenticated successfully');
+        if (data && data.user) {
+            currentUser = data.user;
+        }
         saveSession(username);
         showGameScreen();
         loadLobby();
         socket.emit('getLobbyChat');
+
+        // Show admin indicator if user is admin
+        if (currentUser && currentUser.isAdmin) {
+            showAdminIndicator();
+        }
     });
     
     socket.on('authError', (data) => {
@@ -646,8 +1150,22 @@ function setupSocketListeners(username, connectionTimeout) {
     socket.on('hostChanged', (data) => {
         if (data.newHostId === mySocketId) {
             isHost = true;
+            currentRoom.hostId = mySocketId;
             updateRoomControls();
             showNotification('You are now the host!', 'info');
+        } else {
+            // Update the hostId in currentRoom
+            currentRoom.hostId = data.newHostId;
+        }
+
+        // Update all player cards to show new host
+        document.querySelectorAll('.player-card').forEach(card => {
+            card.classList.remove('host');
+        });
+
+        const newHostCard = document.getElementById(`player-${data.newHostId}`);
+        if (newHostCard) {
+            newHostCard.classList.add('host');
         }
     });
     
@@ -692,17 +1210,28 @@ function setupSocketListeners(username, connectionTimeout) {
     
     socket.on('gameStarted', (data) => {
         hideModal('waitingForWordModal');
+
+        // Store game data for after countdown
+        const gameData = data;
+
+        // Show countdown before starting game
+        showCountdown(() => {
+            startGameAfterCountdown(gameData);
+        });
+    });
+
+    function startGameAfterCountdown(data) {
         gameState = data.gameState;
-        
+
         // Store players array for turn lookups
         // IMPORTANT: Must use the full players array from server, not filtered activePlayers
         gameState.players = data.players;
-        
+
         // Initialize word for tracking
         if (!gameState.word && gameState.wordLength) {
             gameState.word = '';
         }
-        
+
         isWordSetter = (data.gameState.wordSetter === mySocketId);
         hintsRemaining = (data.gameState.hintsRemaining != null) ? data.gameState.hintsRemaining : 0;
 
@@ -745,20 +1274,20 @@ function setupSocketListeners(username, connectionTimeout) {
         }
 
         showGameView(data);
-    });
-    
+    }
+
     socket.on('guessResult', (data) => {
         updateGameState(data);
     });
     
     // Hint request received (for word setter)
     socket.on('hintRequested', (data) => {
-        showHintRequestModal(data.requesterName);
+        showHintRequestModal(data.requesterName, data.question);
     });
-    
+
     // Hint provided (for all players)
     socket.on('hintProvided', (data) => {
-        displayReceivedHint(data.hint, data.hintNumber);
+        displayReceivedHint(data.hint, data.hintNumber, data.question);
         hintsRemaining = data.hintsRemaining;
         updateHintsDisplay();
 
@@ -829,6 +1358,8 @@ function setupSocketListeners(username, connectionTimeout) {
 function initAuth() {
     const usernameForm = document.getElementById('usernameForm');
     const usernameInput = document.getElementById('usernameInput');
+    const adminPasswordGroup = document.getElementById('adminPasswordGroup');
+    const adminPasswordInput = document.getElementById('adminPasswordInput');
     const joinButton = usernameForm?.querySelector('button[type="submit"]');
     
     if (usernameForm) {
@@ -865,26 +1396,74 @@ function initAuth() {
                 usernameInput.focus();
             }, 500);
         }
+        
+        // Handle Admin password field visibility
+        if (usernameInput && adminPasswordGroup) {
+            usernameInput.addEventListener('input', (e) => {
+                const username = e.target.value.trim();
+                const isAdmin = username.toLowerCase() === 'admin';
+                
+                if (isAdmin) {
+                    adminPasswordGroup.classList.remove('hidden');
+                    // Focus on password field after a short delay
+                    setTimeout(() => {
+                        adminPasswordInput?.focus();
+                    }, 100);
+                } else {
+                    adminPasswordGroup.classList.add('hidden');
+                    if (adminPasswordInput) {
+                        adminPasswordInput.value = '';
+                    }
+                }
+            });
+        }
+        
+        // Handle Enter key on password input
+        if (adminPasswordInput) {
+            adminPasswordInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleJoinGame(e);
+                }
+            });
+        }
     }
 }
 
 function handleJoinGame(e) {
     e.preventDefault();
     const usernameInput = document.getElementById('usernameInput');
+    const adminPasswordInput = document.getElementById('adminPasswordInput');
     const username = usernameInput.value.trim();
+    const adminPassword = adminPasswordInput?.value.trim() || '';
     
-    const bannedVariations = ['shreyan', 'shreyn', 'shryn', 'shyn', 'sreyan', 'sreyn', 'sryan', 'sryn', 'shrayan', 'shrayn', 'shriyan', 'shriyn', 'shrian', 'shrien', 'shryen', 'shryan', 'shryon', 'shryun','samarth', 'samart', 'samarthh', 'samarath','samerth', 'samirth', 'somarth', 'sumarth', 'samurth','samrth', 'smarth', 'samarh', 'samath','samarat', 'samrat', 'samraat', 'samrath','samaryh', 'samaryth', 'samarht', 'samarthy','samrath', 'samarht', 'smaarth', 'saamarth','samrt', 'samr', 'samar','samarath', 'samarrth', 'samartht'];
-    
-    const usernameLower = username.toLowerCase();
-    for (const variation of bannedVariations) {
-        if (usernameLower.includes(variation)) {
-            showAuthError('This username is not accepted');
-            return;
+    // Check for banned usernames (excluding 'admin' which is handled separately)
+    if (username.toLowerCase() !== 'admin') {
+        const bannedVariations = ['shreyan', 'shreyn', 'shryn', 'shyn', 'sreyan', 'sreyn', 'sryan', 'sryn', 'shrayan', 'shrayn', 'shriyan', 'shriyn', 'shrian', 'shrien', 'shryen', 'shryan', 'shryon', 'shryun','samarth', 'samart', 'samarthh', 'samarath','samerth', 'samirth', 'somarth', 'sumarth', 'samurth','samrth', 'smarth', 'samarh', 'samath','samarat', 'samrat', 'samraat', 'samrath','samaryh', 'samaryth', 'samarht', 'samarthy','samrath', 'samarht', 'smaarth', 'saamarth','samrt', 'samr', 'samar','samarath', 'samarrth', 'samartht'];
+        
+        const usernameLower = username.toLowerCase();
+        for (const variation of bannedVariations) {
+            if (usernameLower.includes(variation)) {
+                showAuthError('This username is not accepted');
+                return;
+            }
         }
     }
     
     if (!username) {
         showAuthError('Please enter a username');
+        return;
+    }
+    
+    // Admin account validation
+    if (username.toLowerCase() === 'admin') {
+        if (!adminPassword) {
+            showAuthError('Password needed to login in the admin account');
+            return;
+        }
+        // Store admin info for authentication
+        currentUser = { username, isAdmin: true, adminPassword };
+        connectSocket(username, adminPassword);
         return;
     }
     
@@ -1155,11 +1734,11 @@ function updatePlayersList(players) {
     
     players.forEach(player => {
         const playerCard = document.createElement('div');
-        playerCard.className = `player-card ${player.id === mySocketId ? 'me' : ''} ${currentRoom && player.id === currentRoom.hostId ? 'host' : ''}`;
+        playerCard.className = `player-card ${player.id === mySocketId ? 'me' : ''} ${currentRoom && player.id === currentRoom.hostId ? 'host' : ''} ${player.isAdmin ? 'admin' : ''}`;
         playerCard.id = `player-${player.id}`;
-        
+
         const avatarSrc = (player.id === mySocketId) ? userAvatar : (player.avatar || null);
-        
+
         playerCard.innerHTML = `
             <div class="player-avatar-wrap" style="display:flex;justify-content:center;margin-bottom:10px;">
                 ${buildAvatarHTML(avatarSrc, player.username, 50)}
@@ -1167,7 +1746,7 @@ function updatePlayersList(players) {
             <div class="player-name">${escapeHtml(player.username)}</div>
             ${player.team ? '<small>' + (player.team === 'team1' ? 'Team 1' : 'Team 2') + '</small>' : ''}
         `;
-        
+
         playersList.appendChild(playerCard);
     });
     
@@ -1235,13 +1814,13 @@ function updateTeamSelectionButtons(myTeam) {
 
 function addPlayerToRoom(player) {
     const playersList = document.getElementById('playersList');
-    
+
     const playerCard = document.createElement('div');
-    playerCard.className = 'player-card';
+    playerCard.className = `player-card ${player.isAdmin ? 'admin' : ''}`;
     playerCard.id = `player-${player.id}`;
-    
+
     const avatarSrc = player.avatar || null;
-    
+
     playerCard.innerHTML = `
         <div class="player-avatar-wrap" style="display:flex;justify-content:center;margin-bottom:10px;">
             ${buildAvatarHTML(avatarSrc, player.username, 50)}
@@ -1249,7 +1828,7 @@ function addPlayerToRoom(player) {
         <div class="player-name">${escapeHtml(player.username)}</div>
         ${player.team ? '<small>' + (player.team === 'team1' ? 'Team 1' : 'Team 2') + '</small>' : ''}
     `;
-    
+
     playersList.appendChild(playerCard);
     
     const currentCount = parseInt(document.getElementById('playerCount').textContent);
@@ -1367,7 +1946,7 @@ function submitCustomWord() {
 function requestHint() {
     if (!currentRoom || !socket) return;
     if (!checkServerAndShowError()) return;
-    
+
     if (isOnWordSetterTeam) {
         showNotification('Your team is setting the word — you cannot request hints!', 'warning');
         return;
@@ -1375,34 +1954,69 @@ function requestHint() {
         showNotification('You are the word setter — you cannot request hints!', 'warning');
         return;
     }
-    
+
     if (hintsRemaining <= 0) {
         showNotification('No hints remaining!', 'error');
         return;
     }
-    
+
+    // Show the question modal instead of directly requesting
+    const questionInput = document.getElementById('questionInput');
+    if (questionInput) {
+        questionInput.value = '';
+    }
+    showModal('askQuestionModal');
+}
+
+function submitQuestion() {
+    const questionInput = document.getElementById('questionInput');
+    const question = questionInput.value.trim();
+
+    if (!question) {
+        showNotification('Please enter a question', 'error');
+        return;
+    }
+
+    if (!checkServerAndShowError()) return;
+
+    // Disable the ask hint button while waiting for response
     const askHintBtn = document.getElementById('askHintBtn');
     if (askHintBtn) {
         askHintBtn.disabled = true;
-        askHintBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Requesting...';
+        askHintBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Waiting for host...';
     }
-    
-    socket.emit('requestHint', { roomId: currentRoom.roomId });
+
+    hideModal('askQuestionModal');
+
+    socket.emit('requestHint', {
+        roomId: currentRoom.roomId,
+        question: question
+    });
 }
 
-function showHintRequestModal(requesterName) {
+function showHintRequestModal(requesterName, question) {
     const modal = document.getElementById('hintRequestModal');
     const message = document.getElementById('hintRequestPlayer');
+    const questionLabel = document.getElementById('playerQuestionLabel');
+    const questionText = document.getElementById('playerQuestionText');
     const hintInput = document.getElementById('hintInput');
-    
+
     if (message) {
         message.textContent = `${requesterName} has requested a hint!`;
     }
-    
+
+    if (questionLabel) {
+        questionLabel.textContent = `${requesterName}'s Question:`;
+    }
+
+    if (questionText) {
+        questionText.textContent = question || 'No question provided';
+    }
+
     if (hintInput) {
         hintInput.value = '';
     }
-    
+
     showModal('hintRequestModal');
 }
 
@@ -1425,20 +2039,26 @@ function provideHint() {
     hideModal('hintRequestModal');
 }
 
-function displayReceivedHint(hint, hintNumber) {
+function displayReceivedHint(hint, hintNumber, question) {
     const receivedHints = document.getElementById('receivedHints');
     const hintsList = document.getElementById('hintsList');
-    
+
     receivedHints.classList.remove('hidden');
-    
+
     const hintItem = document.createElement('div');
     hintItem.className = 'hint-item';
     hintItem.innerHTML = `
-        <span class="hint-number">Hint ${hintNumber}</span>
-        <span class="hint-text">${escapeHtml(hint)}</span>
+        <div class="hint-header">
+            <span class="hint-number">Hint #${hintNumber}</span>
+        </div>
+        ${question ? `<div class="hint-question"><strong>Q:</strong> ${escapeHtml(question)}</div>` : ''}
+        <div class="hint-answer"><strong>A:</strong> ${escapeHtml(hint)}</div>
     `;
-    
+
     hintsList.appendChild(hintItem);
+
+    // Scroll to the new hint
+    hintsList.scrollTop = hintsList.scrollHeight;
 }
 
 function updateHintsDisplay() {
@@ -1457,6 +2077,53 @@ function updateHintsDisplay() {
             askHintBtn.innerHTML = '<i class="fas fa-question-circle"></i> Ask for Hint';
         }
     }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// COUNTDOWN
+// ═══════════════════════════════════════════════════════════════════════
+
+function showCountdown(callback) {
+    // Create countdown overlay
+    const overlay = document.createElement('div');
+    overlay.id = 'countdownOverlay';
+    overlay.className = 'countdown-overlay';
+    overlay.innerHTML = `
+        <div class="countdown-container">
+            <div class="countdown-number" id="countdownNumber">3</div>
+        </div>
+    `;
+
+    document.body.appendChild(overlay);
+
+    const numberEl = document.getElementById('countdownNumber');
+    let count = 3;
+
+    const countdownInterval = setInterval(() => {
+        count--;
+
+        if (count > 0) {
+            numberEl.textContent = count;
+            numberEl.classList.remove('animate');
+            void numberEl.offsetWidth; // Trigger reflow
+            numberEl.classList.add('animate');
+        } else if (count === 0) {
+            numberEl.textContent = 'GO!';
+            numberEl.classList.add('go');
+        } else {
+            clearInterval(countdownInterval);
+            overlay.style.opacity = '0';
+            setTimeout(() => {
+                overlay.remove();
+                if (callback) callback();
+            }, 300);
+        }
+    }, 1000);
+
+    // Initial animation
+    setTimeout(() => {
+        numberEl.classList.add('animate');
+    }, 100);
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -1704,24 +2371,25 @@ function updateGameState(data) {
 function updateScores(players) {
     const scoresList = document.getElementById('scoresList');
     scoresList.innerHTML = '';
-    
+
     players.forEach((player, index) => {
         const isWordSetterPlayer = (gameState && gameState.wordSetter === player.id);
         const scoreItem = document.createElement('div');
         scoreItem.className = `score-item ${index === gameState.currentTurn ? 'active' : ''} ${isWordSetterPlayer ? 'word-setter' : ''}`;
         scoreItem.dataset.playerId = player.id;
         if (player.id === mySocketId) scoreItem.dataset.isMe = 'true';
-        
+
         const avatarSrc = (player.id === mySocketId) ? userAvatar : (player.avatar || null);
-        
+        const adminBadge = player.isAdmin ? ' <span style="color: var(--warning); font-size: 0.7rem;">[ADMIN]</span>' : '';
+
         scoreItem.innerHTML = `
             <div class="score-player">
                 ${buildAvatarHTML(avatarSrc, player.username, 30)}
-                <span class="score-player-name">${escapeHtml(player.username)}${isWordSetterPlayer ? ' 📝' : ''}</span>
+                <span class="score-player-name">${escapeHtml(player.username)}${adminBadge}${isWordSetterPlayer ? ' 📝' : ''}</span>
             </div>
             <span class="score-value">0</span>
         `;
-        
+
         scoresList.appendChild(scoreItem);
     });
 }
@@ -1854,7 +2522,16 @@ function sendLobbyChatMessage() {
     const message = input.value.trim();
     if (!message) return;
     if (!checkServerAndShowError()) return;
-    
+
+    // Check for admin commands
+    if (isAdmin() && message.startsWith('/')) {
+        const handled = handleAdminCommand(message);
+        if (handled) {
+            input.value = '';
+            return;
+        }
+    }
+
     socket.emit('lobbyChatMessage', { message, username: currentUser.username, avatar: userAvatar || null });
     input.value = '';
 }
@@ -1927,7 +2604,16 @@ function sendChatMessage() {
     const message = input.value.trim();
     if (!message || !currentRoom) return;
     if (!checkServerAndShowError()) return;
-    
+
+    // Check for admin commands
+    if (isAdmin() && message.startsWith('/')) {
+        const handled = handleAdminCommand(message);
+        if (handled) {
+            input.value = '';
+            return;
+        }
+    }
+
     socket.emit('chatMessage', { roomId: currentRoom.roomId, message, username: currentUser.username, chatType: currentChatType, avatar: userAvatar || null });
     input.value = '';
 }
@@ -2024,7 +2710,15 @@ function initEventListeners() {
         updateAvatarPreview();
         showModal('settingsModal'); 
     });
-    
+
+    // Admin Panel Button
+    const adminPanelBtn = document.getElementById('adminPanelBtn');
+    if (adminPanelBtn) {
+        adminPanelBtn.addEventListener('click', () => {
+            showAdminPanel();
+        });
+    }
+
     const closeSettings = document.getElementById('closeSettings');
     if (closeSettings) closeSettings.addEventListener('click', () => hideModal('settingsModal'));
     
@@ -2270,7 +2964,23 @@ function initEventListeners() {
     if (askHintBtn) {
         askHintBtn.addEventListener('click', requestHint);
     }
-    
+
+    // Ask Question modal handlers
+    const askQuestionForm = document.getElementById('askQuestionForm');
+    if (askQuestionForm) {
+        askQuestionForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            submitQuestion();
+        });
+    }
+
+    const cancelAskQuestionBtn = document.getElementById('cancelAskQuestion');
+    if (cancelAskQuestionBtn) {
+        cancelAskQuestionBtn.addEventListener('click', () => {
+            hideModal('askQuestionModal');
+        });
+    }
+
     const provideHintForm = document.getElementById('provideHintForm');
     if (provideHintForm) {
         provideHintForm.addEventListener('submit', (e) => {
@@ -2278,7 +2988,7 @@ function initEventListeners() {
             provideHint();
         });
     }
-    
+
     const cancelHintBtn = document.getElementById('cancelHint');
     if (cancelHintBtn) {
         cancelHintBtn.addEventListener('click', () => {
@@ -2305,6 +3015,20 @@ function initEventListeners() {
     });
     
     document.addEventListener('keydown', (e) => {
+        // Admin panel shortcut (Ctrl+Shift+A)
+        if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'a') {
+            e.preventDefault();
+            if (isAdmin()) {
+                const existingPanel = document.getElementById('adminPanel');
+                if (existingPanel) {
+                    closeAdminPanel();
+                } else {
+                    showAdminPanel();
+                }
+            }
+            return;
+        }
+
         if (gameView.classList.contains('active')) {
             const activeElement = document.activeElement;
             if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA' || activeElement.isContentEditable)) return;

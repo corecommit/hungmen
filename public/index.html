@@ -63,6 +63,19 @@
                     >
                     <p class="username-hint">2-20 characters, letters, numbers, dots, hyphens, and underscores only</p>
                 </div>
+                
+                <!-- Admin Password Field (hidden by default) -->
+                <div id="adminPasswordGroup" class="admin-password-group hidden">
+                    <input 
+                        type="password" 
+                        id="adminPasswordInput" 
+                        placeholder="Enter admin password" 
+                        maxlength="50"
+                        autocomplete="off"
+                    >
+                    <p class="password-hint">Password required for Admin account</p>
+                </div>
+                
                 <button type="submit" class="btn-large">
                     <i class="fas fa-play"></i>
                     Join Game
@@ -101,6 +114,10 @@
                 <div class="header-right">
                     <div class="user-menu">
                         <span id="currentUsername">Player</span>
+                        <!-- Admin Panel Button (hidden by default, shown for admin) -->
+                        <button class="btn-icon admin-panel-btn hidden" id="adminPanelBtn" title="Admin Panel">
+                            <i class="fas fa-shield-alt"></i>
+                        </button>
                         <button class="btn-icon" id="settingsBtn" title="Settings">
                             <i class="fas fa-cog"></i>
                         </button>
@@ -531,28 +548,69 @@
             </div>
         </div>
 
+        <!-- Ask Question Modal (For Players Requesting Hints) -->
+        <div class="modal" id="askQuestionModal">
+            <div class="modal-content">
+                <div class="modal-icon" style="font-size: 3rem; text-align: center; margin-bottom: 15px;">❓</div>
+                <h2>Ask a Question</h2>
+                <p style="text-align: center; color: var(--text-secondary); margin-bottom: 20px;">
+                    Type a question about the word to request a hint
+                </p>
+
+                <form id="askQuestionForm">
+                    <div class="form-group">
+                        <label for="questionInput">Your Question</label>
+                        <textarea
+                            id="questionInput"
+                            placeholder="Example: Does the word contain the letter 'A'?"
+                            maxlength="200"
+                            rows="3"
+                            required
+                        ></textarea>
+                        <small class="form-hint">Ask something that will help you guess the word</small>
+                    </div>
+
+                    <div class="modal-actions">
+                        <button type="button" class="btn btn-secondary" id="cancelAskQuestion">Cancel</button>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-paper-plane"></i>
+                            Send Question
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
         <!-- Hint Request Modal (For Word Setter) -->
         <div class="modal" id="hintRequestModal">
             <div class="modal-content">
                 <div class="modal-icon" style="font-size: 3rem; text-align: center; margin-bottom: 15px;">💡</div>
                 <h2>Hint Requested!</h2>
-                <p id="hintRequestPlayer" style="text-align: center; color: var(--text-secondary); margin-bottom: 20px;">
+                <p id="hintRequestPlayer" style="text-align: center; color: var(--text-secondary); margin-bottom: 10px;">
                     A player has requested a hint
                 </p>
-                
+
+                <!-- Player's Question Display -->
+                <div class="player-question-box" style="background: var(--bg-secondary); padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid var(--primary);">
+                    <p id="playerQuestionLabel" style="margin: 0 0 8px 0; font-size: 0.85rem; color: var(--text-secondary);">Player's Question:</p>
+                    <p id="playerQuestionText" style="margin: 0; font-size: 1rem; color: var(--text-primary); font-style: italic;">
+                        Loading...
+                    </p>
+                </div>
+
                 <form id="provideHintForm">
                     <div class="form-group">
-                        <label for="hintInput">Provide a Hint</label>
-                        <textarea 
-                            id="hintInput" 
-                            placeholder="Type your hint here..."
+                        <label for="hintInput">Your Hint Response</label>
+                        <textarea
+                            id="hintInput"
+                            placeholder="Type your hint response here..."
                             maxlength="200"
                             rows="4"
                             required
                         ></textarea>
-                        <small class="form-hint">Give a helpful clue about the word</small>
+                        <small class="form-hint">Answer the player's question with a helpful clue</small>
                     </div>
-                    
+
                     <div class="modal-actions">
                         <button type="button" class="btn btn-secondary" id="cancelHint">Ignore</button>
                         <button type="submit" class="btn btn-primary">

@@ -577,11 +577,32 @@ io.on('connection', (socket) => {
     console.log('New connection:', socket.id);
 
     socket.on('authenticate', (data) => {
-        const { username } = data;
+        const { username, adminPassword } = data;
         
         if (!username || username.trim().length === 0) {
             socket.emit('authError', { message: 'Username is required' });
             return;
+        }
+        
+        const trimmedUsername = username.trim();
+        
+        // Admin account authentication
+        if (trimmedUsername.toLowerCase() === 'admin') {
+            // Set your admin password here - you can change this to any secure password
+            const ADMIN_PASSWORD = 'supersecretadminpassword';
+            
+            if (!adminPassword || adminPassword !== ADMIN_PASSWORD) {
+                socket.emit('authError', { message: 'Password needed to login in the admin account' });
+                return;
+            }
+            
+            // Check if admin is already logged in
+            for (const user of onlineUsers.values()) {
+                if (user.username.toLowerCase() === 'admin') {
+                    socket.emit('authError', { message: 'Admin account is already in use' });
+                    return;
+                }
+            }
         }
         
         if (isUsernameTaken(username)) {
@@ -591,15 +612,17 @@ io.on('connection', (socket) => {
         
         onlineUsers.set(socket.id, {
             id: socket.id,
-            username: username.trim(),
-            room: null
+            username: trimmedUsername,
+            room: null,
+            isAdmin: trimmedUsername.toLowerCase() === 'admin'
         });
         
         socket.emit('authenticated', { 
             success: true, 
             user: { 
                 id: socket.id, 
-                username: username.trim() 
+                username: trimmedUsername,
+                isAdmin: trimmedUsername.toLowerCase() === 'admin'
             } 
         });
         
@@ -656,18 +679,19 @@ io.on('connection', (socket) => {
                     type: 'system',
                     message: `${oldUsername} changed their username to ${trimmedUsername}`
                 });
-                
+
                 io.to(user.room).emit('roomPlayersUpdate', {
                     players: room.players.map(p => ({
                         id: p.id,
                         username: p.username,
                         team: p.team,
-                        avatar: p.avatar
+                        avatar: p.avatar,
+                        isAdmin: onlineUsers.get(p.id)?.isAdmin || false
                     }))
                 });
             }
         }
-        
+
         // Update session
         socket.emit('usernameChanged', { 
             success: true, 
@@ -790,7 +814,8 @@ io.on('connection', (socket) => {
                 id: p.id,
                 username: p.username,
                 team: p.team,
-                avatar: p.avatar
+                avatar: p.avatar,
+                isAdmin: onlineUsers.get(p.id)?.isAdmin || false
             })),
             isHost: room.hostId === socket.id,
             hostId: room.hostId,
@@ -801,7 +826,8 @@ io.on('connection', (socket) => {
             id: socket.id,
             username: username,
             team: player.team,
-            avatar: player.avatar
+            avatar: player.avatar,
+            isAdmin: onlineUsers.get(socket.id)?.isAdmin || false
         });
         
         io.emit('roomList', Array.from(rooms.values()).map(r => ({
@@ -825,20 +851,21 @@ io.on('connection', (socket) => {
                 room.removePlayer(socket.id);
                 socket.leave(user.room);
                 socket.to(user.room).emit('playerLeft', { id: socket.id, username: user.username });
-                
+
                 io.to(user.room).emit('roomPlayersUpdate', {
                     players: room.players.map(p => ({
                         id: p.id,
                         username: p.username,
                         team: p.team,
-                        avatar: p.avatar
+                        avatar: p.avatar,
+                        isAdmin: onlineUsers.get(p.id)?.isAdmin || false
                     }))
                 });
-                
+
                 if (room.players.length > 0) {
                     io.to(user.room).emit('hostChanged', { newHostId: room.hostId });
                 }
-                
+
                 io.emit('roomList', Array.from(rooms.values()).map(r => ({
                     id: r.id,
                     name: r.name,
@@ -933,7 +960,8 @@ io.on('connection', (socket) => {
                     username: p.username, 
                     index: index,
                     team: p.team,
-                    avatar: p.avatar
+                    avatar: p.avatar,
+                    isAdmin: onlineUsers.get(p.id)?.isAdmin || false
                 })),
                 mode: room.mode
             });
@@ -988,7 +1016,8 @@ io.on('connection', (socket) => {
                     username: p.username, 
                     index: index,
                     team: p.team,
-                    avatar: p.avatar
+                    avatar: p.avatar,
+                    isAdmin: onlineUsers.get(p.id)?.isAdmin || false
                 })),
                 mode: room.mode
             });
@@ -998,26 +1027,28 @@ io.on('connection', (socket) => {
     });
 
     socket.on('requestHint', (data) => {
-        const { roomId } = data;
+        const { roomId, question } = data;
         const room = rooms.get(roomId);
-        
+
         if (!room || !room.gameState) {
             socket.emit('hintError', { message: 'Game not found' });
             return;
         }
 
         const result = room.requestHint(socket.id);
-        
+
         if (result.success) {
             const requester = room.players.find(p => p.id === socket.id);
             const wordSetter = room.players.find(p => p.id === room.gameState.wordSetter);
-            
+
             room.gameState.lastHintRequester = socket.id;
-            
+            room.gameState.lastQuestion = question || null;
+
             if (wordSetter) {
                 io.to(wordSetter.id).emit('hintRequested', {
                     requesterId: socket.id,
-                    requesterName: requester.username
+                    requesterName: requester.username,
+                    question: question || null
                 });
             }
         } else {
@@ -1028,21 +1059,25 @@ io.on('connection', (socket) => {
     socket.on('provideHint', (data) => {
         const { roomId, hint } = data;
         const room = rooms.get(roomId);
-        
+
         if (!room || !room.gameState) {
             socket.emit('hintError', { message: 'Game not found' });
             return;
         }
 
         const result = room.provideHint(hint, socket.id);
-        
+
         if (result.success) {
             io.to(roomId).emit('hintProvided', {
                 hint: result.hint,
                 hintNumber: result.hintNumber,
                 hintsRemaining: result.hintsRemaining,
-                requesterId: room.gameState.lastHintRequester || null
+                requesterId: room.gameState.lastHintRequester || null,
+                question: room.gameState.lastQuestion || null
             });
+
+            // Clear the stored question after sending
+            room.gameState.lastQuestion = null;
         } else {
             socket.emit('hintError', { message: result.message });
         }
@@ -1189,7 +1224,8 @@ io.on('connection', (socket) => {
                 id: p.id,
                 username: p.username,
                 team: p.team,
-                avatar: p.avatar
+                avatar: p.avatar,
+                isAdmin: onlineUsers.get(p.id)?.isAdmin || false
             }))
         });
     });
@@ -1265,20 +1301,21 @@ io.on('connection', (socket) => {
             if (room) {
                 room.removePlayer(socket.id);
                 socket.to(user.room).emit('playerLeft', { id: socket.id, username: user.username });
-                
+
                 io.to(user.room).emit('roomPlayersUpdate', {
                     players: room.players.map(p => ({
                         id: p.id,
                         username: p.username,
                         team: p.team,
-                        avatar: p.avatar
+                        avatar: p.avatar,
+                        isAdmin: onlineUsers.get(p.id)?.isAdmin || false
                     }))
                 });
-                
+
                 if (room.players.length > 0) {
                     io.to(user.room).emit('hostChanged', { newHostId: room.hostId });
                 }
-                
+
                 io.emit('roomList', Array.from(rooms.values()).map(r => ({
                     id: r.id,
                     name: r.name,
@@ -1290,9 +1327,324 @@ io.on('connection', (socket) => {
                 })));
             }
         }
-        
+
         onlineUsers.delete(socket.id);
         io.emit('onlineCount', onlineUsers.size);
+    });
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // ADMIN COMMANDS
+    // ═══════════════════════════════════════════════════════════════════════
+
+    // Helper function to check if user is admin
+    function isAdmin(socketId) {
+        const user = onlineUsers.get(socketId);
+        return user && user.isAdmin;
+    }
+
+    // Delete room (admin only)
+    socket.on('adminDeleteRoom', (data) => {
+        if (!isAdmin(socket.id)) {
+            socket.emit('adminError', { message: 'Unauthorized - Admin only' });
+            return;
+        }
+
+        const { roomIdOrName } = data;
+        let roomToDelete = null;
+        let roomId = null;
+
+        // Try to find by ID first
+        if (rooms.has(roomIdOrName)) {
+            roomToDelete = rooms.get(roomIdOrName);
+            roomId = roomIdOrName;
+        } else {
+            // Try to find by name
+            for (const [id, room] of rooms.entries()) {
+                if (room.name.toLowerCase() === roomIdOrName.toLowerCase()) {
+                    roomToDelete = room;
+                    roomId = id;
+                    break;
+                }
+            }
+        }
+
+        if (!roomToDelete) {
+            socket.emit('adminError', { message: 'Room not found' });
+            return;
+        }
+
+        // Notify all players in the room
+        io.to(roomId).emit('roomDeleted', { 
+            message: 'Room has been deleted by an admin',
+            roomName: roomToDelete.name 
+        });
+
+        // Remove all players from the room
+        roomToDelete.players.forEach(player => {
+            const user = onlineUsers.get(player.id);
+            if (user) {
+                user.room = null;
+            }
+            player.socket.leave(roomId);
+        });
+
+        // Delete the room
+        rooms.delete(roomId);
+
+        // Update room list for everyone
+        io.emit('roomList', Array.from(rooms.values()).map(r => ({
+            id: r.id,
+            name: r.name,
+            mode: r.mode,
+            players: r.players.length,
+            maxPlayers: r.maxPlayers,
+            status: r.status,
+            hasPassword: !!r.password,
+            selectedGameMode: r.selectedGameMode,
+            selectedHintCount: r.selectedHintCount
+        })));
+
+        socket.emit('adminSuccess', { message: `Room "${roomToDelete.name}" has been deleted` });
+    });
+
+    // Kick player (admin only)
+    socket.on('adminKickPlayer', (data) => {
+        if (!isAdmin(socket.id)) {
+            socket.emit('adminError', { message: 'Unauthorized - Admin only' });
+            return;
+        }
+
+        const { username, reason } = data;
+        let targetSocketId = null;
+        let targetUser = null;
+
+        // Find player by username
+        for (const [id, user] of onlineUsers.entries()) {
+            if (user.username.toLowerCase() === username.toLowerCase()) {
+                targetSocketId = id;
+                targetUser = user;
+                break;
+            }
+        }
+
+        if (!targetSocketId) {
+            socket.emit('adminError', { message: 'Player not found' });
+            return;
+        }
+
+        // Can't kick other admins
+        if (targetUser.isAdmin) {
+            socket.emit('adminError', { message: 'Cannot kick other admins' });
+            return;
+        }
+
+        // If player is in a room, remove them
+        if (targetUser.room) {
+            const room = rooms.get(targetUser.room);
+            if (room) {
+                room.removePlayer(targetSocketId);
+                socket.to(targetUser.room).emit('playerLeft', { 
+                    id: targetSocketId, 
+                    username: targetUser.username 
+                });
+                
+                io.to(targetUser.room).emit('roomPlayersUpdate', {
+                    players: room.players.map(p => ({
+                        id: p.id,
+                        username: p.username,
+                        team: p.team,
+                        avatar: p.avatar,
+                        isAdmin: onlineUsers.get(p.id)?.isAdmin || false
+                    }))
+                });
+                
+                if (room.players.length > 0) {
+                    io.to(targetUser.room).emit('hostChanged', { newHostId: room.hostId });
+                }
+            }
+        }
+
+        // Notify the kicked player
+        io.to(targetSocketId).emit('kicked', { 
+            reason: reason || 'Kicked by admin',
+            by: onlineUsers.get(socket.id).username
+        });
+
+        // Disconnect the player
+        const targetSocket = io.sockets.sockets.get(targetSocketId);
+        if (targetSocket) {
+            targetSocket.disconnect(true);
+        }
+
+        // Remove from online users
+        onlineUsers.delete(targetSocketId);
+        io.emit('onlineCount', onlineUsers.size);
+
+        socket.emit('adminSuccess', { message: `Player "${username}" has been kicked` });
+    });
+
+    // Get server info (admin only)
+    socket.on('adminGetServerInfo', () => {
+        if (!isAdmin(socket.id)) {
+            socket.emit('adminError', { message: 'Unauthorized - Admin only' });
+            return;
+        }
+
+        const serverInfo = {
+            onlineUsers: onlineUsers.size,
+            totalRooms: rooms.size,
+            rooms: Array.from(rooms.values()).map(room => ({
+                id: room.id,
+                name: room.name,
+                mode: room.mode,
+                players: room.players.length,
+                maxPlayers: room.maxPlayers,
+                status: room.status,
+                host: room.players.find(p => p.id === room.hostId)?.username || 'Unknown'
+            })),
+            users: Array.from(onlineUsers.values()).map(user => ({
+                id: user.id,
+                username: user.username,
+                room: user.room,
+                isAdmin: user.isAdmin
+            }))
+        };
+
+        socket.emit('adminServerInfo', serverInfo);
+    });
+
+    // Broadcast message (admin only)
+    socket.on('adminBroadcast', (data) => {
+        if (!isAdmin(socket.id)) {
+            socket.emit('adminError', { message: 'Unauthorized - Admin only' });
+            return;
+        }
+
+        const { message } = data;
+        const adminName = onlineUsers.get(socket.id).username;
+
+        // Broadcast to all connected clients
+        io.emit('adminBroadcast', {
+            message: message,
+            from: adminName,
+            timestamp: new Date().toISOString()
+        });
+
+        socket.emit('adminSuccess', { message: 'Broadcast sent successfully' });
+    });
+
+    // Ban player (admin only)
+    socket.on('adminBanPlayer', (data) => {
+        if (!isAdmin(socket.id)) {
+            socket.emit('adminError', { message: 'Unauthorized - Admin only' });
+            return;
+        }
+
+        const { username, duration, reason } = data;
+        let targetSocketId = null;
+        let targetUser = null;
+
+        // Find player by username
+        for (const [id, user] of onlineUsers.entries()) {
+            if (user.username.toLowerCase() === username.toLowerCase()) {
+                targetSocketId = id;
+                targetUser = user;
+                break;
+            }
+        }
+
+        if (!targetSocketId) {
+            socket.emit('adminError', { message: 'Player not found' });
+            return;
+        }
+
+        // Can't ban other admins
+        if (targetUser.isAdmin) {
+            socket.emit('adminError', { message: 'Cannot ban other admins' });
+            return;
+        }
+
+        // If player is in a room, remove them
+        if (targetUser.room) {
+            const room = rooms.get(targetUser.room);
+            if (room) {
+                room.removePlayer(targetSocketId);
+                socket.to(targetUser.room).emit('playerLeft', { 
+                    id: targetSocketId, 
+                    username: targetUser.username 
+                });
+                
+                io.to(targetUser.room).emit('roomPlayersUpdate', {
+                    players: room.players.map(p => ({
+                        id: p.id,
+                        username: p.username,
+                        team: p.team,
+                        avatar: p.avatar,
+                        isAdmin: onlineUsers.get(p.id)?.isAdmin || false
+                    }))
+                });
+                
+                if (room.players.length > 0) {
+                    io.to(targetUser.room).emit('hostChanged', { newHostId: room.hostId });
+                }
+            }
+        }
+
+        // Notify the banned player
+        io.to(targetSocketId).emit('banned', { 
+            reason: reason || 'Banned by admin',
+            by: onlineUsers.get(socket.id).username,
+            duration: duration
+        });
+
+        // Disconnect the player
+        const targetSocket = io.sockets.sockets.get(targetSocketId);
+        if (targetSocket) {
+            targetSocket.disconnect(true);
+        }
+
+        // Remove from online users
+        onlineUsers.delete(targetSocketId);
+        io.emit('onlineCount', onlineUsers.size);
+
+        const durationText = duration === 0 ? 'permanently' : `for ${duration} hour(s)`;
+        socket.emit('adminSuccess', { message: `Player "${username}" has been banned ${durationText}` });
+    });
+
+    // Clear chat (admin only)
+    socket.on('adminClearChat', (data) => {
+        if (!isAdmin(socket.id)) {
+            socket.emit('adminError', { message: 'Unauthorized - Admin only' });
+            return;
+        }
+
+        const { type } = data;
+        const adminName = onlineUsers.get(socket.id).username;
+
+        if (type === 'lobby') {
+            // Clear lobby chat
+            lobbyMessages = [];
+            io.emit('lobbyChatUpdate', { messages: [] });
+            io.emit('lobbyChatCleared', { by: adminName });
+            socket.emit('adminSuccess', { message: 'Lobby chat cleared' });
+        } else if (type === 'current' || type === 'room') {
+            // Clear current room chat
+            const user = onlineUsers.get(socket.id);
+            if (user && user.room) {
+                const room = rooms.get(user.room);
+                if (room) {
+                    room.messages = [];
+                    io.to(user.room).emit('roomChatCleared', { by: adminName });
+                    socket.emit('adminSuccess', { message: 'Room chat cleared' });
+                } else {
+                    socket.emit('adminError', { message: 'You are not in a room' });
+                }
+            } else {
+                socket.emit('adminError', { message: 'You are not in a room' });
+            }
+        } else {
+            socket.emit('adminError', { message: 'Invalid chat type' });
+        }
     });
 });
 
