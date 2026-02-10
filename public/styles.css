@@ -1283,13 +1283,13 @@ select option {
     display: flex;
     flex-direction: column;
     height: 500px;
+    max-height: 500px;
+    min-height: 400px;
     overflow: hidden;
     border: 1px solid var(--border-color);
     box-shadow: var(--shadow);
     width: 100%;
     animation: slideInLeft 0.6s ease;
-    flex: 1;
-    min-height: 400px;
 }
 
 .lobby-chat-section .chat-header {
@@ -1321,6 +1321,7 @@ select option {
 .lobby-chat-section .chat-messages {
     flex: 1;
     overflow-y: auto;
+    overflow-x: hidden;
     padding: 15px;
     display: flex;
     flex-direction: column;
@@ -1663,13 +1664,13 @@ select option {
 .player-card.host::after {
     content: 'HOST';
     position: absolute;
-    top: -10px;
+    top: -7px;
     right: 10px;
     background: var(--warning);
     color: #000000;
     font-size: 0.6rem;
-    padding: 2px 8px;
-    border-radius: 10px;
+    padding: 2px 9px;
+    border-radius: 6px;
     font-weight: 700;
     line-height: 1;
 }
@@ -1683,13 +1684,13 @@ select option {
 .player-card.admin::before {
     content: 'ADMIN';
     position: absolute;
-    top: -10px;
+    top: -8px;
     left: 10px;
     background: linear-gradient(135deg, #f59e0b, #d97706);
     color: #000000;
     font-size: 0.6rem;
-    padding: 2px 8px;
-    border-radius: 10px;
+    padding: 2px 9px;
+    border-radius: 6px;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.5px;
@@ -3586,6 +3587,12 @@ select option {
         padding: 10px;
     }
 
+    .lobby-chat-section {
+        height: 400px !important;
+        max-height: 400px;
+        min-height: 350px;
+    }
+
     .lobby-chat-section .chat-input-area input {
         font-size: 0.7rem;
     }
@@ -3731,11 +3738,6 @@ select option {
     
     .chat-section {
         height: 400px;
-    }
-    
-    .lobby-chat-section {
-        height: 400px !important;
-        order: 1;
     }
     
     .lobby-main {
@@ -3897,7 +3899,9 @@ select option {
     
     .chat-section,
     .lobby-chat-section {
-        height: 300px;
+        height: 300px !important;
+        max-height: 300px;
+        min-height: 250px;
         border-radius: 12px;
     }
     
@@ -4110,7 +4114,9 @@ select option {
     
     .chat-section,
     .lobby-chat-section {
-        height: 350px;
+        height: 350px !important;
+        max-height: 350px;
+        min-height: 300px;
     }
     
     .mini-chat {
