@@ -438,6 +438,17 @@ body::before {
     transform: translateY(-2px);
 }
 
+/* Special admin button styles */
+.admin-btn[style*="color: #4ade80"]:hover {
+    background: var(--success) !important;
+    color: #000 !important;
+}
+
+.admin-btn[style*="color: #ef4444"]:hover {
+    background: var(--error) !important;
+    color: #fff !important;
+}
+
 /* Admin Modal */
 .admin-modal .modal-icon {
     color: var(--warning);
@@ -636,6 +647,124 @@ body::before {
 
 .admin-info-item:last-child {
     margin-bottom: 0;
+}
+
+/* User Database Edit Styles */
+.user-db-item {
+    transition: all 0.2s ease;
+}
+
+.user-db-item:hover {
+    background: var(--bg-hover) !important;
+    transform: translateX(5px);
+}
+
+.user-db-item .btn {
+    opacity: 0.7;
+    transition: all 0.2s ease;
+}
+
+.user-db-item:hover .btn {
+    opacity: 1;
+}
+
+.user-db-item .btn:hover {
+    transform: scale(1.1);
+}
+
+#adminEditUserStatsModal input[type="number"] {
+    font-size: 1.1rem;
+    font-weight: 600;
+    text-align: center;
+}
+
+#adminEditUserStatsModal input[type="number"]:focus {
+    border-color: var(--info);
+    box-shadow: 0 0 15px rgba(96, 165, 250, 0.3);
+}
+
+/* User Profile Inspection Modal */
+.user-profile-modal {
+    position: relative;
+    animation: slideUp 0.3s ease;
+}
+
+.user-profile-modal .profile-avatar-large {
+    transition: transform 0.3s ease;
+}
+
+.user-profile-modal .profile-avatar-large:hover {
+    transform: scale(1.05);
+}
+
+.user-profile-modal .stats-grid .stat-item {
+    padding: 10px;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 8px;
+    transition: all 0.2s ease;
+}
+
+.user-profile-modal .stats-grid .stat-item:hover {
+    background: rgba(255, 255, 255, 0.06);
+    transform: translateY(-2px);
+}
+
+.user-profile-modal .admin-actions .btn {
+    transition: all 0.2s ease;
+}
+
+.user-profile-modal .admin-actions .btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+/* Clickable Avatars in Chat */
+#chatMessages .message-avatar,
+#miniChatMessages .message-avatar,
+#lobbyChatMessages .message-avatar {
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+#chatMessages .message-avatar:hover,
+#miniChatMessages .message-avatar:hover,
+#lobbyChatMessages .message-avatar:hover {
+    transform: scale(1.15);
+    box-shadow: 0 0 15px rgba(255, 255, 255, 0.3);
+}
+
+/* Player card avatars clickable */
+.player-card .player-avatar,
+.player-card img[src*="avatar"] {
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.player-card .player-avatar:hover,
+.player-card img[src*="avatar"]:hover {
+    transform: scale(1.1);
+    box-shadow: 0 0 15px rgba(255, 255, 255, 0.3);
+}
+
+/* Banned user styling */
+.user-db-item.banned {
+    border-left-color: var(--error);
+    background: linear-gradient(90deg, rgba(239, 68, 68, 0.1) 0%, var(--bg-secondary) 100%);
+}
+
+.user-db-item.banned .ban-status {
+    color: var(--error);
+    font-weight: 700;
+}
+
+/* Ban/Unban button styling */
+#adminBanUserModal .btn-danger {
+    background: var(--error);
+    color: white;
+}
+
+#adminBanUserModal .btn-danger:hover {
+    background: #dc2626;
 }
 
 @keyframes slideDown {
@@ -1534,14 +1663,15 @@ select option {
 .player-card.host::after {
     content: 'HOST';
     position: absolute;
-    top: -8px;
+    top: -10px;
     right: 10px;
     background: var(--warning);
     color: #000000;
-    font-size: 0.65rem;
-    padding: 3px 10px;
+    font-size: 0.6rem;
+    padding: 2px 8px;
     border-radius: 10px;
     font-weight: 700;
+    line-height: 1;
 }
 
 /* Admin badge for player cards */
@@ -1553,17 +1683,18 @@ select option {
 .player-card.admin::before {
     content: 'ADMIN';
     position: absolute;
-    top: -8px;
+    top: -10px;
     left: 10px;
     background: linear-gradient(135deg, #f59e0b, #d97706);
     color: #000000;
     font-size: 0.6rem;
     padding: 2px 8px;
     border-radius: 10px;
-    font-weight: 800;
+    font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.5px;
     box-shadow: 0 2px 8px rgba(245, 158, 11, 0.4);
+    line-height: 1;
 }
 
 /* If a player is both admin and host, show both badges */
@@ -1573,6 +1704,24 @@ select option {
 
 .player-card.admin.host::after {
     right: 10px;
+}
+
+/* Mobile adjustments for overlapping badges */
+@media (max-width: 768px) {
+    .player-card.admin::before,
+    .player-card.host::after {
+        top: -10px;
+        font-size: 0.55rem;
+        padding: 2px 6px;
+    }
+    
+    .player-card.admin::before {
+        left: 5px;
+    }
+    
+    .player-card.host::after {
+        right: 5px;
+    }
 }
 
 .player-card.me {

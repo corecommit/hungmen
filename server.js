@@ -127,6 +127,256 @@ let rooms = new Map();
 let onlineUsers = new Map();
 let lobbyMessages = [];
 
+// ═══════════════════════════════════════════════════════════════════════
+// USER DATABASE - Persistent Storage
+// ═══════════════════════════════════════════════════════════════════════
+
+const fs = require('fs');
+const USER_DB_FILE = path.join(__dirname, 'user_database.json');
+
+// Load user database from file
+function loadUserDatabase() {
+    try {
+        if (fs.existsSync(USER_DB_FILE)) {
+            const data = fs.readFileSync(USER_DB_FILE, 'utf8');
+            // Check if file is empty
+            if (!data || data.trim() === '') {
+                console.log('User database file is empty, initializing new database');
+                return {};
+            }
+            return JSON.parse(data);
+        }
+    } catch (error) {
+        console.error('Error loading user database:', error);
+        console.log('Creating new database file...');
+        // Backup corrupted file
+        try {
+            if (fs.existsSync(USER_DB_FILE)) {
+                fs.renameSync(USER_DB_FILE, USER_DB_FILE + '.corrupted.' + Date.now());
+                console.log('Corrupted database backed up');
+            }
+        } catch (backupError) {
+            console.error('Failed to backup corrupted database:', backupError);
+        }
+    }
+    return {};
+}
+
+// Save user database to file
+function saveUserDatabase(database) {
+    try {
+        fs.writeFileSync(USER_DB_FILE, JSON.stringify(database, null, 2));
+    } catch (error) {
+        console.error('Error saving user database:', error);
+    }
+}
+
+// NEW: Reload user database from file (for when file is edited externally)
+function reloadUserDatabaseFromFile() {
+    try {
+        if (fs.existsSync(USER_DB_FILE)) {
+            const data = fs.readFileSync(USER_DB_FILE, 'utf8');
+            const freshDatabase = JSON.parse(data);
+            userDatabase = freshDatabase;
+            console.log('User database reloaded from file');
+            return true;
+        }
+    } catch (error) {
+        console.error('Error reloading user database:', error);
+    }
+    return false;
+}
+
+// Initialize user database
+let userDatabase = loadUserDatabase();
+
+// Get or create user entry (keyed by username ONLY)
+function getUserData(username) {
+    const key = username.toLowerCase();
+    if (!userDatabase[key]) {
+        userDatabase[key] = {
+            username: username,
+            firstLogin: new Date().toISOString(),
+            lastLogin: new Date().toISOString(),
+            stats: {
+                wins: 0,
+                losses: 0,
+                gamesPlayed: 0
+            },
+            avatar: null,
+            totalPlayTime: 0, // in seconds
+            banned: false,
+            banExpiry: null, // null = permanent, ISO date = temporary
+            banReason: null
+        };
+        saveUserDatabase(userDatabase);
+    } else {
+        // Ensure ban fields exist for existing users
+        if (userDatabase[key].banned === undefined) {
+            userDatabase[key].banned = false;
+            userDatabase[key].banExpiry = null;
+            userDatabase[key].banReason = null;
+        }
+        userDatabase[key].lastLogin = new Date().toISOString();
+        saveUserDatabase(userDatabase);
+    }
+    return userDatabase[key];
+}
+
+// Check if user is currently banned
+function isUserBanned(username) {
+    const key = username.toLowerCase();
+    const user = userDatabase[key];
+    if (!user || !user.banned) return { banned: false };
+    
+    // Check if temporary ban has expired
+    if (user.banExpiry) {
+        const expiryDate = new Date(user.banExpiry);
+        if (expiryDate <= new Date()) {
+            // Ban expired, auto-unban
+            user.banned = false;
+            user.banExpiry = null;
+            user.banReason = null;
+            saveUserDatabase(userDatabase);
+            return { banned: false };
+        }
+        return { 
+            banned: true, 
+            expiry: user.banExpiry, 
+            reason: user.banReason,
+            isPermanent: false
+        };
+    }
+    
+    // Permanent ban
+    return { 
+        banned: true, 
+        expiry: null, 
+        reason: user.banReason,
+        isPermanent: true
+    };
+}
+
+// Ban user
+function banUser(username, duration = null, reason = 'Banned by admin') {
+    const key = username.toLowerCase();
+    if (!userDatabase[key]) return false;
+    
+    userDatabase[key].banned = true;
+    userDatabase[key].banReason = reason;
+    
+    if (duration && duration > 0) {
+        // Temporary ban - calculate expiry
+        const expiry = new Date();
+        expiry.setHours(expiry.getHours() + parseInt(duration));
+        userDatabase[key].banExpiry = expiry.toISOString();
+    } else {
+        // Permanent ban
+        userDatabase[key].banExpiry = null;
+    }
+    
+    saveUserDatabase(userDatabase);
+    return true;
+}
+
+// Unban user
+function unbanUser(username) {
+    const key = username.toLowerCase();
+    if (!userDatabase[key]) return false;
+    
+    userDatabase[key].banned = false;
+    userDatabase[key].banExpiry = null;
+    userDatabase[key].banReason = null;
+    saveUserDatabase(userDatabase);
+    return true;
+}
+
+// Update user stats (incremental)
+function updateUserStats(username, result) {
+    const key = username.toLowerCase();
+    if (userDatabase[key]) {
+        userDatabase[key].stats.gamesPlayed++;
+        if (result === 'win') {
+            userDatabase[key].stats.wins++;
+        } else if (result === 'loss') {
+            userDatabase[key].stats.losses++;
+        }
+        saveUserDatabase(userDatabase);
+    }
+}
+
+// Set user stats directly (for admin editing)
+function setUserStats(username, stats) {
+    const key = username.toLowerCase();
+    if (userDatabase[key]) {
+        userDatabase[key].stats = {
+            wins: parseInt(stats.wins) || 0,
+            losses: parseInt(stats.losses) || 0,
+            gamesPlayed: parseInt(stats.gamesPlayed) || 0
+        };
+        saveUserDatabase(userDatabase);
+        return true;
+    }
+    return false;
+}
+
+// Reload user stats from database (for live updates)
+function reloadUserStats(username) {
+    const key = username.toLowerCase();
+    if (userDatabase[key]) {
+        return userDatabase[key].stats;
+    }
+    return null;
+}
+
+// Update user avatar
+function updateUserAvatar(username, avatarData) {
+    const key = username.toLowerCase();
+    if (userDatabase[key]) {
+        userDatabase[key].avatar = avatarData;
+        saveUserDatabase(userDatabase);
+    }
+}
+
+// Delete user from database
+function deleteUser(username) {
+    const key = username.toLowerCase();
+    if (userDatabase[key]) {
+        delete userDatabase[key];
+        saveUserDatabase(userDatabase);
+        return true;
+    }
+    return false;
+}
+
+// Delete all users from database (admin only)
+function deleteAllUsers() {
+    userDatabase = {};
+    saveUserDatabase(userDatabase);
+    return true;
+}
+
+// Get all users in database
+function getAllUsersInDatabase() {
+    return Object.entries(userDatabase).map(([key, data]) => {
+        const isBanned = data.banned || false;
+        const banInfo = isBanned ? isUserBanned(data.username) : null;
+        
+        return {
+            key: key,
+            username: data.username,
+            firstLogin: data.firstLogin,
+            lastLogin: data.lastLogin,
+            stats: data.stats,
+            hasAvatar: !!data.avatar,
+            banned: isBanned,
+            isPermanent: isBanned ? banInfo.isPermanent : false,
+            banExpiry: isBanned ? data.banExpiry : null,
+            banReason: isBanned ? data.banReason : null
+        };
+    });
+}
+
 const wordDatabase = {
     easy: [
         { word: 'CAT', hint: 'A common household pet that meows' },
@@ -586,10 +836,31 @@ io.on('connection', (socket) => {
         
         const trimmedUsername = username.trim();
         
+        // Check if user is banned
+        const banStatus = isUserBanned(trimmedUsername);
+        if (banStatus.banned) {
+            if (banStatus.isPermanent) {
+                socket.emit('authError', { 
+                    message: `You are permanently banned. Reason: ${banStatus.reason || 'No reason provided'}`,
+                    banned: true,
+                    permanent: true
+                });
+            } else {
+                const expiryDate = new Date(banStatus.expiry);
+                socket.emit('authError', { 
+                    message: `You are banned until ${expiryDate.toLocaleString()}. Reason: ${banStatus.reason || 'No reason provided'}`,
+                    banned: true,
+                    permanent: false,
+                    expiry: banStatus.expiry
+                });
+            }
+            return;
+        }
+        
         // Admin account authentication
         if (trimmedUsername.toLowerCase() === 'admin') {
             // Set your admin password here - you can change this to any secure password
-            const ADMIN_PASSWORD = 'supersecretadminpassword';
+            const ADMIN_PASSWORD = 'Admin@007';
             
             if (!adminPassword || adminPassword !== ADMIN_PASSWORD) {
                 socket.emit('authError', { message: 'Password needed to login in the admin account' });
@@ -610,11 +881,16 @@ io.on('connection', (socket) => {
             return;
         }
         
+        // Get or create user data from database (username only)
+        const userData = getUserData(trimmedUsername);
+        
         onlineUsers.set(socket.id, {
             id: socket.id,
             username: trimmedUsername,
             room: null,
-            isAdmin: trimmedUsername.toLowerCase() === 'admin'
+            isAdmin: trimmedUsername.toLowerCase() === 'admin',
+            stats: userData.stats,
+            avatar: userData.avatar
         });
         
         socket.emit('authenticated', { 
@@ -622,7 +898,9 @@ io.on('connection', (socket) => {
             user: { 
                 id: socket.id, 
                 username: trimmedUsername,
-                isAdmin: trimmedUsername.toLowerCase() === 'admin'
+                isAdmin: trimmedUsername.toLowerCase() === 'admin',
+                stats: userData.stats,
+                avatar: userData.avatar
             } 
         });
         
@@ -770,6 +1048,22 @@ io.on('connection', (socket) => {
     socket.on('joinRoom', (data) => {
         const { roomId, password, username, avatar } = data;
         const room = rooms.get(roomId);
+        
+        // Check if user is banned
+        const banStatus = isUserBanned(username);
+        if (banStatus.banned) {
+            if (banStatus.isPermanent) {
+                socket.emit('joinError', { 
+                    message: `You are permanently banned from joining rooms. Reason: ${banStatus.reason || 'No reason provided'}` 
+                });
+            } else {
+                const expiryDate = new Date(banStatus.expiry);
+                socket.emit('joinError', { 
+                    message: `You are banned from joining rooms until ${expiryDate.toLocaleString()}. Reason: ${banStatus.reason || 'No reason provided'}` 
+                });
+            }
+            return;
+        }
         
         if (!room) {
             socket.emit('joinError', { message: 'Room not found' });
@@ -1159,6 +1453,15 @@ io.on('connection', (socket) => {
                     winner: winner ? { id: winner[0], score: winner[1] } : null,
                     scores: room.gameState.scores,
                     isWin: result.isWin
+                });
+                
+                // Update user stats in database for all players
+                room.players.forEach(player => {
+                    const user = onlineUsers.get(player.id);
+                    if (user && !user.isAdmin) {
+                        const isWinner = winner && winner[0] === player.id;
+                        updateUserStats(user.username, isWinner ? 'win' : 'loss');
+                    }
                 });
                 
                 room.messages = [];
@@ -1644,6 +1947,350 @@ io.on('connection', (socket) => {
             }
         } else {
             socket.emit('adminError', { message: 'Invalid chat type' });
+        }
+    });
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // USER DATABASE MANAGEMENT (Admin only)
+    // ═══════════════════════════════════════════════════════════════════════
+
+    // Get user database (admin only) - reloads from file first
+    socket.on('adminGetUserDatabase', () => {
+        if (!isAdmin(socket.id)) {
+            socket.emit('adminError', { message: 'Unauthorized - Admin only' });
+            return;
+        }
+
+        // Reload database from file to get any external edits
+        reloadUserDatabaseFromFile();
+
+        const users = getAllUsersInDatabase();
+        socket.emit('adminUserDatabase', { 
+            users: users, 
+            total: users.length 
+        });
+    });
+
+    // Reload user database from file (admin only)
+    socket.on('adminReloadUserDatabase', () => {
+        if (!isAdmin(socket.id)) {
+            socket.emit('adminError', { message: 'Unauthorized - Admin only' });
+            return;
+        }
+
+        const success = reloadUserDatabaseFromFile();
+        if (success) {
+            socket.emit('adminSuccess', { message: 'User database reloaded from file' });
+            
+            // Refresh the database view
+            const users = getAllUsersInDatabase();
+            socket.emit('adminUserDatabase', { 
+                users: users, 
+                total: users.length 
+            });
+        } else {
+            socket.emit('adminError', { message: 'Failed to reload user database' });
+        }
+    });
+
+    // Delete user from database (admin only)
+    socket.on('adminDeleteUser', (data) => {
+        if (!isAdmin(socket.id)) {
+            socket.emit('adminError', { message: 'Unauthorized - Admin only' });
+            return;
+        }
+
+        const { username } = data;
+        
+        if (!username) {
+            socket.emit('adminError', { message: 'Username is required' });
+            return;
+        }
+
+        // Find the user in online users to notify them
+        let targetSocketId = null;
+        for (const [id, user] of onlineUsers.entries()) {
+            if (user.username.toLowerCase() === username.toLowerCase()) {
+                targetSocketId = id;
+                break;
+            }
+        }
+
+        // Delete from database (username only)
+        const success = deleteUser(username);
+        
+        if (success) {
+            // If user is online, notify them and clear their local data
+            if (targetSocketId) {
+                io.to(targetSocketId).emit('userDataDeleted', { 
+                    message: 'Your account data has been deleted by an admin',
+                    by: onlineUsers.get(socket.id).username
+                });
+            }
+            
+            socket.emit('adminSuccess', { message: `User "${username}" has been deleted from database` });
+            
+            // Refresh the database view for the admin
+            const users = getAllUsersInDatabase();
+            socket.emit('adminUserDatabase', { 
+                users: users, 
+                total: users.length 
+            });
+        } else {
+            socket.emit('adminError', { message: 'User not found in database' });
+        }
+    });
+
+    // Edit user stats (admin only)
+    socket.on('adminEditUserStats', (data) => {
+        if (!isAdmin(socket.id)) {
+            socket.emit('adminError', { message: 'Unauthorized - Admin only' });
+            return;
+        }
+
+        const { username, stats } = data;
+        
+        if (!username || !stats) {
+            socket.emit('adminError', { message: 'Username and stats are required' });
+            return;
+        }
+
+        // Update stats in database (username only)
+        const success = setUserStats(username, stats);
+        
+        if (success) {
+            // Find the user in online users to notify them of stat update
+            let targetSocketId = null;
+            for (const [id, user] of onlineUsers.entries()) {
+                if (user.username.toLowerCase() === username.toLowerCase()) {
+                    targetSocketId = id;
+                    break;
+                }
+            }
+
+            // If user is online, update their stats in memory and notify them
+            if (targetSocketId) {
+                const user = onlineUsers.get(targetSocketId);
+                user.stats = {
+                    wins: parseInt(stats.wins) || 0,
+                    losses: parseInt(stats.losses) || 0,
+                    gamesPlayed: parseInt(stats.gamesPlayed) || 0
+                };
+                
+                // Notify the user that their stats were updated
+                io.to(targetSocketId).emit('statsUpdated', { 
+                    stats: user.stats,
+                    by: onlineUsers.get(socket.id).username
+                });
+            }
+            
+            socket.emit('adminSuccess', { message: `Stats updated for "${username}"` });
+            
+            // Refresh the database view for the admin
+            const users = getAllUsersInDatabase();
+            socket.emit('adminUserDatabase', { 
+                users: users, 
+                total: users.length 
+            });
+        } else {
+            socket.emit('adminError', { message: 'User not found in database' });
+        }
+    });
+
+    // Delete all users from database (admin only)
+    socket.on('adminDeleteAllUsers', () => {
+        if (!isAdmin(socket.id)) {
+            socket.emit('adminError', { message: 'Unauthorized - Admin only' });
+            return;
+        }
+
+        const adminName = onlineUsers.get(socket.id).username;
+        
+        // Notify all online users that their data has been deleted
+        onlineUsers.forEach((user, userSocketId) => {
+            if (!user.isAdmin) {
+                io.to(userSocketId).emit('allUserDataDeleted', { 
+                    message: 'All user data has been deleted by an admin',
+                    by: adminName
+                });
+            }
+        });
+
+        // Delete all users from database
+        deleteAllUsers();
+        
+        socket.emit('adminSuccess', { message: 'All users have been deleted from database' });
+        
+        // Refresh the database view
+        const users = getAllUsersInDatabase();
+        socket.emit('adminUserDatabase', { 
+            users: users, 
+            total: users.length 
+        });
+    });
+
+    // Handle avatar update
+    socket.on('updateAvatar', (data) => {
+        const user = onlineUsers.get(socket.id);
+        if (!user) return;
+
+        const { avatar } = data;
+        
+        // Update in database (username only)
+        updateUserAvatar(user.username, avatar);
+        
+        // Update in memory
+        user.avatar = avatar;
+        
+        socket.emit('avatarUpdated', { success: true, avatar });
+    });
+
+    // Reload user stats from database (for live updates)
+    socket.on('reloadUserStats', () => {
+        const user = onlineUsers.get(socket.id);
+        if (!user) return;
+
+        // Reload fresh stats from database (username only)
+        const freshStats = reloadUserStats(user.username);
+        if (freshStats) {
+            // Update in-memory stats
+            user.stats = freshStats;
+            
+            // Send updated stats to client
+            socket.emit('statsReloaded', { 
+                success: true, 
+                stats: freshStats 
+            });
+        }
+    });
+
+    // Inspect user profile (any user can inspect any other user)
+    socket.on('inspectUserProfile', (data) => {
+        const { username } = data;
+        const inspector = onlineUsers.get(socket.id);
+        
+        if (!inspector || !username) return;
+        
+        // Get user data from database
+        const userData = getUserData(username);
+        if (!userData) {
+            socket.emit('userProfileError', { message: 'User not found' });
+            return;
+        }
+        
+        // Check if inspecting an admin
+        const isTargetAdmin = username.toLowerCase() === 'admin';
+        const isInspectorAdmin = inspector.isAdmin;
+        
+        // Build profile data
+        const profileData = {
+            username: userData.username,
+            avatar: userData.avatar,
+            stats: userData.stats,
+            firstLogin: userData.firstLogin,
+            lastLogin: userData.lastLogin,
+            isAdmin: isTargetAdmin,
+            isInspectorAdmin: isInspectorAdmin
+        };
+        
+        // If normal user inspecting admin, show limited info
+        if (isTargetAdmin && !isInspectorAdmin) {
+            profileData.stats = { wins: '???', losses: '???', gamesPlayed: '???' };
+            profileData.firstLogin = 'Hidden';
+            profileData.lastLogin = 'Hidden';
+        }
+        
+        socket.emit('userProfileData', profileData);
+    });
+
+    // Admin: Ban user
+    socket.on('adminBanUser', (data) => {
+        if (!isAdmin(socket.id)) {
+            socket.emit('adminError', { message: 'Unauthorized - Admin only' });
+            return;
+        }
+
+        const { username, duration, reason } = data;
+        
+        if (!username) {
+            socket.emit('adminError', { message: 'Username is required' });
+            return;
+        }
+
+        // Can't ban other admins
+        if (username.toLowerCase() === 'admin') {
+            socket.emit('adminError', { message: 'Cannot ban other admins' });
+            return;
+        }
+
+        // Ban the user
+        const success = banUser(username, duration, reason);
+        
+        if (success) {
+            const banStatus = isUserBanned(username);
+            const durationText = banStatus.isPermanent ? 'permanently' : `for ${duration} hour(s)`;
+            
+            // Find the user in online users to kick them
+            for (const [id, user] of onlineUsers.entries()) {
+                if (user.username.toLowerCase() === username.toLowerCase()) {
+                    io.to(id).emit('banned', { 
+                        reason: reason || 'Banned by admin',
+                        by: onlineUsers.get(socket.id).username,
+                        duration: duration
+                    });
+                    
+                    const targetSocket = io.sockets.sockets.get(id);
+                    if (targetSocket) {
+                        targetSocket.disconnect(true);
+                    }
+                    onlineUsers.delete(id);
+                    break;
+                }
+            }
+            
+            socket.emit('adminSuccess', { message: `User "${username}" has been banned ${durationText}` });
+            
+            // Refresh database view
+            reloadUserDatabaseFromFile();
+            const users = getAllUsersInDatabase();
+            socket.emit('adminUserDatabase', { 
+                users: users, 
+                total: users.length 
+            });
+        } else {
+            socket.emit('adminError', { message: 'User not found in database' });
+        }
+    });
+
+    // Admin: Unban user
+    socket.on('adminUnbanUser', (data) => {
+        if (!isAdmin(socket.id)) {
+            socket.emit('adminError', { message: 'Unauthorized - Admin only' });
+            return;
+        }
+
+        const { username } = data;
+        
+        if (!username) {
+            socket.emit('adminError', { message: 'Username is required' });
+            return;
+        }
+
+        // Unban the user
+        const success = unbanUser(username);
+        
+        if (success) {
+            socket.emit('adminSuccess', { message: `User "${username}" has been unbanned` });
+            
+            // Refresh database view
+            reloadUserDatabaseFromFile();
+            const users = getAllUsersInDatabase();
+            socket.emit('adminUserDatabase', { 
+                users: users, 
+                total: users.length 
+            });
+        } else {
+            socket.emit('adminError', { message: 'User not found in database' });
         }
     });
 });

@@ -150,6 +150,9 @@ function showAdminPanel() {
                 <button onclick="showBanPlayerModal()" class="admin-btn">
                     <i class="fas fa-ban"></i> Ban Player
                 </button>
+                <button onclick="showUnbanUserModal()" class="admin-btn" style="background: rgba(74, 222, 128, 0.2); color: #4ade80;">
+                    <i class="fas fa-unlock"></i> Unban User
+                </button>
                 <button onclick="showClearChatModal()" class="admin-btn">
                     <i class="fas fa-broom"></i> Clear Chat
                 </button>
@@ -158,6 +161,15 @@ function showAdminPanel() {
                 <h4>Announcements</h4>
                 <button onclick="showBroadcastModal()" class="admin-btn">
                     <i class="fas fa-bullhorn"></i> Broadcast Message
+                </button>
+            </div>
+            <div class="admin-section">
+                <h4>User Database</h4>
+                <button onclick="showUserDatabaseModal()" class="admin-btn">
+                    <i class="fas fa-database"></i> View User Database
+                </button>
+                <button onclick="showDeleteAllUsersModal()" class="admin-btn" style="background: rgba(239, 68, 68, 0.2); color: #ef4444;">
+                    <i class="fas fa-trash-alt"></i> Delete All Users
                 </button>
             </div>
             <div class="admin-section">
@@ -179,6 +191,237 @@ function closeAdminPanel() {
     const panel = document.getElementById('adminPanel');
     if (panel) {
         panel.remove();
+    }
+}
+
+function showUserDatabaseModal() {
+    if (!isAdmin()) return;
+    socket.emit('adminGetUserDatabase');
+}
+
+function displayUserDatabase(users, total) {
+    const modal = document.createElement('div');
+    modal.className = 'modal admin-modal';
+    modal.id = 'adminUserDatabaseModal';
+
+    let usersHtml = users.map(user => {
+        const isBanned = user.banned;
+        const banStatus = isBanned ? (user.isPermanent ? 'PERMANENT' : 'BANNED') : 'Active';
+        const banColor = isBanned ? 'var(--error)' : 'var(--success)';
+        const borderColor = isBanned ? 'var(--error)' : 'var(--primary)';
+        
+        return `
+        <div class="user-db-item" style="background: var(--bg-secondary); padding: 15px; margin: 10px 0; border-radius: 8px; border-left: 4px solid ${borderColor};">
+            <div style="display: flex; justify-content: space-between; align-items: start;">
+                <div style="flex: 1;">
+                    <strong>${escapeHtml(user.username)}</strong> ${user.hasAvatar ? '🖼️' : ''} 
+                    <span style="font-size: 0.75rem; margin-left: 5px; color: ${banColor};">${banStatus}</span><br>
+                    <small style="color: var(--text-secondary);">
+                        <span style="color: var(--success);">Wins: ${user.stats.wins}</span> | 
+                        <span style="color: var(--error);">Losses: ${user.stats.losses}</span> | 
+                        <span style="color: var(--info);">Games: ${user.stats.gamesPlayed}</span><br>
+                        ${isBanned && user.banReason ? `<span style="color: var(--error);">Reason: ${escapeHtml(user.banReason)}</span><br>` : ''}
+                        First Login: ${new Date(user.firstLogin).toLocaleDateString()}<br>
+                        Last Login: ${new Date(user.lastLogin).toLocaleDateString()}
+                    </small>
+                </div>
+                <div style="display: flex; gap: 5px; flex-wrap: wrap;">
+                    ${isBanned ? 
+                        `<button onclick="unbanUserFromDB('${escapeHtml(user.username)}')" class="btn btn-success" style="padding: 5px 10px; font-size: 0.8rem;" title="Unban User"><i class="fas fa-unlock"></i></button>` :
+                        `<button onclick="showBanUserModal('${escapeHtml(user.username)}')" class="btn btn-warning" style="padding: 5px 10px; font-size: 0.8rem;" title="Ban User"><i class="fas fa-ban"></i></button>`
+                    }
+                    <button onclick="showEditUserStatsModal('${escapeHtml(user.username)}', ${user.stats.wins}, ${user.stats.losses}, ${user.stats.gamesPlayed})" class="btn btn-primary" style="padding: 5px 10px; font-size: 0.8rem;" title="Edit Stats"><i class="fas fa-edit"></i></button>
+                    <button onclick="deleteUserFromDatabase('${escapeHtml(user.username)}')" class="btn btn-danger" style="padding: 5px 10px; font-size: 0.8rem;" title="Delete User"><i class="fas fa-trash"></i></button>
+                </div>
+            </div>
+        </div>
+    `}).join('');
+
+    modal.innerHTML = `
+        <div class="modal-content" style="max-width: 700px; max-height: 80vh; overflow-y: auto;">
+            <div class="modal-icon"><i class="fas fa-database"></i></div>
+            <h2>User Database (${total} users)</h2>
+            
+            <div style="max-height: 500px; overflow-y: auto; margin: 20px 0;">
+                ${usersHtml || '<p style="color: var(--text-secondary); text-align: center;">No users in database</p>'}
+            </div>
+            
+            <div class="modal-actions">
+                <button type="button" class="btn btn-secondary" onclick="hideModal('adminUserDatabaseModal')">Close</button>
+                <button type="button" class="btn btn-info" onclick="socket.emit('adminReloadUserDatabase')">
+                    <i class="fas fa-file-import"></i> Reload from File
+                </button>
+                <button type="button" class="btn btn-primary" onclick="socket.emit('adminGetUserDatabase')">
+                    <i class="fas fa-sync-alt"></i> Refresh View
+                </button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+    showModal('adminUserDatabaseModal');
+}
+
+function deleteUserFromDatabase(username) {
+    if (!confirm(`Delete user "${username}"? This will erase all their stats and profile picture!`)) {
+        return;
+    }
+    socket.emit('adminDeleteUser', { username });
+}
+
+function showBanUserModal(username) {
+    if (!isAdmin()) return;
+
+    const modal = document.createElement('div');
+    modal.className = 'modal admin-modal';
+    modal.id = 'adminBanUserModal';
+    modal.innerHTML = `
+        <div class="modal-content">
+            <div class="modal-icon"><i class="fas fa-ban" style="color: var(--error);"></i></div>
+            <h2>Ban User</h2>
+            <p style="color: var(--text-secondary); margin-bottom: 20px;">Banning: <strong>${escapeHtml(username)}</strong></p>
+            <div class="form-group">
+                <label>Ban Duration</label>
+                <select id="banDurationInput" style="width: 100%; padding: 12px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-primary);">
+                    <option value="1">1 hour</option>
+                    <option value="24">24 hours</option>
+                    <option value="168">7 days</option>
+                    <option value="720">30 days</option>
+                    <option value="0">Permanent</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Reason</label>
+                <input type="text" id="banReasonInput" placeholder="Reason for ban (optional)" style="width: 100%; padding: 12px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-primary);">
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-secondary" onclick="hideModal('adminBanUserModal')">Cancel</button>
+                <button type="button" class="btn btn-danger" onclick="banUser('${escapeHtml(username)}')">
+                    <i class="fas fa-ban"></i> Ban User
+                </button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+    showModal('adminBanUserModal');
+}
+
+function banUser(username) {
+    const durationInput = document.getElementById('banDurationInput');
+    const reasonInput = document.getElementById('banReasonInput');
+    const duration = parseInt(durationInput.value);
+    const reason = reasonInput.value.trim() || 'Banned by admin';
+
+    socket.emit('adminBanUser', { username, duration, reason });
+    hideModal('adminBanUserModal');
+}
+
+function unbanUserFromDB(username) {
+    if (!isAdmin()) return;
+    
+    if (!confirm(`Are you sure you want to unban "${username}"?`)) {
+        return;
+    }
+    
+    socket.emit('adminUnbanUser', { username });
+}
+
+function showEditUserStatsModal(username, currentWins, currentLosses, currentGames) {
+    if (!isAdmin()) return;
+
+    const modal = document.createElement('div');
+    modal.className = 'modal admin-modal';
+    modal.id = 'adminEditUserStatsModal';
+    modal.innerHTML = `
+        <div class="modal-content">
+            <div class="modal-icon"><i class="fas fa-edit" style="color: var(--info);"></i></div>
+            <h2>Edit User Stats</h2>
+            <p style="color: var(--text-secondary); margin-bottom: 20px;">
+                Editing stats for: <strong>${escapeHtml(username)}</strong>
+            </p>
+            <div class="form-group">
+                <label>Wins</label>
+                <input type="number" id="editStatsWins" value="${currentWins}" min="0" 
+                       style="width: 100%; padding: 12px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-primary);">
+            </div>
+            <div class="form-group">
+                <label>Losses</label>
+                <input type="number" id="editStatsLosses" value="${currentLosses}" min="0"
+                       style="width: 100%; padding: 12px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-primary);">
+            </div>
+            <div class="form-group">
+                <label>Games Played</label>
+                <input type="number" id="editStatsGames" value="${currentGames}" min="0"
+                       style="width: 100%; padding: 12px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-primary);">
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-secondary" onclick="hideModal('adminEditUserStatsModal')">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="saveUserStatsEdit('${escapeHtml(username)}')">
+                    <i class="fas fa-save"></i> Save Changes
+                </button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+    showModal('adminEditUserStatsModal');
+}
+
+function saveUserStatsEdit(username) {
+    const wins = parseInt(document.getElementById('editStatsWins').value) || 0;
+    const losses = parseInt(document.getElementById('editStatsLosses').value) || 0;
+    const gamesPlayed = parseInt(document.getElementById('editStatsGames').value) || 0;
+
+    socket.emit('adminEditUserStats', { 
+        username, 
+        stats: { wins, losses, gamesPlayed } 
+    });
+    hideModal('adminEditUserStatsModal');
+}
+
+function showDeleteAllUsersModal() {
+    if (!isAdmin()) return;
+
+    const modal = document.createElement('div');
+    modal.className = 'modal admin-modal';
+    modal.id = 'adminDeleteAllUsersModal';
+    modal.innerHTML = `
+        <div class="modal-content">
+            <div class="modal-icon" style="color: var(--error); font-size: 4rem;"><i class="fas fa-exclamation-triangle"></i></div>
+            <h2 style="color: var(--error);">⚠️ DANGER ZONE ⚠️</h2>
+            <p style="color: var(--text-primary); margin: 20px 0; font-size: 1.1rem;">
+                This will <strong>PERMANENTLY DELETE ALL USERS</strong> from the database!
+            </p>
+            <p style="color: var(--text-secondary);">
+                This action will:
+            </p>
+            <ul style="color: var(--text-secondary); text-align: left; margin: 15px 0;">
+                <li>Delete all user stats (wins, losses, games played)</li>
+                <li>Delete all profile pictures</li>
+                <li>Delete all user records</li>
+                <li><strong>This CANNOT be undone!</strong></li>
+            </ul>
+            <div class="modal-actions" style="margin-top: 30px;">
+                <button type="button" class="btn btn-secondary" onclick="hideModal('adminDeleteAllUsersModal')">Cancel</button>
+                <button type="button" class="btn btn-danger" onclick="confirmDeleteAllUsers()">
+                    <i class="fas fa-trash-alt"></i> DELETE ALL USERS
+                </button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+    showModal('adminDeleteAllUsersModal');
+}
+
+function confirmDeleteAllUsers() {
+    const confirmation = prompt('Type "DELETE ALL USERS" to confirm:');
+    if (confirmation === 'DELETE ALL USERS') {
+        socket.emit('adminDeleteAllUsers');
+        hideModal('adminDeleteAllUsersModal');
+    } else {
+        showNotification('Deletion cancelled', 'info');
     }
 }
 
@@ -318,6 +561,182 @@ function adminBanPlayer() {
 
     socket.emit('adminBanPlayer', { username, duration, reason });
     hideModal('adminBanPlayerModal');
+}
+
+function showUnbanUserModal() {
+    if (!isAdmin()) return;
+
+    const modal = document.createElement('div');
+    modal.className = 'modal admin-modal';
+    modal.id = 'adminUnbanUserModal';
+    modal.innerHTML = `
+        <div class="modal-content">
+            <div class="modal-icon"><i class="fas fa-unlock" style="color: var(--success);"></i></div>
+            <h2>Unban User</h2>
+            <div class="form-group">
+                <label>Username</label>
+                <input type="text" id="adminUnbanUsernameInput" placeholder="Enter username to unban">
+            </div>
+            <p style="color: var(--text-secondary); font-size: 0.9rem; margin-top: 10px;">
+                This will remove the ban and allow the user to log in and join rooms again.
+            </p>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-secondary" onclick="hideModal('adminUnbanUserModal')">Cancel</button>
+                <button type="button" class="btn btn-success" onclick="adminUnbanUserFromPanel()">Unban User</button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+    showModal('adminUnbanUserModal');
+}
+
+function adminUnbanUserFromPanel() {
+    const usernameInput = document.getElementById('adminUnbanUsernameInput');
+    const username = usernameInput.value.trim();
+
+    if (!username) {
+        showNotification('Please enter a username', 'error');
+        return;
+    }
+
+    socket.emit('adminUnbanUser', { username });
+    hideModal('adminUnbanUserModal');
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// USER PROFILE INSPECTION
+// ═══════════════════════════════════════════════════════════════════════
+
+function displayUserProfileModal(data) {
+    // Close existing modal if open
+    const existingModal = document.getElementById('userProfileInspectModal');
+    if (existingModal) {
+        existingModal.remove();
+    }
+
+    const modal = document.createElement('div');
+    modal.className = 'modal';
+    modal.id = 'userProfileInspectModal';
+    
+    // Format dates
+    const firstLogin = data.firstLogin !== 'Hidden' ? new Date(data.firstLogin).toLocaleDateString() : 'Hidden';
+    const lastLogin = data.lastLogin !== 'Hidden' ? new Date(data.lastLogin).toLocaleDateString() : 'Hidden';
+    
+    // Calculate win rate
+    const wins = parseInt(data.stats.wins) || 0;
+    const losses = parseInt(data.stats.losses) || 0;
+    const gamesPlayed = parseInt(data.stats.gamesPlayed) || 0;
+    const winRate = gamesPlayed > 0 ? Math.round((wins / gamesPlayed) * 100) : 0;
+    
+    // Build admin buttons if inspector is admin
+    let adminButtons = '';
+    if (data.isInspectorAdmin && !data.isAdmin) {
+        adminButtons = `
+            <div class="admin-actions" style="margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--border-color);">
+                <h4 style="color: var(--warning); margin-bottom: 10px;">Admin Actions</h4>
+                <div style="display: flex; gap: 10px;">
+                    <button onclick="adminClearUserStats('${escapeHtml(data.username)}')" class="btn btn-danger" style="flex: 1;">
+                        <i class="fas fa-eraser"></i> Clear All Stats
+                    </button>
+                    <button onclick="adminEditInspectedUser('${escapeHtml(data.username)}', ${wins}, ${losses}, ${gamesPlayed})" class="btn btn-primary" style="flex: 1;">
+                        <i class="fas fa-edit"></i> Edit Stats
+                    </button>
+                </div>
+            </div>
+        `;
+    }
+    
+    // Check if this is a normal user inspecting an admin
+    const isNormalUserInspectingAdmin = data.isAdmin && !data.isInspectorAdmin;
+    
+    // Hidden message for admin profiles viewed by non-admins
+    const hiddenMessage = isNormalUserInspectingAdmin ? 
+        '<p style="color: var(--warning); text-align: center; margin: 10px 0;">🔒 Admin stats are hidden</p>' : '';
+    
+    // Hide win rate when normal user inspects admin
+    const winRateDisplay = isNormalUserInspectingAdmin ? 
+        `<div style="font-size: 1.8rem; font-weight: bold; color: var(--warning);">???</div>` :
+        `<div style="font-size: 1.8rem; font-weight: bold; color: var(--warning);">${winRate}%</div>`;
+    
+    modal.innerHTML = `
+        <div class="modal-content user-profile-modal" style="max-width: 400px;">
+            <button class="profile-close-btn" onclick="hideModal('userProfileInspectModal')" style="position: absolute; top: 15px; right: 15px; background: none; border: none; color: var(--text-secondary); font-size: 1.5rem; cursor: pointer;">
+                <i class="fas fa-times"></i>
+            </button>
+            
+            <div class="profile-header" style="text-align: center; margin-bottom: 20px;">
+                <div class="profile-avatar-large" style="width: 100px; height: 100px; margin: 0 auto 15px; border-radius: 50%; overflow: hidden; border: 3px solid var(--primary);">
+                    ${data.avatar 
+                        ? `<img src="${data.avatar}" alt="${escapeHtml(data.username)}" style="width: 100%; height: 100%; object-fit: cover;">`
+                        : `<div style="width: 100%; height: 100%; background: var(--bg-input); display: flex; align-items: center; justify-content: center; font-size: 3rem; font-weight: bold;">${data.username.charAt(0).toUpperCase()}</div>`
+                    }
+                </div>
+                <h2 style="margin: 0; font-size: 1.5rem;">${escapeHtml(data.username)} ${data.isAdmin ? '<span style="color: var(--warning); font-size: 0.8rem;">[ADMIN]</span>' : ''}</h2>
+                ${hiddenMessage}
+            </div>
+            
+            <div class="profile-stats" style="background: var(--bg-input); padding: 20px; border-radius: 10px; margin-bottom: 15px;">
+                <div class="stats-grid" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; text-align: center;">
+                    <div class="stat-item">
+                        <div style="font-size: 1.8rem; font-weight: bold; color: var(--success);">${data.stats.wins}</div>
+                        <div style="font-size: 0.85rem; color: var(--text-secondary);">Wins</div>
+                    </div>
+                    <div class="stat-item">
+                        <div style="font-size: 1.8rem; font-weight: bold; color: var(--error);">${data.stats.losses}</div>
+                        <div style="font-size: 0.85rem; color: var(--text-secondary);">Losses</div>
+                    </div>
+                    <div class="stat-item">
+                        <div style="font-size: 1.8rem; font-weight: bold; color: var(--info);">${data.stats.gamesPlayed}</div>
+                        <div style="font-size: 0.85rem; color: var(--text-secondary);">Games</div>
+                    </div>
+                    <div class="stat-item">
+                        ${winRateDisplay}
+                        <div style="font-size: 0.85rem; color: var(--text-secondary);">Win Rate</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="profile-info" style="background: var(--bg-input); padding: 15px; border-radius: 10px; font-size: 0.9rem; color: var(--text-secondary);">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                    <span>First Login:</span>
+                    <span style="color: var(--text-primary);">${firstLogin}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between;">
+                    <span>Last Seen:</span>
+                    <span style="color: var(--text-primary);">${lastLogin}</span>
+                </div>
+            </div>
+            
+            ${adminButtons}
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    showModal('userProfileInspectModal');
+}
+
+// Admin: Clear all stats for a user
+function adminClearUserStats(username) {
+    if (!isAdmin()) return;
+    
+    if (!confirm(`Are you sure you want to CLEAR ALL STATS for "${username}"?\n\nThis will reset:\n- Wins to 0\n- Losses to 0\n- Games Played to 0\n\nThis action cannot be undone!`)) {
+        return;
+    }
+    
+    socket.emit('adminEditUserStats', { 
+        username, 
+        stats: { wins: 0, losses: 0, gamesPlayed: 0 } 
+    });
+    
+    hideModal('userProfileInspectModal');
+    showNotification(`All stats cleared for ${username}`, 'success');
+}
+
+// Admin: Edit stats for inspected user
+function adminEditInspectedUser(username, currentWins, currentLosses, currentGames) {
+    hideModal('userProfileInspectModal');
+    showEditUserStatsModal(username, currentWins, currentLosses, currentGames);
 }
 
 function showClearChatModal() {
@@ -586,50 +1005,24 @@ function getDeviceId() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// STATS MANAGEMENT FUNCTIONS
+// STATS MANAGEMENT FUNCTIONS - SERVER DATABASE ONLY
 // ═══════════════════════════════════════════════════════════════════════
 
-function getStatsCookieName() {
-    const deviceId = getDeviceId();
-    return 'hangman_stats_' + deviceId;
-}
+// Stats are now loaded ONLY from server database
+// No local cookie storage for stats
 
-function loadUserStats() {
-    const cookieName = getStatsCookieName();
-    const savedStats = getCookie(cookieName);
-    
-    if (savedStats) {
-        try {
-            const parsed = JSON.parse(savedStats);
-            userStats = {
-                wins: parsed.wins || 0,
-                losses: parsed.losses || 0,
-                totalGames: parsed.totalGames || 0
-            };
-        } catch (e) {
-            userStats = { wins: 0, losses: 0, totalGames: 0 };
-        }
-    } else {
-        userStats = { wins: 0, losses: 0, totalGames: 0 };
-    }
-}
-
-function saveUserStats() {
-    const cookieName = getStatsCookieName();
-    const statsJson = JSON.stringify(userStats);
-    setCookie(cookieName, statsJson, 365);
+function setUserStats(stats) {
+    userStats = {
+        wins: stats.wins || 0,
+        losses: stats.losses || 0,
+        totalGames: stats.gamesPlayed || 0
+    };
+    displayUserStats();
 }
 
 function updateStats(result) {
-    userStats.totalGames++;
-    
-    if (result === 'win') {
-        userStats.wins++;
-    } else if (result === 'loss') {
-        userStats.losses++;
-    }
-    
-    saveUserStats();
+    // Stats are updated on server automatically when games end
+    // Just refresh the display
     displayUserStats();
 }
 
@@ -672,6 +1065,11 @@ function displayUserStats() {
 // ═══════════════════════════════════════════════════════════════════════
 
 function getAvatarStorageKey() {
+    // Use username instead of device ID for cross-device sync
+    if (currentUser && currentUser.username) {
+        return 'hangman_avatar_' + currentUser.username.toLowerCase();
+    }
+    // Fallback to device ID if no user logged in yet
     const deviceId = getDeviceId();
     return 'hangman_avatar_' + deviceId;
 }
@@ -800,6 +1198,12 @@ function handleAvatarUpload(file) {
         saveUserAvatar(base64Image);
         displayUserAvatar();
         updateAvatarPreview();
+        
+        // Also save to server database
+        if (socket && socket.connected) {
+            socket.emit('updateAvatar', { avatar: base64Image });
+        }
+        
         showNotification('Avatar updated successfully!', 'success');
     });
 }
@@ -808,12 +1212,26 @@ function handleAvatarUpload(file) {
 // SHARED AVATAR HELPER
 // ═══════════════════════════════════════════════════════════════════════
 
-function buildAvatarHTML(avatar, username, size = 28) {
+function buildAvatarHTML(avatar, username, size = 28, clickable = true) {
+    const avatarId = `avatar-${Math.random().toString(36).substr(2, 9)}`;
+    const clickHandler = clickable ? `onclick="inspectUserProfile('${escapeHtml(username)}')"` : '';
+    
     if (avatar) {
-        return `<img src="${avatar}" alt="${escapeHtml(username)}" style="width:${size}px;height:${size}px;border-radius:50%;object-fit:cover;flex-shrink:0;">`;
+        return `<img id="${avatarId}" src="${avatar}" alt="${escapeHtml(username)}" ${clickHandler} class="message-avatar" style="width:${size}px;height:${size}px;border-radius:50%;object-fit:cover;flex-shrink:0;${clickable ? 'cursor:pointer;' : ''}">`;
     }
     const initial = username.charAt(0).toUpperCase();
-    return `<div class="player-avatar" style="width:${size}px;height:${size}px;font-size:${size * 0.4}px;margin:0;flex-shrink:0;">${initial}</div>`;
+    return `<div id="${avatarId}" class="player-avatar message-avatar" ${clickHandler} style="width:${size}px;height:${size}px;font-size:${size * 0.4}px;margin:0;flex-shrink:0;${clickable ? 'cursor:pointer;' : ''}">${initial}</div>`;
+}
+
+// Inspect user profile when clicking on avatar
+function inspectUserProfile(username) {
+    if (!socket || !socket.connected) return;
+    if (!currentUser) return;
+    
+    // Don't inspect yourself
+    if (username === currentUser.username) return;
+    
+    socket.emit('inspectUserProfile', { username });
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -828,7 +1246,8 @@ document.addEventListener('DOMContentLoaded', () => {
     roomView = document.getElementById('roomView');
     gameView = document.getElementById('gameView');
 
-    loadUserAvatar();
+    // Avatar will be loaded from server after authentication
+    // This ensures cross-device sync of profile pictures
     
     // FIX: Set default active state on hint count button
     document.querySelectorAll('.hint-count-btn').forEach(btn => {
@@ -990,6 +1409,10 @@ function setupSocketListeners(username, connectionTimeout, adminPassword = null)
         showNotification(`[ADMIN] ${data.from}: ${data.message}`, 'info', 5000);
     });
 
+    socket.on('adminUserDatabase', (data) => {
+        displayUserDatabase(data.users, data.total);
+    });
+
     // Kicked handler
     socket.on('kicked', (data) => {
         showNotification(`You have been kicked by ${data.by}. Reason: ${data.reason}`, 'error', 5000);
@@ -1015,6 +1438,75 @@ function setupSocketListeners(username, connectionTimeout, adminPassword = null)
         setTimeout(() => location.reload(), 3000);
     });
 
+    // User data deleted handler (when admin deletes specific user)
+    socket.on('userDataDeleted', (data) => {
+        showNotification(`${data.message} by ${data.by}. Your stats and avatar have been reset.`, 'error', 5000);
+        
+        // Clear local stats (server database deleted)
+        userStats = { wins: 0, losses: 0, totalGames: 0 };
+        
+        // Clear local avatar
+        userAvatar = null;
+        saveUserAvatar(null);
+        
+        // Update UI
+        displayUserStats();
+        displayUserAvatar();
+        
+        // Disconnect and reload
+        socket.disconnect();
+        clearSession();
+        setTimeout(() => location.reload(), 3000);
+    });
+
+    // All user data deleted handler (when admin deletes all users)
+    socket.on('allUserDataDeleted', (data) => {
+        showNotification(`${data.message} by ${data.by}. All user data has been reset.`, 'error', 5000);
+        
+        // Clear local stats (server database deleted)
+        userStats = { wins: 0, losses: 0, totalGames: 0 };
+        
+        // Clear local avatar
+        userAvatar = null;
+        saveUserAvatar(null);
+        
+        // Update UI
+        displayUserStats();
+        displayUserAvatar();
+        
+        // Disconnect and reload
+        socket.disconnect();
+        clearSession();
+        setTimeout(() => location.reload(), 3000);
+    });
+
+    // Stats updated handler (when admin edits user stats)
+    socket.on('statsUpdated', (data) => {
+        showNotification(`Your stats have been updated by ${data.by}`, 'info', 3000);
+        
+        // Update local stats from server
+        if (data.stats) {
+            setUserStats(data.stats);
+        }
+    });
+
+    // Stats reloaded handler (when refreshing from database)
+    socket.on('statsReloaded', (data) => {
+        if (data.success && data.stats) {
+            setUserStats(data.stats);
+            log('Stats reloaded from database');
+        }
+    });
+
+    // User profile inspection handler
+    socket.on('userProfileData', (data) => {
+        displayUserProfileModal(data);
+    });
+
+    socket.on('userProfileError', (data) => {
+        showNotification(data.message, 'error');
+    });
+
     // Chat cleared handler
     socket.on('lobbyChatCleared', (data) => {
         const lobbyChatMessages = document.getElementById('lobbyChatMessages');
@@ -1036,6 +1528,18 @@ function setupSocketListeners(username, connectionTimeout, adminPassword = null)
         log('Authenticated successfully');
         if (data && data.user) {
             currentUser = data.user;
+            
+            // Load avatar from server if available
+            if (currentUser.avatar) {
+                userAvatar = currentUser.avatar;
+                saveUserAvatar(userAvatar);
+                displayUserAvatar();
+            }
+            
+            // Load stats from server ONLY (no local cookie storage)
+            if (currentUser.stats) {
+                setUserStats(currentUser.stats);
+            }
         }
         saveSession(username);
         showGameScreen();
@@ -1045,6 +1549,13 @@ function setupSocketListeners(username, connectionTimeout, adminPassword = null)
         // Show admin indicator if user is admin
         if (currentUser && currentUser.isAdmin) {
             showAdminIndicator();
+        }
+    });
+    
+    // Handle avatar update confirmation
+    socket.on('avatarUpdated', (data) => {
+        if (data.success) {
+            log('Avatar saved to server database');
         }
     });
     
@@ -1515,7 +2026,7 @@ function showGameScreen() {
     gameScreen.classList.remove('hidden');
     document.getElementById('currentUsername').textContent = currentUser.username;
     
-    loadUserStats();
+    // Stats are loaded from server on authentication, not from cookies
     displayUserStats();
     displayUserAvatar();
 }
