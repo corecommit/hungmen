@@ -1,5 +1,11 @@
 // User Database Display with Ban Support
 function displayUserDatabase(users, total) {
+    // Remove existing modal if it exists to prevent duplicates
+    const existingModal = document.getElementById('adminUserDatabaseModal');
+    if (existingModal) {
+        existingModal.remove();
+    }
+
     const modal = document.createElement('div');
     modal.className = 'modal admin-modal';
     modal.id = 'adminUserDatabaseModal';

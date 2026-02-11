@@ -166,6 +166,7 @@ function loadUserDatabase() {
 function saveUserDatabase(database) {
     try {
         fs.writeFileSync(USER_DB_FILE, JSON.stringify(database, null, 2));
+        console.log(`[DB SAVE] Database saved with ${Object.keys(database).length} users`);
     } catch (error) {
         console.error('Error saving user database:', error);
     }
@@ -177,12 +178,14 @@ function reloadUserDatabaseFromFile() {
         if (fs.existsSync(USER_DB_FILE)) {
             const data = fs.readFileSync(USER_DB_FILE, 'utf8');
             const freshDatabase = JSON.parse(data);
+            const oldCount = Object.keys(userDatabase).length;
             userDatabase = freshDatabase;
-            console.log('User database reloaded from file');
+            const newCount = Object.keys(userDatabase).length;
+            console.log(`[DB RELOAD] User database reloaded from file: ${oldCount} -> ${newCount} users`);
             return true;
         }
     } catch (error) {
-        console.error('Error reloading user database:', error);
+        console.error('[DB RELOAD] Error reloading user database:', error);
     }
     return false;
 }
@@ -260,7 +263,11 @@ function isUserBanned(username) {
 // Ban user
 function banUser(username, duration = null, reason = 'Banned by admin') {
     const key = username.toLowerCase();
-    if (!userDatabase[key]) return false;
+    console.log(`[DB BAN] Attempting to ban user: ${username} (key: ${key})`);
+    if (!userDatabase[key]) {
+        console.log(`[DB BAN] User not found: ${username}`);
+        return false;
+    }
     
     userDatabase[key].banned = true;
     userDatabase[key].banReason = reason;
@@ -270,24 +277,32 @@ function banUser(username, duration = null, reason = 'Banned by admin') {
         const expiry = new Date();
         expiry.setHours(expiry.getHours() + parseInt(duration));
         userDatabase[key].banExpiry = expiry.toISOString();
+        console.log(`[DB BAN] Temporary ban for ${username}, expires: ${userDatabase[key].banExpiry}`);
     } else {
         // Permanent ban
         userDatabase[key].banExpiry = null;
+        console.log(`[DB BAN] Permanent ban for ${username}`);
     }
     
     saveUserDatabase(userDatabase);
+    console.log(`[DB BAN] Successfully banned user: ${username}`);
     return true;
 }
 
 // Unban user
 function unbanUser(username) {
     const key = username.toLowerCase();
-    if (!userDatabase[key]) return false;
+    console.log(`[DB UNBAN] Attempting to unban user: ${username} (key: ${key})`);
+    if (!userDatabase[key]) {
+        console.log(`[DB UNBAN] User not found: ${username}`);
+        return false;
+    }
     
     userDatabase[key].banned = false;
     userDatabase[key].banExpiry = null;
     userDatabase[key].banReason = null;
     saveUserDatabase(userDatabase);
+    console.log(`[DB UNBAN] Successfully unbanned user: ${username}`);
     return true;
 }
 
@@ -341,11 +356,15 @@ function updateUserAvatar(username, avatarData) {
 // Delete user from database
 function deleteUser(username) {
     const key = username.toLowerCase();
+    console.log(`[DB DELETE] Attempting to delete user: ${username} (key: ${key})`);
+    console.log(`[DB DELETE] Available keys:`, Object.keys(userDatabase));
     if (userDatabase[key]) {
         delete userDatabase[key];
         saveUserDatabase(userDatabase);
+        console.log(`[DB DELETE] Successfully deleted user: ${username}`);
         return true;
     }
+    console.log(`[DB DELETE] User not found: ${username}`);
     return false;
 }
 
@@ -578,31 +597,40 @@ class Room {
             
             this.status = 'playing';
         } else if (gameMode === 'custom') {
-            // For custom word mode, the HOST is always the word setter
-            const hostTeam = this.players.find(p => p.id === this.hostId)?.team;
-
+            // For custom word mode, use coin flip to determine word setter
+            const isTeamMode = this.mode !== 'solo' && this.mode !== '1v1';
+            
             this.gameState = {
                 word: null,
                 hint: null,
                 guessedLetters: [],
                 wrongLetters: [],
-                currentTurn: 0, // Will be updated when game actually starts
-                status: 'word_selection',
+                currentTurn: 0,
+                status: 'coin_flip', // Start with coin flip phase
                 gameMode: gameMode,
                 scores: {},
                 isCustomWord: true,
                 hintsRemaining: hintCount,
                 hints: [],
-                wordSetter: this.hostId,
-                wordSetterTeam: hostTeam,
-                hintCount: hintCount
+                wordSetter: null, // Will be set after coin flip
+                wordSetterTeam: null,
+                hintCount: hintCount,
+                isTeamMode: isTeamMode,
+                coinFlip: {
+                    player1Choice: null,
+                    player2Choice: null,
+                    player1Id: null,
+                    player2Id: null,
+                    result: null,
+                    winner: null
+                }
             };
             
             this.players.forEach(player => {
                 this.gameState.scores[player.id] = 0;
             });
             
-            this.status = 'word_selection';
+            this.status = 'coin_flip';
         } else {
             // For other modes (easy, medium, hard), use random word
             const wordData = this.getRandomWord(gameMode);
@@ -836,24 +864,10 @@ io.on('connection', (socket) => {
         
         const trimmedUsername = username.trim();
         
-        // Check if user is banned
-        const banStatus = isUserBanned(trimmedUsername);
-        if (banStatus.banned) {
-            if (banStatus.isPermanent) {
-                socket.emit('authError', { 
-                    message: `You are permanently banned. Reason: ${banStatus.reason || 'No reason provided'}`,
-                    banned: true,
-                    permanent: true
-                });
-            } else {
-                const expiryDate = new Date(banStatus.expiry);
-                socket.emit('authError', { 
-                    message: `You are banned until ${expiryDate.toLocaleString()}. Reason: ${banStatus.reason || 'No reason provided'}`,
-                    banned: true,
-                    permanent: false,
-                    expiry: banStatus.expiry
-                });
-            }
+        // Check if username contains "admin" but is not exactly "admin"
+        const lowerUsername = trimmedUsername.toLowerCase();
+        if (lowerUsername !== 'admin' && lowerUsername.includes('admin')) {
+            socket.emit('authError', { message: 'The username "admin" is reserved. You cannot use variations like admin67, admin69, etc.' });
             return;
         }
         
@@ -1050,8 +1064,11 @@ io.on('connection', (socket) => {
         const room = rooms.get(roomId);
         
         // Check if user is banned
+        console.log(`[JOIN ROOM] Checking ban status for: ${username}`);
         const banStatus = isUserBanned(username);
+        console.log(`[JOIN ROOM] Ban status for ${username}:`, banStatus);
         if (banStatus.banned) {
+            console.log(`[JOIN ROOM] REJECTING banned user from joining room: ${username}`);
             if (banStatus.isPermanent) {
                 socket.emit('joinError', { 
                     message: `You are permanently banned from joining rooms. Reason: ${banStatus.reason || 'No reason provided'}` 
@@ -1224,13 +1241,40 @@ io.on('connection', (socket) => {
         room.startGame(gameMode, hintCount);
         
         if (gameMode === 'custom') {
-            const wordSetter = room.players.find(p => p.id === room.gameState.wordSetter);
+            // For custom mode, start with coin flip phase to determine word setter
+            const isTeamMode = room.mode !== 'solo' && room.mode !== '1v1';
             
-            io.to(roomId).emit('wordSelectionPhase', {
-                wordSetter: {
-                    id: wordSetter.id,
-                    username: wordSetter.username
-                },
+            // Get representatives for coin flip
+            let player1, player2;
+            
+            if (isTeamMode) {
+                // Team mode: first player from each team
+                player1 = room.players.find(p => p.team === 'team1');
+                player2 = room.players.find(p => p.team === 'team2');
+            } else {
+                // 1v1 mode: both players
+                player1 = room.players[0];
+                player2 = room.players[1];
+            }
+            
+            // Store the player IDs for coin flip
+            if (player1 && player2) {
+                room.gameState.coinFlip.player1Id = player1.id;
+                room.gameState.coinFlip.player2Id = player2.id;
+            }
+            
+            io.to(roomId).emit('coinFlipPhase', {
+                isTeamMode: isTeamMode,
+                player1: player1 ? {
+                    id: player1.id,
+                    username: player1.username,
+                    team: player1.team
+                } : null,
+                player2: player2 ? {
+                    id: player2.id,
+                    username: player2.username,
+                    team: player2.team
+                } : null,
                 hintCount: room.gameState.hintCount
             });
         } else {
@@ -1259,6 +1303,115 @@ io.on('connection', (socket) => {
                 })),
                 mode: room.mode
             });
+        }
+    });
+
+    // Coin Flip handlers for custom word mode
+    socket.on('selectCoinSide', (data) => {
+        const { roomId, side } = data;
+        const room = rooms.get(roomId);
+        
+        if (!room || !room.gameState || room.gameState.status !== 'coin_flip') {
+            socket.emit('coinFlipError', { message: 'Coin flip not available' });
+            return;
+        }
+        
+        const playerId = socket.id;
+        const isPlayer1 = room.gameState.coinFlip.player1Id === playerId;
+        const isPlayer2 = room.gameState.coinFlip.player2Id === playerId;
+        
+        if (!isPlayer1 && !isPlayer2) {
+            const isTeamMode = room.gameState.isTeamMode;
+            const errorMsg = isTeamMode 
+                ? 'Only Team Leaders can choose Heads or Tails' 
+                : 'You are not a participant in this coin flip';
+            socket.emit('coinFlipError', { message: errorMsg });
+            return;
+        }
+        
+        // Record the choice for the player who clicked
+        if (isPlayer1) {
+            room.gameState.coinFlip.player1Choice = side;
+            // Automatically assign opposite side to player 2
+            room.gameState.coinFlip.player2Choice = side === 'heads' ? 'tails' : 'heads';
+        } else {
+            room.gameState.coinFlip.player2Choice = side;
+            // Automatically assign opposite side to player 1
+            room.gameState.coinFlip.player1Choice = side === 'heads' ? 'tails' : 'heads';
+        }
+        
+        // Notify all players of the first selection
+        io.to(roomId).emit('coinSideSelected', {
+            playerId: playerId,
+            side: side,
+            isPlayer1: isPlayer1,
+            isTeamMode: room.gameState.isTeamMode
+        });
+        
+        // Notify all players of the opposite (auto-selected) side
+        const otherPlayerId = isPlayer1 ? room.gameState.coinFlip.player2Id : room.gameState.coinFlip.player1Id;
+        const otherSide = isPlayer1 ? room.gameState.coinFlip.player2Choice : room.gameState.coinFlip.player1Choice;
+        io.to(roomId).emit('coinSideSelected', {
+            playerId: otherPlayerId,
+            side: otherSide,
+            isPlayer1: !isPlayer1,
+            autoSelected: true,
+            isTeamMode: room.gameState.isTeamMode
+        });
+        
+        // Both players have chosen (one manually, one automatically)
+        if (room.gameState.coinFlip.player1Choice && room.gameState.coinFlip.player2Choice) {
+            
+            // Start the coin flip animation (wait longer for the 3-2-1 countdown)
+            setTimeout(() => {
+                // Perform coin flip
+                const result = Math.random() < 0.5 ? 'heads' : 'tails';
+                room.gameState.coinFlip.result = result;
+                
+                // Determine winner
+                let winnerId, winnerName, winnerTeam;
+                if (room.gameState.coinFlip.player1Choice === result) {
+                    winnerId = room.gameState.coinFlip.player1Id;
+                    const winner = room.players.find(p => p.id === winnerId);
+                    winnerName = winner ? winner.username : 'Player 1';
+                    winnerTeam = winner ? winner.team : null;
+                } else {
+                    winnerId = room.gameState.coinFlip.player2Id;
+                    const winner = room.players.find(p => p.id === winnerId);
+                    winnerName = winner ? winner.username : 'Player 2';
+                    winnerTeam = winner ? winner.team : null;
+                }
+                
+                room.gameState.coinFlip.winner = winnerId;
+                
+                // Emit the result
+                io.to(roomId).emit('coinFlipResult', {
+                    result: result,
+                    winner: {
+                        id: winnerId,
+                        username: winnerName,
+                        team: winnerTeam
+                    }
+                });
+                
+                // Set the word setter to the winner
+                room.gameState.wordSetter = winnerId;
+                room.gameState.wordSetterTeam = winnerTeam;
+                
+                // After showing the result, proceed to word selection
+                setTimeout(() => {
+                    room.gameState.status = 'word_selection';
+                    const wordSetter = room.players.find(p => p.id === winnerId);
+                    
+                    io.to(roomId).emit('wordSelectionPhase', {
+                        wordSetter: {
+                            id: winnerId,
+                            username: winnerName
+                        },
+                        hintCount: room.gameState.hintCount
+                    });
+                }, 8000); // Wait 8 seconds to show the result (enough time for 3-2-1 countdown + HEADS/TAILS reveal + winner display)
+            }, 2000); // Wait 2 seconds after both selected before starting countdown
         }
     });
 

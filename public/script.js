@@ -200,6 +200,12 @@ function showUserDatabaseModal() {
 }
 
 function displayUserDatabase(users, total) {
+    // Remove existing modal if it exists to prevent duplicates
+    const existingModal = document.getElementById('adminUserDatabaseModal');
+    if (existingModal) {
+        existingModal.remove();
+    }
+
     const modal = document.createElement('div');
     modal.className = 'modal admin-modal';
     modal.id = 'adminUserDatabaseModal';
@@ -1680,8 +1686,35 @@ function setupSocketListeners(username, connectionTimeout, adminPassword = null)
         }
     });
     
+    // Coin flip phase for custom word mode
+    socket.on('coinFlipPhase', (data) => {
+        showCoinFlipModal(data);
+    });
+    
+    // Coin side selected
+    socket.on('coinSideSelected', (data) => {
+        // Store isTeamMode in coinFlipData if provided
+        if (data.isTeamMode !== undefined && coinFlipData) {
+            coinFlipData.isTeamMode = data.isTeamMode;
+        }
+        updateCoinFlipSelection(data);
+    });
+    
+    // Coin flip result
+    socket.on('coinFlipResult', (data) => {
+        showCoinFlipResult(data);
+    });
+    
+    // Coin flip error
+    socket.on('coinFlipError', (data) => {
+        showNotification(data.message, 'error');
+    });
+    
     // Word selection phase for custom word mode
     socket.on('wordSelectionPhase', (data) => {
+        // Hide coin flip modal if it's still showing
+        hideModal('coinFlipModal');
+        
         isWordSetter = (data.wordSetter.id === mySocketId);
         hintsRemaining = data.hintCount || 5;
         
@@ -2409,6 +2442,217 @@ function showWaitingForWordModal(wordSetterName) {
     }
     
     showModal('waitingForWordModal');
+}
+
+let coinFlipData = null;
+let hasSelectedCoinSide = false;
+
+function showCoinFlipModal(data) {
+    coinFlipData = data;
+    hasSelectedCoinSide = false;
+    
+    const modal = document.getElementById('coinFlipModal');
+    const selectionDiv = document.getElementById('coinFlipSelection');
+    const animationDiv = document.getElementById('coinFlipAnimation');
+    const winnerDiv = document.getElementById('coinFlipWinner');
+    const buttonsDiv = document.getElementById('coinFlipButtons');
+    const statusDiv = document.getElementById('coinFlipStatus');
+    
+    // Reset display
+    if (selectionDiv) selectionDiv.classList.remove('hidden');
+    if (animationDiv) animationDiv.classList.add('hidden');
+    if (winnerDiv) winnerDiv.classList.add('hidden');
+    if (buttonsDiv) buttonsDiv.classList.remove('hidden');
+    
+    // Update player names
+    const player1Name = document.getElementById('coinFlipPlayer1Name');
+    const player2Name = document.getElementById('coinFlipPlayer2Name');
+    const player1Choice = document.getElementById('coinFlipPlayer1Choice');
+    const player2Choice = document.getElementById('coinFlipPlayer2Choice');
+    
+    if (data.isTeamMode) {
+        if (player1Name) player1Name.innerHTML = 'Team 1 <small style="display: block; font-size: 0.7rem; color: var(--text-secondary);">(Team Leader)</small>';
+        if (player2Name) player2Name.innerHTML = 'Team 2 <small style="display: block; font-size: 0.7rem; color: var(--text-secondary);">(Team Leader)</small>';
+    } else {
+        if (player1Name) player1Name.textContent = data.player1?.username || 'Player 1';
+        if (player2Name) player2Name.textContent = data.player2?.username || 'Player 2';
+    }
+    
+    if (player1Choice) {
+        player1Choice.textContent = 'Waiting...';
+        player1Choice.className = 'player-choice';
+    }
+    if (player2Choice) {
+        player2Choice.textContent = 'Waiting...';
+        player2Choice.className = 'player-choice';
+    }
+    
+    // Check if current user is a participant (only team leaders can choose)
+    const isPlayer1 = data.player1?.id === mySocketId;
+    const isPlayer2 = data.player2?.id === mySocketId;
+    const isParticipant = isPlayer1 || isPlayer2;
+    
+    if (buttonsDiv) {
+        if (isParticipant) {
+            buttonsDiv.style.display = 'flex';
+        } else {
+            buttonsDiv.style.display = 'none';
+        }
+    }
+    
+    if (statusDiv) {
+        if (isParticipant) {
+            statusDiv.innerHTML = data.isTeamMode 
+                ? '<strong>You are the Team Leader!</strong><br>Choose Heads or Tails. The opposing team will automatically get the other side.' 
+                : '<strong>Choose Heads or Tails</strong><br>Your opponent will automatically get the other side.';
+        } else {
+            statusDiv.textContent = data.isTeamMode ? 'Waiting for Team Leaders to choose...' : 'Waiting for players to choose...';
+        }
+    }
+    
+    showModal('coinFlipModal');
+}
+
+function selectCoinSide(side) {
+    if (hasSelectedCoinSide) return;
+    if (!coinFlipData) return;
+    if (!currentRoom) return;
+    
+    hasSelectedCoinSide = true;
+    
+    // Disable buttons immediately
+    const buttons = document.querySelectorAll('.coin-btn');
+    buttons.forEach(btn => btn.disabled = true);
+    
+    const statusDiv = document.getElementById('coinFlipStatus');
+    const isTeamMode = coinFlipData.isTeamMode;
+    if (statusDiv) {
+        statusDiv.textContent = isTeamMode 
+            ? `You chose ${side}! Opposing team gets the other side automatically...` 
+            : `You chose ${side}! Opponent gets the other side automatically...`;
+    }
+    
+    socket.emit('selectCoinSide', {
+        roomId: currentRoom.roomId,
+        side: side
+    });
+}
+
+function updateCoinFlipSelection(data) {
+    const player1Choice = document.getElementById('coinFlipPlayer1Choice');
+    const player2Choice = document.getElementById('coinFlipPlayer2Choice');
+    const player1Div = document.getElementById('coinFlipPlayer1');
+    const player2Div = document.getElementById('coinFlipPlayer2');
+    const statusDiv = document.getElementById('coinFlipStatus');
+    
+    const choiceText = data.side === 'heads' ? 'Heads' : 'Tails';
+    const autoText = data.autoSelected ? ' (Auto)' : '';
+    
+    if (data.isPlayer1) {
+        if (player1Choice) {
+            player1Choice.textContent = choiceText + autoText;
+            player1Choice.className = `player-choice ${data.side}`;
+        }
+        if (player1Div) player1Div.classList.add('chosen');
+    } else {
+        if (player2Choice) {
+            player2Choice.textContent = choiceText + autoText;
+            player2Choice.className = `player-choice ${data.side}`;
+        }
+        if (player2Div) player2Div.classList.add('chosen');
+    }
+    
+    if (statusDiv && coinFlipData) {
+        const p1Chosen = player1Div?.classList.contains('chosen');
+        const p2Chosen = player2Div?.classList.contains('chosen');
+        const isTeamMode = coinFlipData.isTeamMode;
+        
+        if (p1Chosen && p2Chosen) {
+            statusDiv.textContent = isTeamMode ? 'Both Team Leaders chose! Flipping coin...' : 'Both players chose! Flipping coin...';
+        } else if (p1Chosen) {
+            statusDiv.textContent = isTeamMode ? 'Team 1 Leader chose! Waiting for Team 2 Leader...' : 'Player 1 chose! Waiting for Player 2...';
+        } else if (p2Chosen) {
+            statusDiv.textContent = isTeamMode ? 'Team 2 Leader chose! Waiting for Team 1 Leader...' : 'Player 2 chose! Waiting for Player 1...';
+        }
+    }
+}
+
+function showCoinFlipResult(data) {
+    const selectionDiv = document.getElementById('coinFlipSelection');
+    const animationDiv = document.getElementById('coinFlipAnimation');
+    const winnerDiv = document.getElementById('coinFlipWinner');
+    const resultDiv = document.getElementById('coinFlipResult');
+    const counterDisplay = document.getElementById('coinCounterDisplay');
+    
+    if (selectionDiv) selectionDiv.classList.add('hidden');
+    if (animationDiv) animationDiv.classList.remove('hidden');
+    if (winnerDiv) winnerDiv.classList.add('hidden');
+    if (resultDiv) resultDiv.textContent = '';
+    
+    // Countdown sequence: 3, 2, 1, then HEADS/TAILS
+    const countdownNumbers = ['3', '2', '1'];
+    let currentIndex = 0;
+    
+    function showNextCount() {
+        if (currentIndex < countdownNumbers.length) {
+            // Show countdown number with animation
+            if (counterDisplay) {
+                counterDisplay.classList.remove('counting', 'result');
+                counterDisplay.textContent = countdownNumbers[currentIndex];
+                // Force reflow to restart animation
+                void counterDisplay.offsetWidth;
+                counterDisplay.classList.add('counting');
+            }
+            currentIndex++;
+            setTimeout(showNextCount, 1500); // 1.5 seconds between each number (slower)
+        } else {
+            // Show HEADS or TAILS result with slow reveal animation
+            if (counterDisplay) {
+                counterDisplay.classList.remove('counting');
+                const resultText = data.result === 'heads' ? 'HEADS' : 'TAILS';
+                counterDisplay.textContent = resultText;
+                // Force reflow to restart animation
+                void counterDisplay.offsetWidth;
+                counterDisplay.classList.add('result');
+            }
+            
+            if (resultDiv) {
+                const resultText = data.result === 'heads' ? 'HEADS!' : 'TAILS!';
+                resultDiv.textContent = resultText;
+            }
+            
+            // Show winner after a delay
+            setTimeout(() => {
+                if (winnerDiv) {
+                    winnerDiv.classList.remove('hidden');
+                    const winnerText = document.getElementById('coinFlipWinnerText');
+                    if (winnerText) {
+                        const isTeamMode = coinFlipData?.isTeamMode;
+                        if (isTeamMode) {
+                            const winnerTeam = data.winner.team === 'team1' ? 'Team 1' : 'Team 2';
+                            winnerText.textContent = `${winnerTeam} wins!`;
+                        } else {
+                            winnerText.textContent = `${data.winner.username} wins!`;
+                        }
+                    }
+                }
+                
+                // Highlight winner
+                const player1Div = document.getElementById('coinFlipPlayer1');
+                const player2Div = document.getElementById('coinFlipPlayer2');
+                
+                if (player1Div && player2Div) {
+                    if (data.winner.id === coinFlipData?.player1?.id) {
+                        player1Div.classList.add('winner');
+                    } else {
+                        player2Div.classList.add('winner');
+                    }
+                }
+            }, 2000);
+        }
+    }
+
+    showNextCount();
 }
 
 function submitCustomWord() {

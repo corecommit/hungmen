@@ -534,6 +534,52 @@
             </div>
         </div>
 
+        <!-- Coin Flip Modal -->
+        <div class="modal" id="coinFlipModal">
+            <div class="modal-content coin-flip-modal">
+                <h2 style="font-size: 2rem; margin-bottom: 10px;">Coin Flip</h2>
+                <p class="modal-description">Choose Heads or Tails! The winner gets to set the custom word.</p>
+                
+                <div id="coinFlipSelection" class="coin-flip-selection">
+                    <div class="coin-flip-players">
+                        <div class="coin-flip-player" id="coinFlipPlayer1">
+                            <div class="player-name" id="coinFlipPlayer1Name">Player 1</div>
+                            <div class="player-choice" id="coinFlipPlayer1Choice">Waiting...</div>
+                        </div>
+                        <div class="coin-flip-vs">VS</div>
+                        <div class="coin-flip-player" id="coinFlipPlayer2">
+                            <div class="player-name" id="coinFlipPlayer2Name">Player 2</div>
+                            <div class="player-choice" id="coinFlipPlayer2Choice">Waiting...</div>
+                        </div>
+                    </div>
+                    
+                    <div class="coin-flip-buttons" id="coinFlipButtons">
+                        <button class="btn btn-primary coin-btn" onclick="selectCoinSide('heads')">
+                            <span>Heads</span>
+                        </button>
+                        <button class="btn btn-secondary coin-btn" onclick="selectCoinSide('tails')">
+                            <span>Tails</span>
+                        </button>
+                    </div>
+                    
+                    <div class="coin-flip-status" id="coinFlipStatus">
+                        Waiting for both players to choose...
+                    </div>
+                </div>
+                
+                <div id="coinFlipAnimation" class="coin-flip-animation hidden">
+                    <div class="coin-flip-counter">
+                        <div class="counter-display" id="coinCounterDisplay">3</div>
+                    </div>
+                    <div class="coin-flip-result" id="coinFlipResult"></div>
+                </div>
+                
+                <div id="coinFlipWinner" class="coin-flip-winner hidden">
+                    <div class="winner-text" id="coinFlipWinnerText"></div>
+                </div>
+            </div>
+        </div>
+
         <!-- Waiting for Word Modal -->
         <div class="modal" id="waitingForWordModal">
             <div class="modal-content">

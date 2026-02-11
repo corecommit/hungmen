@@ -1,0 +1,32 @@
+{
+  "heajhvd": {
+    "username": "Heajhvd",
+    "firstLogin": "2026-02-11T04:03:38.200Z",
+    "lastLogin": "2026-02-11T04:04:26.511Z",
+    "stats": {
+      "wins": 0,
+      "losses": 0,
+      "gamesPlayed": 0
+    },
+    "avatar": null,
+    "totalPlayTime": 0,
+    "banned": false,
+    "banExpiry": null,
+    "banReason": null
+  },
+  "asdasd": {
+    "username": "asdasd",
+    "firstLogin": "2026-02-11T04:03:40.458Z",
+    "lastLogin": "2026-02-11T04:04:25.283Z",
+    "stats": {
+      "wins": 0,
+      "losses": 0,
+      "gamesPlayed": 0
+    },
+    "avatar": null,
+    "totalPlayTime": 0,
+    "banned": false,
+    "banExpiry": null,
+    "banReason": null
+  }
+}
