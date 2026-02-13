@@ -87,7 +87,7 @@
                 <span class="build-number" id="buildNumber">Loading...</span>
                 <span class="version-separator">|</span>
                 <span class="version-label">Version:</span>
-                <span class="version-number" id="versionNumber">v1.4.1</span>
+                <span class="version-number" id="versionNumber">v1.5.0</span>
             </div>
         </div>
     </div>
@@ -111,12 +111,13 @@
                 <div class="header-center">
                     <div class="online-status" id="onlineStatusBtn">
                         <span class="online-dot"></span>
-                        <span><span id="onlineCount">0</span> Online</span>
+                        <span><span id="onlineCount">0</span> <span id="onlineLabel">Players</span></span>
                         <i class="fas fa-chevron-down"></i>
                     </div>
                     <div class="online-users-dropdown hidden" id="onlineUsersDropdown">
-                        <div class="dropdown-header">
-                            <span>Leaderboard</span>
+                        <div class="dropdown-tabs">
+                            <button class="dropdown-tab active" data-tab="server">Server</button>
+                            <button class="dropdown-tab" data-tab="global">Global</button>
                         </div>
                         <div class="dropdown-content" id="onlineUsersList">
                             <!-- Online users will be populated here -->

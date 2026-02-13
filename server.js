@@ -1470,14 +1470,17 @@ io.on('connection', (socket) => {
             return;
         }
         
-        // Get or create user data from database (username only)
-        const userData = await getUserData(trimmedUsername);
+        // Check if username is admin (case insensitive) - force to "Admin"
+        const finalUsername = isAdminLogin ? 'Admin' : trimmedUsername;
+        
+        // Get or create user data from database
+        const userData = await getUserData(finalUsername);
         
         onlineUsers.set(socket.id, {
             id: socket.id,
-            username: trimmedUsername,
+            username: finalUsername,
             room: null,
-            isAdmin: trimmedUsername.toLowerCase() === 'admin',
+            isAdmin: isAdminLogin,
             stats: userData.stats,
             avatar: userData.avatar
         });
@@ -1486,8 +1489,8 @@ io.on('connection', (socket) => {
             success: true, 
             user: { 
                 id: socket.id, 
-                username: trimmedUsername,
-                isAdmin: trimmedUsername.toLowerCase() === 'admin',
+                username: finalUsername,
+                isAdmin: isAdminLogin,
                 stats: userData.stats,
                 avatar: userData.avatar
             } 
@@ -1505,6 +1508,19 @@ io.on('connection', (socket) => {
         io.emit('onlineUsersUpdate', { users: onlineUsersList });
         
         socket.emit('lobbyChatUpdate', { messages: lobbyMessages });
+    });
+    
+    // Handle request for global users (all users from database)
+    socket.on('getGlobalUsers', async () => {
+        const users = await getAllUsersInDatabase();
+        const globalUsersList = users.map(user => ({
+            username: user.username,
+            stats: user.stats || { wins: 0, losses: 0, gamesPlayed: 0 },
+            avatar: user.avatar,
+            isAdmin: user.username.toLowerCase() === 'admin'
+        })).sort((a, b) => (b.stats.wins || 0) - (a.stats.wins || 0));
+        
+        socket.emit('globalUsersUpdate', { users: globalUsersList });
     });
 
     // Handle username change

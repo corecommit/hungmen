@@ -938,6 +938,7 @@ body::before {
     max-height: 400px;
     overflow: hidden;
     z-index: 10001;
+    transition: var (--transition-normal);
     box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
     animation: fadeIn 0.2s ease;
 }
@@ -951,6 +952,38 @@ body::before {
     text-shadow: 0 0 30px rgba(255, 255, 255, 0.4);
     border-bottom: 1px solid var(--border-color);
     font-weight: 600;
+}
+
+.dropdown-tabs {
+    display: flex;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.dropdown-tab {
+    flex: 1;
+    padding: 12px 16px;
+    background: var(--bg-primary);
+    border: none;
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.dropdown-tab:first-child {
+    border-right: 1px solid var(--border-color);
+}
+
+.dropdown-tab:hover {
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+}
+
+.dropdown-tab.active {
+    background: var(--bg-secondary);
+    color: white;
+    border-bottom: 2px solid white;
 }
 
 .dropdown-content {
@@ -3794,8 +3827,8 @@ select option {
     
     .dropdown-header-names {
         grid-template-columns: 29px 1fr 50px 50px 45px 40px;
-        font-size: 0.65rem;
-        padding: 7px 10px;
+        font-size: 0.7rem;
+        padding: 8px 10px;
     }
     
     .header-right .user-menu {

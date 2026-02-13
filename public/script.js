@@ -30,6 +30,9 @@ let hintsRemaining = 5;
 let playerTeamMap = {};
 let currentGameMode = 'medium';
 let currentHintCount = 5;
+let currentLeaderboardTab = 'server';
+let onlineUsersData = [];
+let globalUsersData = [];
 let unreadCounts = {
     room: {
         global: 0,
@@ -52,8 +55,77 @@ let userStats = {
     totalGames: 0
 };
 
-// ── User Avatar (LocalStorage) ──
+// ─� User Avatar (LocalStorage) ──
 let userAvatar = null;
+
+// ── Leaderboard Functions (Global) ──
+function renderOnlineUsers(users) {
+    const dropdownList = document.getElementById('onlineUsersList');
+    if (!dropdownList) return;
+    
+    if (users.length === 0) {
+        dropdownList.innerHTML = '<div class="no-users-message">No users found</div>';
+        return;
+    }
+    
+    let html = `
+        <div class="dropdown-header-names">
+            <span></span>
+            <span>User</span>
+            <span>Wins</span>
+            <span>Losses</span>
+            <span>Games</span>
+            <span>Win%</span>
+        </div>
+    `;
+    
+    users.forEach(user => {
+        const stats = user.stats || { wins: 0, losses: 0, gamesPlayed: 0 };
+        const gamesPlayed = (parseInt(stats.wins) || 0) + (parseInt(stats.losses) || 0);
+        const winRate = gamesPlayed > 0 ? Math.round((stats.wins / gamesPlayed) * 100) : 0;
+        const adminBadge = user.isAdmin ? '<span class="admin-badge" title="Admin"><i class="fas fa-hammer"></i></span>' : '<span class="admin-badge empty"></span>';
+        html += `
+            <div class="online-user-item">
+                ${adminBadge}
+                <span class="user-name" data-username="${user.username}" title="Click to inspect">${user.username}</span>
+                <span class="user-stat wins">${stats.wins}</span>
+                <span class="user-stat losses">${stats.losses}</span>
+                <span class="user-stat">${gamesPlayed}</span>
+                <span class="user-stat winrate">${winRate}%</span>
+            </div>
+        `;
+    });
+    
+    dropdownList.innerHTML = html;
+    
+    dropdownList.querySelectorAll('.user-name').forEach(el => {
+        el.addEventListener('click', (e) => {
+            const username = e.target.dataset.username;
+            if (username) {
+                socket.emit('inspectUserProfile', { username });
+            }
+        });
+    });
+}
+
+function switchLeaderboardTab(tabName) {
+    currentLeaderboardTab = tabName;
+    
+    document.querySelectorAll('.dropdown-tab').forEach(t => {
+        t.classList.toggle('active', t.dataset.tab === tabName);
+    });
+    
+    if (typeof renderOnlineUsers === 'function') {
+        if (tabName === 'server') {
+            renderOnlineUsers(onlineUsersData);
+        } else {
+            if (globalUsersData.length === 0) {
+                socket.emit('getGlobalUsers');
+            }
+            renderOnlineUsers(globalUsersData);
+        }
+    }
+}
 
 // ── DOM Elements ──
 let authScreen, gameScreen, authError;
@@ -1800,6 +1872,12 @@ function setupSocketListeners(username, connectionTimeout, adminPassword = null)
     
     socket.on('onlineCount', (count) => {
         document.getElementById('onlineCount').textContent = count;
+        
+        const onlineLabel = document.getElementById('onlineLabel');
+        if (onlineLabel) {
+            onlineLabel.textContent = count === 1 ? 'Player' : 'Players';
+        }
+        
         const globalChatOnline = document.getElementById('globalChatOnline');
         if (globalChatOnline) {
             globalChatOnline.textContent = count;
@@ -1807,59 +1885,19 @@ function setupSocketListeners(username, connectionTimeout, adminPassword = null)
     });
     
     socket.on('onlineUsersUpdate', (data) => {
-        const dropdownList = document.getElementById('onlineUsersList');
-        const dropdownCount = document.getElementById('dropdownOnlineCount');
+        onlineUsersData = data.users;
         
-        if (!dropdownList) return;
-        
-        if (dropdownCount) {
-            dropdownCount.textContent = data.users.length;
+        if (typeof renderOnlineUsers === 'function' && currentLeaderboardTab === 'server') {
+            renderOnlineUsers(onlineUsersData);
         }
+    });
+    
+    socket.on('globalUsersUpdate', (data) => {
+        globalUsersData = data.users;
         
-        if (data.users.length === 0) {
-            dropdownList.innerHTML = '<div class="no-users-message">No users online</div>';
-            return;
+        if (typeof renderOnlineUsers === 'function' && currentLeaderboardTab === 'global') {
+            renderOnlineUsers(globalUsersData);
         }
-        
-        let html = `
-            <div class="dropdown-header-names">
-                <span></span>
-                <span>User</span>
-                <span>Wins</span>
-                <span>Losses</span>
-                <span>Games</span>
-                <span>Win%</span>
-            </div>
-        `;
-        
-        data.users.forEach(user => {
-            const stats = user.stats || { wins: 0, losses: 0, gamesPlayed: 0 };
-            const gamesPlayed = (parseInt(stats.wins) || 0) + (parseInt(stats.losses) || 0);
-            const winRate = gamesPlayed > 0 ? Math.round((stats.wins / gamesPlayed) * 100) : 0;
-            const adminBadge = user.isAdmin ? '<span class="admin-badge" title="Admin"><i class="fas fa-hammer"></i></span>' : '<span class="admin-badge empty"></span>';
-            html += `
-                <div class="online-user-item">
-                    ${adminBadge}
-                    <span class="user-name" data-username="${user.username}" title="Click to inspect">${user.username}</span>
-                    <span class="user-stat wins">${stats.wins}</span>
-                    <span class="user-stat losses">${stats.losses}</span>
-                    <span class="user-stat">${gamesPlayed}</span>
-                    <span class="user-stat winrate">${winRate}%</span>
-                </div>
-            `;
-        });
-        
-        dropdownList.innerHTML = html;
-        
-        // Add click handlers for user inspection
-        dropdownList.querySelectorAll('.user-name').forEach(el => {
-            el.addEventListener('click', (e) => {
-                const username = e.target.dataset.username;
-                if (username) {
-                    socket.emit('inspectUserProfile', { username });
-                }
-            });
-        });
     });
     
     socket.on('lobbyChatUpdate', (data) => {
@@ -3826,7 +3864,6 @@ function initEventListeners() {
     
     document.getElementById('createRoomBtn').addEventListener('click', () => showModal('createRoomModal'));
     
-    // Online users dropdown toggle
     const onlineStatusBtn = document.getElementById('onlineStatusBtn');
     const onlineUsersDropdown = document.getElementById('onlineUsersDropdown');
     
@@ -3835,6 +3872,11 @@ function initEventListeners() {
             e.stopPropagation();
             onlineStatusBtn.classList.toggle('active');
             onlineUsersDropdown.classList.toggle('hidden');
+            
+            // Reset to server tab when opening dropdown
+            if (!onlineUsersDropdown.classList.contains('hidden')) {
+                switchLeaderboardTab('server');
+            }
         });
         
         // Close dropdown when clicking outside
@@ -3843,6 +3885,15 @@ function initEventListeners() {
                 onlineStatusBtn.classList.remove('active');
                 onlineUsersDropdown.classList.add('hidden');
             }
+        });
+        
+        // Tab click handlers
+        document.querySelectorAll('.dropdown-tab').forEach(tab => {
+            tab.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const tabName = e.target.dataset.tab;
+                switchLeaderboardTab(tabName);
+            });
         });
     }
     
