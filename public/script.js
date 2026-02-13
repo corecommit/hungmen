@@ -180,6 +180,12 @@ function showAdminPanel() {
                 <button onclick="refreshAllRooms()" class="admin-btn">
                     <i class="fas fa-sync-alt"></i> Refresh All Rooms
                 </button>
+                <button onclick="showMaintenanceModal()" class="admin-btn" style="background: rgba(251, 191, 36, 0.2); color: #fbbf24;">
+                    <i class="fas fa-wrench"></i> Maintenance Mode
+                </button>
+                <button onclick="showBackupModal()" class="admin-btn">
+                    <i class="fas fa-hdd"></i> Database Backup
+                </button>
             </div>
         </div>
     `;
@@ -192,6 +198,148 @@ function closeAdminPanel() {
     if (panel) {
         panel.remove();
     }
+}
+
+// Maintenance Mode Modal
+function showMaintenanceModal() {
+    if (!isAdmin()) return;
+    
+    const modal = document.createElement('div');
+    modal.className = 'modal admin-modal';
+    modal.id = 'maintenanceModal';
+    modal.innerHTML = `
+        <div class="modal-content">
+            <div class="modal-icon"><i class="fas fa-wrench" style="color: var(--warning);"></i></div>
+            <h2>Maintenance Mode</h2>
+            <p style="color: var(--text-secondary); margin-bottom: 20px;">
+                When enabled, only admins can login. All other users will see a maintenance message.
+            </p>
+            
+            <div class="form-group">
+                <label>Maintenance Message</label>
+                <input type="text" id="maintenanceMessageInput" 
+                    placeholder="Website is under maintenance. Please try again later."
+                    style="width: 100%; padding: 12px; border: 2px solid var(--border-color); border-radius: 8px; background: var(--bg-input); color: var(--text-primary);">
+            </div>
+            
+            <div class="modal-actions">
+                <button type="button" class="btn btn-secondary" onclick="hideModal('maintenanceModal')">Cancel</button>
+                <button type="button" class="btn btn-warning" onclick="toggleMaintenanceMode(true)">
+                    <i class="fas fa-power-off"></i> Enable Maintenance
+                </button>
+                <button type="button" class="btn btn-success" onclick="toggleMaintenanceMode(false)">
+                    <i class="fas fa-check"></i> Disable Maintenance
+                </button>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    showModal('maintenanceModal');
+    
+    // Get current status
+    socket.emit('adminGetMaintenanceStatus');
+}
+
+function toggleMaintenanceMode(enabled) {
+    const message = document.getElementById('maintenanceMessageInput')?.value || '';
+    socket.emit('adminToggleMaintenance', { enabled, message });
+    hideModal('maintenanceModal');
+}
+
+// Backup Management Modal
+function showBackupModal() {
+    if (!isAdmin()) return;
+    
+    const modal = document.createElement('div');
+    modal.className = 'modal admin-modal';
+    modal.id = 'backupModal';
+    modal.innerHTML = `
+        <div class="modal-content" style="max-width: 600px;">
+            <div class="modal-icon"><i class="fas fa-hdd" style="color: var(--info);"></i></div>
+            <h2>Database Backup</h2>
+            <p style="color: var(--text-secondary); margin-bottom: 20px;">
+                Create backups of user data before updates. Backups are stored locally.
+            </p>
+            
+            <div class="modal-actions" style="margin-bottom: 20px;">
+                <button type="button" class="btn btn-primary" onclick="createBackup()">
+                    <i class="fas fa-save"></i> Create New Backup
+                </button>
+                <button type="button" class="btn btn-secondary" onclick="loadBackupList()">
+                    <i class="fas fa-list"></i> Refresh List
+                </button>
+            </div>
+            
+            <div id="backupList" style="max-height: 300px; overflow-y: auto;">
+                <p style="color: var(--text-secondary); text-align: center;">Loading backups...</p>
+            </div>
+            
+            <div class="modal-actions">
+                <button type="button" class="btn btn-secondary" onclick="hideModal('backupModal')">Close</button>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    showModal('backupModal');
+    loadBackupList();
+}
+
+function createBackup() {
+    socket.emit('adminCreateBackup');
+}
+
+function loadBackupList() {
+    socket.emit('adminListBackups');
+}
+
+function displayBackupList(backups) {
+    const listDiv = document.getElementById('backupList');
+    if (!listDiv) return;
+    
+    if (backups.length === 0) {
+        listDiv.innerHTML = '<p style="color: var(--text-secondary); text-align: center;">No backups found</p>';
+        return;
+    }
+    
+    let html = '<div style="display: flex; flex-direction: column; gap: 10px;">';
+    backups.forEach(backup => {
+        const date = new Date(backup.created).toLocaleString();
+        const size = (backup.size / 1024).toFixed(2) + ' KB';
+        html += `
+            <div style="background: var(--bg-secondary); padding: 15px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <strong>${backup.filename}</strong>
+                    <br><small style="color: var(--text-secondary);">${date} • ${size}</small>
+                </div>
+                <div style="display: flex; gap: 8px;">
+                    <button class="btn btn-success" style="padding: 8px 16px; font-size: 0.85rem;" onclick="restoreBackup('${backup.filename}')">
+                        <i class="fas fa-undo"></i> Restore
+                    </button>
+                    <button class="btn btn-danger" style="padding: 8px 16px; font-size: 0.85rem;" onclick="deleteBackup('${backup.filename}')">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
+            </div>
+        `;
+    });
+    html += '</div>';
+    listDiv.innerHTML = html;
+}
+
+function restoreBackup(filename) {
+    if (!confirm(`Are you sure you want to restore from ${filename}? Current data will be backed up first.`)) {
+        return;
+    }
+    socket.emit('adminRestoreBackup', { filename });
+}
+
+function deleteBackup(filename) {
+    if (!confirm(`Are you sure you want to delete ${filename}?`)) {
+        return;
+    }
+    socket.emit('adminDeleteBackup', { filename });
 }
 
 function showUserDatabaseModal() {
@@ -1504,6 +1652,25 @@ function setupSocketListeners(username, connectionTimeout, adminPassword = null)
         }
     });
 
+    // Maintenance mode status
+    socket.on('maintenanceStatus', (data) => {
+        const input = document.getElementById('maintenanceMessageInput');
+        if (input && data.message) {
+            input.value = data.message;
+        }
+        log('Maintenance mode:', data.enabled ? 'ENABLED' : 'disabled');
+    });
+
+    // Maintenance mode enabled notification
+    socket.on('maintenanceModeEnabled', (data) => {
+        showNotification(data.message, 'warning', 5000);
+    });
+
+    // Backup list
+    socket.on('adminBackupList', (data) => {
+        displayBackupList(data.backups);
+    });
+
     // User profile inspection handler
     socket.on('userProfileData', (data) => {
         displayUserProfileModal(data);
@@ -2545,20 +2712,16 @@ function updateCoinFlipSelection(data) {
     const player2Div = document.getElementById('coinFlipPlayer2');
     const statusDiv = document.getElementById('coinFlipStatus');
     
-    const choiceText = data.side === 'heads' ? 'Heads' : 'Tails';
-    const autoText = data.autoSelected ? ' (Auto)' : '';
-    
-    if (data.isPlayer1) {
-        if (player1Choice) {
-            player1Choice.textContent = choiceText + autoText;
-            player1Choice.className = `player-choice ${data.side}`;
-        }
+    // Update both players' choices at once
+    if (data.player1Choice && player1Choice) {
+        player1Choice.textContent = data.player1Choice === 'heads' ? 'Heads' : 'Tails';
+        player1Choice.className = `player-choice ${data.player1Choice}`;
         if (player1Div) player1Div.classList.add('chosen');
-    } else {
-        if (player2Choice) {
-            player2Choice.textContent = choiceText + autoText;
-            player2Choice.className = `player-choice ${data.side}`;
-        }
+    }
+    
+    if (data.player2Choice && player2Choice) {
+        player2Choice.textContent = data.player2Choice === 'heads' ? 'Heads' : 'Tails';
+        player2Choice.className = `player-choice ${data.player2Choice}`;
         if (player2Div) player2Div.classList.add('chosen');
     }
     
@@ -2569,10 +2732,6 @@ function updateCoinFlipSelection(data) {
         
         if (p1Chosen && p2Chosen) {
             statusDiv.textContent = isTeamMode ? 'Both Team Leaders chose! Flipping coin...' : 'Both players chose! Flipping coin...';
-        } else if (p1Chosen) {
-            statusDiv.textContent = isTeamMode ? 'Team 1 Leader chose! Waiting for Team 2 Leader...' : 'Player 1 chose! Waiting for Player 2...';
-        } else if (p2Chosen) {
-            statusDiv.textContent = isTeamMode ? 'Team 2 Leader chose! Waiting for Team 1 Leader...' : 'Player 2 chose! Waiting for Player 1...';
         }
     }
 }

@@ -5,6 +5,8 @@ const cors = require('cors');
 const { v4: uuidv4 } = require('uuid');
 const path = require('path');
 const { execSync } = require('child_process');
+const mongoose = require('mongoose');
+const User = require('./models/User');
 
 const app = express();
 const server = http.createServer(app);
@@ -123,277 +125,476 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
+// ═══════════════════════════════════════════════════════════════════════
+// MONGODB CONNECTION
+// ═══════════════════════════════════════════════════════════════════════
+
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/hangman';
+
+async function connectToMongoDB() {
+    try {
+        console.log('[MONGODB] Connecting to MongoDB...');
+        await mongoose.connect(MONGODB_URI, {
+            useNewUrlParser: true,
+            useUnifiedTopology: true
+        });
+        console.log('[MONGODB] Connected to MongoDB successfully!');
+        return true;
+    } catch (error) {
+        console.error('[MONGODB] Failed to connect:', error.message);
+        console.log('[MONGODB] Falling back to in-memory storage (data will be lost on restart)');
+        return false;
+    }
+}
+
+// Connect to MongoDB
+connectToMongoDB();
+
 let rooms = new Map();
 let onlineUsers = new Map();
 let lobbyMessages = [];
 
 // ═══════════════════════════════════════════════════════════════════════
-// USER DATABASE - Persistent Storage
+// MAINTENANCE MODE
+// ═══════════════════════════════════════════════════════════════════════
+
+let maintenanceMode = false;
+let maintenanceMessage = 'Website is under maintenance. Please try again later.';
+
+function isMaintenanceMode() {
+    return maintenanceMode;
+}
+
+function setMaintenanceMode(enabled, message = null) {
+    maintenanceMode = enabled;
+    if (message) {
+        maintenanceMessage = message;
+    }
+    console.log(`[MAINTENANCE] Maintenance mode ${enabled ? 'ENABLED' : 'DISABLED'}`);
+    if (enabled) {
+        console.log(`[MAINTENANCE] Message: ${maintenanceMessage}`);
+    }
+    return maintenanceMode;
+}
+
+function getMaintenanceMessage() {
+    return maintenanceMessage;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// USER DATABASE - MongoDB Storage
+// ═══════════════════════════════════════════════════════════════════════
+
+// Get or create user entry (MongoDB version)
+async function getUserData(username) {
+    try {
+        const key = username.toLowerCase();
+        let user = await User.findOne({ username: key });
+        
+        if (!user) {
+            // Create new user
+            user = new User({
+                username: key,
+                displayName: username,
+                stats: {
+                    wins: 0,
+                    losses: 0,
+                    gamesPlayed: 0
+                }
+            });
+            await user.save();
+            console.log(`[MONGODB] Created new user: ${key}`);
+        } else {
+            // Update last login
+            user.lastLogin = new Date();
+            await user.save();
+        }
+        
+        return user;
+    } catch (error) {
+        console.error('[MONGODB] Error in getUserData:', error);
+        // Return a default user object if database fails
+        return {
+            username: username.toLowerCase(),
+            displayName: username,
+            stats: { wins: 0, losses: 0, gamesPlayed: 0 },
+            avatar: null,
+            banned: false,
+            banExpiry: null,
+            banReason: null
+        };
+    }
+}
+
+// Get all users for admin panel
+async function getAllUsersInDatabase() {
+    try {
+        const users = await User.find({}).sort({ lastLogin: -1 });
+        return users.map(user => ({
+            username: user.displayName,
+            stats: user.stats,
+            avatar: user.avatar,
+            lastLogin: user.lastLogin,
+            banned: user.banned,
+            banExpiry: user.banExpiry,
+            banReason: user.banReason
+        }));
+    } catch (error) {
+        console.error('[MONGODB] Error getting all users:', error);
+        return [];
+    }
+}
+
+// Reload user database (for admin refresh)
+async function reloadUserDatabaseFromFile() {
+    console.log('[MONGODB] Reload not needed with MongoDB - data is always current');
+    return true;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// USER DATABASE BACKUP SYSTEM (Export/Import for MongoDB)
 // ═══════════════════════════════════════════════════════════════════════
 
 const fs = require('fs');
-const USER_DB_FILE = path.join(__dirname, 'user_database.json');
+const BACKUP_DIR = path.join(__dirname, 'backups');
 
-// Load user database from file
-function loadUserDatabase() {
-    try {
-        if (fs.existsSync(USER_DB_FILE)) {
-            const data = fs.readFileSync(USER_DB_FILE, 'utf8');
-            // Check if file is empty
-            if (!data || data.trim() === '') {
-                console.log('User database file is empty, initializing new database');
-                return {};
-            }
-            return JSON.parse(data);
-        }
-    } catch (error) {
-        console.error('Error loading user database:', error);
-        console.log('Creating new database file...');
-        // Backup corrupted file
-        try {
-            if (fs.existsSync(USER_DB_FILE)) {
-                fs.renameSync(USER_DB_FILE, USER_DB_FILE + '.corrupted.' + Date.now());
-                console.log('Corrupted database backed up');
-            }
-        } catch (backupError) {
-            console.error('Failed to backup corrupted database:', backupError);
-        }
-    }
-    return {};
-}
-
-// Save user database to file
-function saveUserDatabase(database) {
-    try {
-        fs.writeFileSync(USER_DB_FILE, JSON.stringify(database, null, 2));
-        console.log(`[DB SAVE] Database saved with ${Object.keys(database).length} users`);
-    } catch (error) {
-        console.error('Error saving user database:', error);
+// Ensure backup directory exists
+function ensureBackupDir() {
+    if (!fs.existsSync(BACKUP_DIR)) {
+        fs.mkdirSync(BACKUP_DIR, { recursive: true });
+        console.log('[BACKUP] Created backup directory');
     }
 }
 
-// NEW: Reload user database from file (for when file is edited externally)
-function reloadUserDatabaseFromFile() {
+// Create a backup of the user database
+async function createDatabaseBackup() {
     try {
-        if (fs.existsSync(USER_DB_FILE)) {
-            const data = fs.readFileSync(USER_DB_FILE, 'utf8');
-            const freshDatabase = JSON.parse(data);
-            const oldCount = Object.keys(userDatabase).length;
-            userDatabase = freshDatabase;
-            const newCount = Object.keys(userDatabase).length;
-            console.log(`[DB RELOAD] User database reloaded from file: ${oldCount} -> ${newCount} users`);
-            return true;
-        }
+        ensureBackupDir();
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const backupFile = path.join(BACKUP_DIR, `user_database_backup_${timestamp}.json`);
+        
+        const users = await User.find({});
+        const backupData = users.map(user => ({
+            username: user.username,
+            displayName: user.displayName,
+            firstLogin: user.firstLogin,
+            lastLogin: user.lastLogin,
+            stats: user.stats,
+            avatar: user.avatar,
+            totalPlayTime: user.totalPlayTime,
+            banned: user.banned,
+            banExpiry: user.banExpiry,
+            banReason: user.banReason
+        }));
+        
+        fs.writeFileSync(backupFile, JSON.stringify(backupData, null, 2));
+        console.log(`[BACKUP] Database backup created: ${backupFile}`);
+        return { success: true, file: backupFile, timestamp: timestamp };
     } catch (error) {
-        console.error('[DB RELOAD] Error reloading user database:', error);
+        console.error('[BACKUP] Error creating backup:', error);
+        return { success: false, error: error.message };
     }
-    return false;
 }
 
-// Initialize user database
-let userDatabase = loadUserDatabase();
-
-// Get or create user entry (keyed by username ONLY)
-function getUserData(username) {
-    const key = username.toLowerCase();
-    if (!userDatabase[key]) {
-        userDatabase[key] = {
-            username: username,
-            firstLogin: new Date().toISOString(),
-            lastLogin: new Date().toISOString(),
-            stats: {
-                wins: 0,
-                losses: 0,
-                gamesPlayed: 0
-            },
-            avatar: null,
-            totalPlayTime: 0, // in seconds
-            banned: false,
-            banExpiry: null, // null = permanent, ISO date = temporary
-            banReason: null
-        };
-        saveUserDatabase(userDatabase);
-    } else {
-        // Ensure ban fields exist for existing users
-        if (userDatabase[key].banned === undefined) {
-            userDatabase[key].banned = false;
-            userDatabase[key].banExpiry = null;
-            userDatabase[key].banReason = null;
-        }
-        userDatabase[key].lastLogin = new Date().toISOString();
-        saveUserDatabase(userDatabase);
+// Get list of all backups
+function getBackupList() {
+    try {
+        ensureBackupDir();
+        const files = fs.readdirSync(BACKUP_DIR);
+        const backups = files
+            .filter(f => f.startsWith('user_database_backup_') && f.endsWith('.json'))
+            .map(f => {
+                const stat = fs.statSync(path.join(BACKUP_DIR, f));
+                return {
+                    filename: f,
+                    created: stat.mtime,
+                    size: stat.size
+                };
+            })
+            .sort((a, b) => b.created - a.created);
+        return backups;
+    } catch (error) {
+        console.error('[BACKUP] Error listing backups:', error);
+        return [];
     }
-    return userDatabase[key];
+}
+
+// Restore from a backup file
+async function restoreFromBackup(filename) {
+    try {
+        const backupPath = path.join(BACKUP_DIR, filename);
+        if (!fs.existsSync(backupPath)) {
+            return { success: false, message: 'Backup file not found' };
+        }
+        
+        // Create backup of current database before restoring
+        await createDatabaseBackup();
+        
+        const data = fs.readFileSync(backupPath, 'utf8');
+        const backupData = JSON.parse(data);
+        
+        // Clear existing users and restore from backup
+        await User.deleteMany({});
+        
+        for (const userData of backupData) {
+            const user = new User(userData);
+            await user.save();
+        }
+        
+        console.log(`[BACKUP] Database restored from: ${filename}`);
+        return { success: true, message: `Database restored from ${filename}`, userCount: backupData.length };
+    } catch (error) {
+        console.error('[BACKUP] Error restoring backup:', error);
+        return { success: false, message: error.message };
+    }
+}
+
+// Delete a backup file
+function deleteBackup(filename) {
+    try {
+        const backupPath = path.join(BACKUP_DIR, filename);
+        if (!fs.existsSync(backupPath)) {
+            return { success: false, message: 'Backup file not found' };
+        }
+        
+        fs.unlinkSync(backupPath);
+        console.log(`[BACKUP] Deleted backup: ${filename}`);
+        return { success: true, message: `Backup ${filename} deleted` };
+    } catch (error) {
+        console.error('[BACKUP] Error deleting backup:', error);
+        return { success: false, message: error.message };
+    }
 }
 
 // Check if user is currently banned
-function isUserBanned(username) {
-    const key = username.toLowerCase();
-    const user = userDatabase[key];
-    if (!user || !user.banned) return { banned: false };
-    
-    // Check if temporary ban has expired
-    if (user.banExpiry) {
-        const expiryDate = new Date(user.banExpiry);
-        if (expiryDate <= new Date()) {
-            // Ban expired, auto-unban
-            user.banned = false;
-            user.banExpiry = null;
-            user.banReason = null;
-            saveUserDatabase(userDatabase);
-            return { banned: false };
+async function isUserBanned(username) {
+    try {
+        const key = username.toLowerCase();
+        const user = await User.findOne({ username: key });
+        
+        if (!user || !user.banned) return { banned: false };
+        
+        // Check if temporary ban has expired
+        if (user.banExpiry) {
+            const expiryDate = new Date(user.banExpiry);
+            if (expiryDate <= new Date()) {
+                // Ban expired, auto-unban
+                user.banned = false;
+                user.banExpiry = null;
+                user.banReason = null;
+                await user.save();
+                return { banned: false };
+            }
+            return { 
+                banned: true, 
+                expiry: user.banExpiry, 
+                reason: user.banReason,
+                isPermanent: false
+            };
         }
+        
+        // Permanent ban
         return { 
             banned: true, 
-            expiry: user.banExpiry, 
+            expiry: null, 
             reason: user.banReason,
-            isPermanent: false
+            isPermanent: true
         };
+    } catch (error) {
+        console.error('[MONGODB] Error in isUserBanned:', error);
+        return { banned: false };
     }
-    
-    // Permanent ban
-    return { 
-        banned: true, 
-        expiry: null, 
-        reason: user.banReason,
-        isPermanent: true
-    };
 }
 
 // Ban user
-function banUser(username, duration = null, reason = 'Banned by admin') {
-    const key = username.toLowerCase();
-    console.log(`[DB BAN] Attempting to ban user: ${username} (key: ${key})`);
-    if (!userDatabase[key]) {
-        console.log(`[DB BAN] User not found: ${username}`);
+async function banUser(username, duration = null, reason = 'Banned by admin') {
+    try {
+        const key = username.toLowerCase();
+        console.log(`[MONGODB BAN] Attempting to ban user: ${username}`);
+        
+        const user = await User.findOne({ username: key });
+        if (!user) {
+            console.log(`[MONGODB BAN] User not found: ${username}`);
+            return false;
+        }
+        
+        user.banned = true;
+        user.banReason = reason;
+        
+        if (duration && duration > 0) {
+            // Temporary ban - calculate expiry
+            const expiry = new Date();
+            expiry.setHours(expiry.getHours() + parseInt(duration));
+            user.banExpiry = expiry;
+            console.log(`[MONGODB BAN] Temporary ban for ${username}, expires: ${expiry}`);
+        } else {
+            // Permanent ban
+            user.banExpiry = null;
+            console.log(`[MONGODB BAN] Permanent ban for ${username}`);
+        }
+        
+        await user.save();
+        console.log(`[MONGODB BAN] Successfully banned user: ${username}`);
+        return true;
+    } catch (error) {
+        console.error('[MONGODB] Error in banUser:', error);
         return false;
     }
-    
-    userDatabase[key].banned = true;
-    userDatabase[key].banReason = reason;
-    
-    if (duration && duration > 0) {
-        // Temporary ban - calculate expiry
-        const expiry = new Date();
-        expiry.setHours(expiry.getHours() + parseInt(duration));
-        userDatabase[key].banExpiry = expiry.toISOString();
-        console.log(`[DB BAN] Temporary ban for ${username}, expires: ${userDatabase[key].banExpiry}`);
-    } else {
-        // Permanent ban
-        userDatabase[key].banExpiry = null;
-        console.log(`[DB BAN] Permanent ban for ${username}`);
-    }
-    
-    saveUserDatabase(userDatabase);
-    console.log(`[DB BAN] Successfully banned user: ${username}`);
-    return true;
 }
 
 // Unban user
-function unbanUser(username) {
-    const key = username.toLowerCase();
-    console.log(`[DB UNBAN] Attempting to unban user: ${username} (key: ${key})`);
-    if (!userDatabase[key]) {
-        console.log(`[DB UNBAN] User not found: ${username}`);
+async function unbanUser(username) {
+    try {
+        const key = username.toLowerCase();
+        console.log(`[MONGODB UNBAN] Attempting to unban user: ${username}`);
+        
+        const user = await User.findOne({ username: key });
+        if (!user) {
+            console.log(`[MONGODB UNBAN] User not found: ${username}`);
+            return false;
+        }
+        
+        user.banned = false;
+        user.banExpiry = null;
+        user.banReason = null;
+        await user.save();
+        console.log(`[MONGODB UNBAN] Successfully unbanned user: ${username}`);
+        return true;
+    } catch (error) {
+        console.error('[MONGODB] Error in unbanUser:', error);
         return false;
     }
-    
-    userDatabase[key].banned = false;
-    userDatabase[key].banExpiry = null;
-    userDatabase[key].banReason = null;
-    saveUserDatabase(userDatabase);
-    console.log(`[DB UNBAN] Successfully unbanned user: ${username}`);
-    return true;
 }
 
 // Update user stats (incremental)
-function updateUserStats(username, result) {
-    const key = username.toLowerCase();
-    if (userDatabase[key]) {
-        userDatabase[key].stats.gamesPlayed++;
-        if (result === 'win') {
-            userDatabase[key].stats.wins++;
-        } else if (result === 'loss') {
-            userDatabase[key].stats.losses++;
+async function updateUserStats(username, result) {
+    try {
+        const key = username.toLowerCase();
+        const user = await User.findOne({ username: key });
+        
+        if (user) {
+            user.stats.gamesPlayed++;
+            if (result === 'win') {
+                user.stats.wins++;
+            } else if (result === 'loss') {
+                user.stats.losses++;
+            }
+            await user.save();
         }
-        saveUserDatabase(userDatabase);
+    } catch (error) {
+        console.error('[MONGODB] Error in updateUserStats:', error);
     }
 }
 
 // Set user stats directly (for admin editing)
-function setUserStats(username, stats) {
-    const key = username.toLowerCase();
-    if (userDatabase[key]) {
-        userDatabase[key].stats = {
-            wins: parseInt(stats.wins) || 0,
-            losses: parseInt(stats.losses) || 0,
-            gamesPlayed: parseInt(stats.gamesPlayed) || 0
-        };
-        saveUserDatabase(userDatabase);
-        return true;
+async function setUserStats(username, stats) {
+    try {
+        const key = username.toLowerCase();
+        const user = await User.findOne({ username: key });
+        
+        if (user) {
+            user.stats = {
+                wins: parseInt(stats.wins) || 0,
+                losses: parseInt(stats.losses) || 0,
+                gamesPlayed: parseInt(stats.gamesPlayed) || 0
+            };
+            await user.save();
+            return true;
+        }
+        return false;
+    } catch (error) {
+        console.error('[MONGODB] Error in setUserStats:', error);
+        return false;
     }
-    return false;
 }
 
 // Reload user stats from database (for live updates)
-function reloadUserStats(username) {
-    const key = username.toLowerCase();
-    if (userDatabase[key]) {
-        return userDatabase[key].stats;
+async function reloadUserStats(username) {
+    try {
+        const key = username.toLowerCase();
+        const user = await User.findOne({ username: key });
+        
+        if (user) {
+            return user.stats;
+        }
+        return null;
+    } catch (error) {
+        console.error('[MONGODB] Error in reloadUserStats:', error);
+        return null;
     }
-    return null;
 }
 
 // Update user avatar
-function updateUserAvatar(username, avatarData) {
-    const key = username.toLowerCase();
-    if (userDatabase[key]) {
-        userDatabase[key].avatar = avatarData;
-        saveUserDatabase(userDatabase);
+async function updateUserAvatar(username, avatarData) {
+    try {
+        const key = username.toLowerCase();
+        const user = await User.findOne({ username: key });
+
+        if (user) {
+            user.avatar = avatarData;
+            await user.save();
+        }
+    } catch (error) {
+        console.error('[MONGODB] Error in updateUserAvatar:', error);
     }
 }
 
 // Delete user from database
-function deleteUser(username) {
-    const key = username.toLowerCase();
-    console.log(`[DB DELETE] Attempting to delete user: ${username} (key: ${key})`);
-    console.log(`[DB DELETE] Available keys:`, Object.keys(userDatabase));
-    if (userDatabase[key]) {
-        delete userDatabase[key];
-        saveUserDatabase(userDatabase);
-        console.log(`[DB DELETE] Successfully deleted user: ${username}`);
-        return true;
+async function deleteUser(username) {
+    try {
+        const key = username.toLowerCase();
+        console.log(`[MONGODB DELETE] Attempting to delete user: ${username}`);
+        
+        const result = await User.deleteOne({ username: key });
+        
+        if (result.deletedCount > 0) {
+            console.log(`[MONGODB DELETE] Successfully deleted user: ${username}`);
+            return true;
+        }
+        console.log(`[MONGODB DELETE] User not found: ${username}`);
+        return false;
+    } catch (error) {
+        console.error('[MONGODB] Error in deleteUser:', error);
+        return false;
     }
-    console.log(`[DB DELETE] User not found: ${username}`);
-    return false;
 }
 
 // Delete all users from database (admin only)
-function deleteAllUsers() {
-    userDatabase = {};
-    saveUserDatabase(userDatabase);
-    return true;
+async function deleteAllUsers() {
+    try {
+        await User.deleteMany({});
+        console.log('[MONGODB] All users deleted');
+        return true;
+    } catch (error) {
+        console.error('[MONGODB] Error in deleteAllUsers:', error);
+        return false;
+    }
 }
 
 // Get all users in database
-function getAllUsersInDatabase() {
-    return Object.entries(userDatabase).map(([key, data]) => {
-        const isBanned = data.banned || false;
-        const banInfo = isBanned ? isUserBanned(data.username) : null;
-        
-        return {
-            key: key,
-            username: data.username,
-            firstLogin: data.firstLogin,
-            lastLogin: data.lastLogin,
-            stats: data.stats,
-            hasAvatar: !!data.avatar,
-            banned: isBanned,
-            isPermanent: isBanned ? banInfo.isPermanent : false,
-            banExpiry: isBanned ? data.banExpiry : null,
-            banReason: isBanned ? data.banReason : null
-        };
-    });
+async function getAllUsersInDatabase() {
+    try {
+        const users = await User.find({}).sort({ lastLogin: -1 });
+        return users.map(user => {
+            const isBanned = user.banned || false;
+            
+            return {
+                key: user.username,
+                username: user.displayName,
+                firstLogin: user.firstLogin,
+                lastLogin: user.lastLogin,
+                stats: user.stats,
+                hasAvatar: !!user.avatar,
+                banned: isBanned,
+                isPermanent: isBanned ? !user.banExpiry : false,
+                banExpiry: isBanned ? user.banExpiry : null,
+                banReason: isBanned ? user.banReason : null
+            };
+        });
+    } catch (error) {
+        console.error('[MONGODB] Error getting all users:', error);
+        return [];
+    }
 }
 
 const wordDatabase = {
@@ -854,7 +1055,7 @@ class Room {
 io.on('connection', (socket) => {
     console.log('New connection:', socket.id);
 
-    socket.on('authenticate', (data) => {
+    socket.on('authenticate', async (data) => {
         const { username, adminPassword } = data;
         
         if (!username || username.trim().length === 0) {
@@ -870,6 +1071,41 @@ io.on('connection', (socket) => {
             socket.emit('authError', { message: 'The username "admin" is reserved. You cannot use variations like admin67, admin69, etc.' });
             return;
         }
+        
+        // Check maintenance mode (admins can bypass)
+        const isAdminLogin = lowerUsername === 'admin';
+        if (isMaintenanceMode() && !isAdminLogin) {
+            socket.emit('authError', { 
+                message: getMaintenanceMessage(),
+                maintenance: true 
+            });
+            return;
+        }
+        
+        // Check if user is banned
+        console.log(`[AUTH] Checking ban status for: ${trimmedUsername}`);
+        const banStatus = await isUserBanned(trimmedUsername);
+        console.log(`[AUTH] Ban status for ${trimmedUsername}:`, banStatus);
+        if (banStatus.banned) {
+            console.log(`[AUTH] REJECTING banned user: ${trimmedUsername}`);
+            if (banStatus.isPermanent) {
+                socket.emit('authError', { 
+                    message: `You are permanently banned. Reason: ${banStatus.reason || 'No reason provided'}`,
+                    banned: true,
+                    permanent: true
+                });
+            } else {
+                const expiryDate = new Date(banStatus.expiry);
+                socket.emit('authError', { 
+                    message: `You are banned until ${expiryDate.toLocaleString()}. Reason: ${banStatus.reason || 'No reason provided'}`,
+                    banned: true,
+                    permanent: false,
+                    expiry: banStatus.expiry
+                });
+            }
+            return;
+        }
+        console.log(`[AUTH] User ${trimmedUsername} is not banned, proceeding with authentication`);
         
         // Admin account authentication
         if (trimmedUsername.toLowerCase() === 'admin') {
@@ -896,7 +1132,7 @@ io.on('connection', (socket) => {
         }
         
         // Get or create user data from database (username only)
-        const userData = getUserData(trimmedUsername);
+        const userData = await getUserData(trimmedUsername);
         
         onlineUsers.set(socket.id, {
             id: socket.id,
@@ -1329,6 +1565,22 @@ io.on('connection', (socket) => {
             return;
         }
         
+        // Check if coin flip is already in progress (prevent double submission)
+        if (room.gameState.coinFlip.player1Choice && room.gameState.coinFlip.player2Choice) {
+            socket.emit('coinFlipError', { message: 'Coin flip is already in progress' });
+            return;
+        }
+        
+        // Check if this player already made a choice
+        if (isPlayer1 && room.gameState.coinFlip.player1Choice) {
+            socket.emit('coinFlipError', { message: 'You already chose a side' });
+            return;
+        }
+        if (!isPlayer1 && room.gameState.coinFlip.player2Choice) {
+            socket.emit('coinFlipError', { message: 'You already chose a side' });
+            return;
+        }
+        
         // Record the choice for the player who clicked
         if (isPlayer1) {
             room.gameState.coinFlip.player1Choice = side;
@@ -1340,22 +1592,12 @@ io.on('connection', (socket) => {
             room.gameState.coinFlip.player1Choice = side === 'heads' ? 'tails' : 'heads';
         }
         
-        // Notify all players of the first selection
+        // Notify all players of both selections at once
         io.to(roomId).emit('coinSideSelected', {
-            playerId: playerId,
-            side: side,
-            isPlayer1: isPlayer1,
-            isTeamMode: room.gameState.isTeamMode
-        });
-        
-        // Notify all players of the opposite (auto-selected) side
-        const otherPlayerId = isPlayer1 ? room.gameState.coinFlip.player2Id : room.gameState.coinFlip.player1Id;
-        const otherSide = isPlayer1 ? room.gameState.coinFlip.player2Choice : room.gameState.coinFlip.player1Choice;
-        io.to(roomId).emit('coinSideSelected', {
-            playerId: otherPlayerId,
-            side: otherSide,
-            isPlayer1: !isPlayer1,
-            autoSelected: true,
+            player1Choice: room.gameState.coinFlip.player1Choice,
+            player2Choice: room.gameState.coinFlip.player2Choice,
+            player1Id: room.gameState.coinFlip.player1Id,
+            player2Id: room.gameState.coinFlip.player2Id,
             isTeamMode: room.gameState.isTeamMode
         });
         
@@ -2108,16 +2350,16 @@ io.on('connection', (socket) => {
     // ═══════════════════════════════════════════════════════════════════════
 
     // Get user database (admin only) - reloads from file first
-    socket.on('adminGetUserDatabase', () => {
+    socket.on('adminGetUserDatabase', async () => {
         if (!isAdmin(socket.id)) {
             socket.emit('adminError', { message: 'Unauthorized - Admin only' });
             return;
         }
 
         // Reload database from file to get any external edits
-        reloadUserDatabaseFromFile();
+        await reloadUserDatabaseFromFile();
 
-        const users = getAllUsersInDatabase();
+        const users = await getAllUsersInDatabase();
         socket.emit('adminUserDatabase', { 
             users: users, 
             total: users.length 
@@ -2125,18 +2367,18 @@ io.on('connection', (socket) => {
     });
 
     // Reload user database from file (admin only)
-    socket.on('adminReloadUserDatabase', () => {
+    socket.on('adminReloadUserDatabase', async () => {
         if (!isAdmin(socket.id)) {
             socket.emit('adminError', { message: 'Unauthorized - Admin only' });
             return;
         }
 
-        const success = reloadUserDatabaseFromFile();
+        const success = await reloadUserDatabaseFromFile();
         if (success) {
-            socket.emit('adminSuccess', { message: 'User database reloaded from file' });
+            socket.emit('adminSuccess', { message: 'User database reloaded from MongoDB' });
             
             // Refresh the database view
-            const users = getAllUsersInDatabase();
+            const users = await getAllUsersInDatabase();
             socket.emit('adminUserDatabase', { 
                 users: users, 
                 total: users.length 
@@ -2147,7 +2389,7 @@ io.on('connection', (socket) => {
     });
 
     // Delete user from database (admin only)
-    socket.on('adminDeleteUser', (data) => {
+    socket.on('adminDeleteUser', async (data) => {
         if (!isAdmin(socket.id)) {
             socket.emit('adminError', { message: 'Unauthorized - Admin only' });
             return;
@@ -2170,7 +2412,7 @@ io.on('connection', (socket) => {
         }
 
         // Delete from database (username only)
-        const success = deleteUser(username);
+        const success = await deleteUser(username);
         
         if (success) {
             // If user is online, notify them and clear their local data
@@ -2184,7 +2426,7 @@ io.on('connection', (socket) => {
             socket.emit('adminSuccess', { message: `User "${username}" has been deleted from database` });
             
             // Refresh the database view for the admin
-            const users = getAllUsersInDatabase();
+            const users = await getAllUsersInDatabase();
             socket.emit('adminUserDatabase', { 
                 users: users, 
                 total: users.length 
@@ -2195,7 +2437,7 @@ io.on('connection', (socket) => {
     });
 
     // Edit user stats (admin only)
-    socket.on('adminEditUserStats', (data) => {
+    socket.on('adminEditUserStats', async (data) => {
         if (!isAdmin(socket.id)) {
             socket.emit('adminError', { message: 'Unauthorized - Admin only' });
             return;
@@ -2209,7 +2451,7 @@ io.on('connection', (socket) => {
         }
 
         // Update stats in database (username only)
-        const success = setUserStats(username, stats);
+        const success = await setUserStats(username, stats);
         
         if (success) {
             // Find the user in online users to notify them of stat update
@@ -2240,7 +2482,7 @@ io.on('connection', (socket) => {
             socket.emit('adminSuccess', { message: `Stats updated for "${username}"` });
             
             // Refresh the database view for the admin
-            const users = getAllUsersInDatabase();
+            const users = await getAllUsersInDatabase();
             socket.emit('adminUserDatabase', { 
                 users: users, 
                 total: users.length 
@@ -2251,7 +2493,7 @@ io.on('connection', (socket) => {
     });
 
     // Delete all users from database (admin only)
-    socket.on('adminDeleteAllUsers', () => {
+    socket.on('adminDeleteAllUsers', async () => {
         if (!isAdmin(socket.id)) {
             socket.emit('adminError', { message: 'Unauthorized - Admin only' });
             return;
@@ -2270,12 +2512,12 @@ io.on('connection', (socket) => {
         });
 
         // Delete all users from database
-        deleteAllUsers();
+        await deleteAllUsers();
         
         socket.emit('adminSuccess', { message: 'All users have been deleted from database' });
         
         // Refresh the database view
-        const users = getAllUsersInDatabase();
+        const users = await getAllUsersInDatabase();
         socket.emit('adminUserDatabase', { 
             users: users, 
             total: users.length 
@@ -2283,14 +2525,14 @@ io.on('connection', (socket) => {
     });
 
     // Handle avatar update
-    socket.on('updateAvatar', (data) => {
+    socket.on('updateAvatar', async (data) => {
         const user = onlineUsers.get(socket.id);
         if (!user) return;
 
         const { avatar } = data;
         
         // Update in database (username only)
-        updateUserAvatar(user.username, avatar);
+        await updateUserAvatar(user.username, avatar);
         
         // Update in memory
         user.avatar = avatar;
@@ -2299,12 +2541,12 @@ io.on('connection', (socket) => {
     });
 
     // Reload user stats from database (for live updates)
-    socket.on('reloadUserStats', () => {
+    socket.on('reloadUserStats', async () => {
         const user = onlineUsers.get(socket.id);
         if (!user) return;
 
         // Reload fresh stats from database (username only)
-        const freshStats = reloadUserStats(user.username);
+        const freshStats = await reloadUserStats(user.username);
         if (freshStats) {
             // Update in-memory stats
             user.stats = freshStats;
@@ -2357,7 +2599,7 @@ io.on('connection', (socket) => {
     });
 
     // Admin: Ban user
-    socket.on('adminBanUser', (data) => {
+    socket.on('adminBanUser', async (data) => {
         if (!isAdmin(socket.id)) {
             socket.emit('adminError', { message: 'Unauthorized - Admin only' });
             return;
@@ -2377,10 +2619,10 @@ io.on('connection', (socket) => {
         }
 
         // Ban the user
-        const success = banUser(username, duration, reason);
+        const success = await banUser(username, duration, reason);
         
         if (success) {
-            const banStatus = isUserBanned(username);
+            const banStatus = await isUserBanned(username);
             const durationText = banStatus.isPermanent ? 'permanently' : `for ${duration} hour(s)`;
             
             // Find the user in online users to kick them
@@ -2404,8 +2646,8 @@ io.on('connection', (socket) => {
             socket.emit('adminSuccess', { message: `User "${username}" has been banned ${durationText}` });
             
             // Refresh database view
-            reloadUserDatabaseFromFile();
-            const users = getAllUsersInDatabase();
+            await reloadUserDatabaseFromFile();
+            const users = await getAllUsersInDatabase();
             socket.emit('adminUserDatabase', { 
                 users: users, 
                 total: users.length 
@@ -2416,7 +2658,7 @@ io.on('connection', (socket) => {
     });
 
     // Admin: Unban user
-    socket.on('adminUnbanUser', (data) => {
+    socket.on('adminUnbanUser', async (data) => {
         if (!isAdmin(socket.id)) {
             socket.emit('adminError', { message: 'Unauthorized - Admin only' });
             return;
@@ -2430,20 +2672,148 @@ io.on('connection', (socket) => {
         }
 
         // Unban the user
-        const success = unbanUser(username);
+        const success = await unbanUser(username);
         
         if (success) {
             socket.emit('adminSuccess', { message: `User "${username}" has been unbanned` });
             
             // Refresh database view
-            reloadUserDatabaseFromFile();
-            const users = getAllUsersInDatabase();
+            await reloadUserDatabaseFromFile();
+            const users = await getAllUsersInDatabase();
             socket.emit('adminUserDatabase', { 
                 users: users, 
                 total: users.length 
             });
         } else {
             socket.emit('adminError', { message: 'User not found in database' });
+        }
+    });
+
+    // Admin: Toggle maintenance mode
+    socket.on('adminToggleMaintenance', (data) => {
+        if (!isAdmin(socket.id)) {
+            socket.emit('adminError', { message: 'Unauthorized - Admin only' });
+            return;
+        }
+
+        const { enabled, message } = data;
+        const result = setMaintenanceMode(enabled, message);
+        
+        socket.emit('adminSuccess', { 
+            message: `Maintenance mode ${result ? 'ENABLED' : 'DISABLED'}`,
+            maintenanceMode: result,
+            maintenanceMessage: getMaintenanceMessage()
+        });
+        
+        // Notify all online users about maintenance mode
+        if (result) {
+            io.emit('maintenanceModeEnabled', { message: getMaintenanceMessage() });
+        }
+    });
+
+    // Admin: Get maintenance mode status
+    socket.on('adminGetMaintenanceStatus', () => {
+        if (!isAdmin(socket.id)) {
+            socket.emit('adminError', { message: 'Unauthorized - Admin only' });
+            return;
+        }
+
+        socket.emit('maintenanceStatus', {
+            enabled: isMaintenanceMode(),
+            message: getMaintenanceMessage()
+        });
+    });
+
+    // Admin: Create database backup
+    socket.on('adminCreateBackup', async () => {
+        if (!isAdmin(socket.id)) {
+            socket.emit('adminError', { message: 'Unauthorized - Admin only' });
+            return;
+        }
+
+        const result = await createDatabaseBackup();
+        
+        if (result.success) {
+            socket.emit('adminSuccess', { 
+                message: `Backup created successfully`,
+                backup: {
+                    filename: path.basename(result.file),
+                    timestamp: result.timestamp
+                }
+            });
+        } else {
+            socket.emit('adminError', { message: `Failed to create backup: ${result.error}` });
+        }
+    });
+
+    // Admin: List all backups
+    socket.on('adminListBackups', () => {
+        if (!isAdmin(socket.id)) {
+            socket.emit('adminError', { message: 'Unauthorized - Admin only' });
+            return;
+        }
+
+        const backups = getBackupList();
+        socket.emit('adminBackupList', { backups });
+    });
+
+    // Admin: Restore from backup
+    socket.on('adminRestoreBackup', async (data) => {
+        if (!isAdmin(socket.id)) {
+            socket.emit('adminError', { message: 'Unauthorized - Admin only' });
+            return;
+        }
+
+        const { filename } = data;
+        
+        if (!filename) {
+            socket.emit('adminError', { message: 'Backup filename is required' });
+            return;
+        }
+
+        const result = await restoreFromBackup(filename);
+        
+        if (result.success) {
+            socket.emit('adminSuccess', { 
+                message: result.message,
+                userCount: result.userCount
+            });
+            
+            // Refresh database view
+            const users = await getAllUsersInDatabase();
+            socket.emit('adminUserDatabase', { 
+                users: users, 
+                total: users.length 
+            });
+        } else {
+            socket.emit('adminError', { message: result.message });
+        }
+    });
+
+    // Admin: Delete backup
+    socket.on('adminDeleteBackup', (data) => {
+        if (!isAdmin(socket.id)) {
+            socket.emit('adminError', { message: 'Unauthorized - Admin only' });
+            return;
+        }
+
+        const { filename } = data;
+        
+        if (!filename) {
+            socket.emit('adminError', { message: 'Backup filename is required' });
+            return;
+        }
+
+        const result = deleteBackup(filename);
+        
+        if (result.success) {
+            socket.emit('adminSuccess', { message: result.message });
+            
+            // Refresh backup list
+            const backups = getBackupList();
+            socket.emit('adminBackupList', { backups });
+        } else {
+            socket.emit('adminError', { message: result.message });
         }
     });
 });
