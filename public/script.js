@@ -225,10 +225,10 @@ function showMaintenanceModal() {
             <div class="modal-actions">
                 <button type="button" class="btn btn-secondary" onclick="hideModal('maintenanceModal')">Cancel</button>
                 <button type="button" class="btn btn-warning" onclick="toggleMaintenanceMode(true)">
-                    <i class="fas fa-power-off"></i> Enable Maintenance
+                    <i class="fas fa-power-off"></i> Enable
                 </button>
                 <button type="button" class="btn btn-success" onclick="toggleMaintenanceMode(false)">
-                    <i class="fas fa-check"></i> Disable Maintenance
+                    <i class="fas fa-check"></i> Disable
                 </button>
             </div>
         </div>
@@ -1410,8 +1410,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // Load build number from server
+    // Load build number and version from server
     loadBuildNumber();
+    loadVersion();
 
     const savedUsername = getSession();
     if (savedUsername) {
@@ -1425,7 +1426,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════
-// BUILD NUMBER
+// BUILD NUMBER & VERSION
 // ═══════════════════════════════════════════════════════════════════════
 
 async function loadBuildNumber() {
@@ -1443,6 +1444,30 @@ async function loadBuildNumber() {
         const buildNumberEl = document.getElementById('buildNumber');
         if (buildNumberEl) {
             buildNumberEl.textContent = 'dev';
+        }
+    }
+}
+
+// Load version from CHANGELOG.md
+async function loadVersion() {
+    try {
+        const response = await fetch('https://raw.githubusercontent.com/shreyanroy/hungmen/main/CHANGELOG.md');
+        if (response.ok) {
+            const changelogText = await response.text();
+            // Parse version from first header like "# v1.2.0" or "# Version 1.2.0"
+            const versionMatch = changelogText.match(/^#\s*(v?\d+\.\d+\.\d+.*?)$/m);
+            const versionNumberEl = document.getElementById('versionNumber');
+            if (versionNumberEl && versionMatch) {
+                versionNumberEl.textContent = versionMatch[1].trim();
+            } else if (versionNumberEl) {
+                versionNumberEl.textContent = 'v1.0.0';
+            }
+        }
+    } catch (error) {
+        log('Failed to load version:', error);
+        const versionNumberEl = document.getElementById('versionNumber');
+        if (versionNumberEl) {
+            versionNumberEl.textContent = 'v1.0.0';
         }
     }
 }
@@ -1747,6 +1772,19 @@ function setupSocketListeners(username, connectionTimeout, adminPassword = null)
         log('Username changed to:', data.username);
         currentUser.username = data.username;
         
+        // Update transferred stats and avatar
+        if (data.stats) {
+            currentUser.stats = data.stats;
+            setUserStats(data.stats);
+            displayUserStats();
+        }
+        if (data.avatar) {
+            currentUser.avatar = data.avatar;
+            userAvatar = data.avatar;
+            saveUserAvatar(data.avatar);
+            displayUserAvatar();
+        }
+        
         // Update UI
         const currentUsernameEl = document.getElementById('currentUsername');
         if (currentUsernameEl) {
@@ -1766,7 +1804,7 @@ function setupSocketListeners(username, connectionTimeout, adminPassword = null)
             usernameError.style.display = 'none';
         }
         
-        showNotification('Username changed successfully!', 'success');
+        showNotification('Username changed successfully! Your stats have been transferred.', 'success');
     });
     
     socket.on('usernameChangeError', (data) => {
