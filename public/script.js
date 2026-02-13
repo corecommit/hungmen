@@ -75,17 +75,1027 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
-function showNotification(message, type = 'info') {
+function showNotification(message, type = 'info', duration = 3000) {
     const toast = document.getElementById('notificationToast');
     const messageEl = document.getElementById('notificationMessage');
-    
+
     toast.className = `notification-toast ${type}`;
     messageEl.textContent = message;
     toast.classList.remove('hidden');
-    
+
     setTimeout(() => {
         toast.classList.add('hidden');
-    }, 3000);
+    }, duration);
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// ADMIN FUNCTIONS
+// ═══════════════════════════════════════════════════════════════════════
+
+function showAdminIndicator() {
+    // Add admin badge to header
+    const header = document.querySelector('.header-content');
+    if (header) {
+        const adminBadge = document.createElement('div');
+        adminBadge.className = 'admin-badge';
+        adminBadge.innerHTML = '<i class="fas fa-shield-alt"></i> ADMIN';
+        adminBadge.style.cssText = 'background: linear-gradient(135deg, #f59e0b, #d97706); color: #000; padding: 6px 12px; border-radius: 20px; font-size: 0.75rem; font-weight: 700; display: flex; align-items: center; gap: 6px; margin-left: 10px;';
+
+        const usernameElement = header.querySelector('.current-user');
+        if (usernameElement) {
+            usernameElement.appendChild(adminBadge);
+        }
+    }
+
+    // Show admin panel button for mobile/desktop
+    const adminPanelBtn = document.getElementById('adminPanelBtn');
+    if (adminPanelBtn) {
+        adminPanelBtn.classList.remove('hidden');
+    }
+
+    showNotification('Logged in as Admin - Special permissions enabled', 'info');
+}
+
+function isAdmin() {
+    return currentUser && currentUser.isAdmin;
+}
+
+function showAdminPanel() {
+    if (!isAdmin()) return;
+
+    // Close existing panel if open
+    const existingPanel = document.getElementById('adminPanel');
+    if (existingPanel) {
+        existingPanel.remove();
+        return;
+    }
+
+    const panel = document.createElement('div');
+    panel.id = 'adminPanel';
+    panel.className = 'admin-panel';
+    panel.innerHTML = `
+        <div class="admin-panel-header">
+            <h3><i class="fas fa-shield-alt"></i> Admin Panel</h3>
+            <button onclick="closeAdminPanel()" class="close-btn"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="admin-panel-content">
+            <div class="admin-section">
+                <h4>Room Management</h4>
+                <button onclick="showDeleteRoomModal()" class="admin-btn">
+                    <i class="fas fa-trash"></i> Delete Room
+                </button>
+                <button onclick="showKickPlayerModal()" class="admin-btn">
+                    <i class="fas fa-user-times"></i> Kick Player
+                </button>
+                <button onclick="showBanPlayerModal()" class="admin-btn">
+                    <i class="fas fa-ban"></i> Ban Player
+                </button>
+                <button onclick="showUnbanUserModal()" class="admin-btn" style="background: rgba(74, 222, 128, 0.2); color: #4ade80;">
+                    <i class="fas fa-unlock"></i> Unban User
+                </button>
+                <button onclick="showClearChatModal()" class="admin-btn">
+                    <i class="fas fa-broom"></i> Clear Chat
+                </button>
+            </div>
+            <div class="admin-section">
+                <h4>Announcements</h4>
+                <button onclick="showBroadcastModal()" class="admin-btn">
+                    <i class="fas fa-bullhorn"></i> Broadcast Message
+                </button>
+            </div>
+            <div class="admin-section">
+                <h4>User Database</h4>
+                <button onclick="showUserDatabaseModal()" class="admin-btn">
+                    <i class="fas fa-database"></i> View User Database
+                </button>
+                <button onclick="showDeleteAllUsersModal()" class="admin-btn" style="background: rgba(239, 68, 68, 0.2); color: #ef4444;">
+                    <i class="fas fa-trash-alt"></i> Delete All Users
+                </button>
+            </div>
+            <div class="admin-section">
+                <h4>Server Tools</h4>
+                <button onclick="requestServerInfo()" class="admin-btn">
+                    <i class="fas fa-info-circle"></i> Server Info
+                </button>
+                <button onclick="refreshAllRooms()" class="admin-btn">
+                    <i class="fas fa-sync-alt"></i> Refresh All Rooms
+                </button>
+                <button onclick="showMaintenanceModal()" class="admin-btn" style="background: rgba(251, 191, 36, 0.2); color: #fbbf24;">
+                    <i class="fas fa-wrench"></i> Maintenance Mode
+                </button>
+                <button onclick="showBackupModal()" class="admin-btn">
+                    <i class="fas fa-hdd"></i> Database Backup
+                </button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(panel);
+}
+
+function closeAdminPanel() {
+    const panel = document.getElementById('adminPanel');
+    if (panel) {
+        panel.remove();
+    }
+}
+
+// Maintenance Mode Modal
+function showMaintenanceModal() {
+    if (!isAdmin()) return;
+    
+    const modal = document.createElement('div');
+    modal.className = 'modal admin-modal';
+    modal.id = 'maintenanceModal';
+    modal.innerHTML = `
+        <div class="modal-content">
+            <div class="modal-icon"><i class="fas fa-wrench" style="color: var(--warning);"></i></div>
+            <h2>Maintenance Mode</h2>
+            <p style="color: var(--text-secondary); margin-bottom: 20px;">
+                When enabled, only admins can login. All other users will see a maintenance message.
+            </p>
+            
+            <div class="form-group">
+                <label>Maintenance Message</label>
+                <input type="text" id="maintenanceMessageInput" 
+                    placeholder="Website is under maintenance. Please try again later."
+                    style="width: 100%; padding: 12px; border: 2px solid var(--border-color); border-radius: 8px; background: var(--bg-input); color: var(--text-primary);">
+            </div>
+            
+            <div class="modal-actions">
+                <button type="button" class="btn btn-secondary" onclick="hideModal('maintenanceModal')">Cancel</button>
+                <button type="button" class="btn btn-warning" onclick="toggleMaintenanceMode(true)">
+                    <i class="fas fa-power-off"></i> Enable
+                </button>
+                <button type="button" class="btn btn-success" onclick="toggleMaintenanceMode(false)">
+                    <i class="fas fa-check"></i> Disable
+                </button>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    showModal('maintenanceModal');
+    
+    // Get current status
+    socket.emit('adminGetMaintenanceStatus');
+}
+
+function toggleMaintenanceMode(enabled) {
+    const message = document.getElementById('maintenanceMessageInput')?.value || '';
+    socket.emit('adminToggleMaintenance', { enabled, message });
+    hideModal('maintenanceModal');
+}
+
+// Backup Management Modal
+function showBackupModal() {
+    if (!isAdmin()) return;
+    
+    const modal = document.createElement('div');
+    modal.className = 'modal admin-modal';
+    modal.id = 'backupModal';
+    modal.innerHTML = `
+        <div class="modal-content" style="max-width: 600px;">
+            <div class="modal-icon"><i class="fas fa-hdd" style="color: var(--info);"></i></div>
+            <h2>Database Backup</h2>
+            <p style="color: var(--text-secondary); margin-bottom: 20px;">
+                Create backups of user data before updates. Backups are stored locally.
+            </p>
+            
+            <div class="modal-actions" style="margin-bottom: 20px;">
+                <button type="button" class="btn btn-primary" onclick="createBackup()">
+                    <i class="fas fa-save"></i> Create New Backup
+                </button>
+                <button type="button" class="btn btn-secondary" onclick="loadBackupList()">
+                    <i class="fas fa-list"></i> Refresh List
+                </button>
+            </div>
+            
+            <div id="backupList" style="max-height: 300px; overflow-y: auto;">
+                <p style="color: var(--text-secondary); text-align: center;">Loading backups...</p>
+            </div>
+            
+            <div class="modal-actions">
+                <button type="button" class="btn btn-secondary" onclick="hideModal('backupModal')">Close</button>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    showModal('backupModal');
+    loadBackupList();
+}
+
+function createBackup() {
+    socket.emit('adminCreateBackup');
+}
+
+function loadBackupList() {
+    socket.emit('adminListBackups');
+}
+
+function displayBackupList(backups) {
+    const listDiv = document.getElementById('backupList');
+    if (!listDiv) return;
+    
+    if (backups.length === 0) {
+        listDiv.innerHTML = '<p style="color: var(--text-secondary); text-align: center;">No backups found</p>';
+        return;
+    }
+    
+    let html = '<div style="display: flex; flex-direction: column; gap: 10px;">';
+    backups.forEach(backup => {
+        const date = new Date(backup.created).toLocaleString();
+        const size = (backup.size / 1024).toFixed(2) + ' KB';
+        html += `
+            <div style="background: var(--bg-secondary); padding: 15px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <strong>${backup.filename}</strong>
+                    <br><small style="color: var(--text-secondary);">${date} • ${size}</small>
+                </div>
+                <div style="display: flex; gap: 8px;">
+                    <button class="btn btn-success" style="padding: 8px 16px; font-size: 0.85rem;" onclick="restoreBackup('${backup.filename}')">
+                        <i class="fas fa-undo"></i> Restore
+                    </button>
+                    <button class="btn btn-danger" style="padding: 8px 16px; font-size: 0.85rem;" onclick="deleteBackup('${backup.filename}')">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
+            </div>
+        `;
+    });
+    html += '</div>';
+    listDiv.innerHTML = html;
+}
+
+function restoreBackup(filename) {
+    if (!confirm(`Are you sure you want to restore from ${filename}? Current data will be backed up first.`)) {
+        return;
+    }
+    socket.emit('adminRestoreBackup', { filename });
+}
+
+function deleteBackup(filename) {
+    if (!confirm(`Are you sure you want to delete ${filename}?`)) {
+        return;
+    }
+    socket.emit('adminDeleteBackup', { filename });
+}
+
+function showUserDatabaseModal() {
+    if (!isAdmin()) return;
+    socket.emit('adminGetUserDatabase');
+}
+
+function displayUserDatabase(users, total) {
+    // Remove existing modal if it exists to prevent duplicates
+    const existingModal = document.getElementById('adminUserDatabaseModal');
+    if (existingModal) {
+        existingModal.remove();
+    }
+
+    const modal = document.createElement('div');
+    modal.className = 'modal admin-modal';
+    modal.id = 'adminUserDatabaseModal';
+
+    let usersHtml = users.map(user => {
+        const isBanned = user.banned;
+        const banStatus = isBanned ? (user.isPermanent ? 'PERMANENT' : 'BANNED') : 'Active';
+        const banColor = isBanned ? 'var(--error)' : 'var(--success)';
+        const borderColor = isBanned ? 'var(--error)' : 'var(--primary)';
+        
+        return `
+        <div class="user-db-item" style="background: var(--bg-secondary); padding: 15px; margin: 10px 0; border-radius: 8px; border-left: 4px solid ${borderColor};">
+            <div style="display: flex; justify-content: space-between; align-items: start;">
+                <div style="flex: 1;">
+                    <strong>${escapeHtml(user.username)}</strong> ${user.hasAvatar ? '🖼️' : ''} 
+                    <span style="font-size: 0.75rem; margin-left: 5px; color: ${banColor};">${banStatus}</span><br>
+                    <small style="color: var(--text-secondary);">
+                        <span style="color: var(--success);">Wins: ${user.stats.wins}</span> | 
+                        <span style="color: var(--error);">Losses: ${user.stats.losses}</span> | 
+                        <span style="color: var(--info);">Games: ${user.stats.gamesPlayed}</span><br>
+                        ${isBanned && user.banReason ? `<span style="color: var(--error);">Reason: ${escapeHtml(user.banReason)}</span><br>` : ''}
+                        First Login: ${new Date(user.firstLogin).toLocaleDateString()}<br>
+                        Last Login: ${new Date(user.lastLogin).toLocaleDateString()}
+                    </small>
+                </div>
+                <div style="display: flex; gap: 5px; flex-wrap: wrap;">
+                    ${isBanned ? 
+                        `<button onclick="unbanUserFromDB('${escapeHtml(user.username)}')" class="btn btn-success" style="padding: 5px 10px; font-size: 0.8rem;" title="Unban User"><i class="fas fa-unlock"></i></button>` :
+                        `<button onclick="showBanUserModal('${escapeHtml(user.username)}')" class="btn btn-warning" style="padding: 5px 10px; font-size: 0.8rem;" title="Ban User"><i class="fas fa-ban"></i></button>`
+                    }
+                    <button onclick="showEditUserStatsModal('${escapeHtml(user.username)}', ${user.stats.wins}, ${user.stats.losses}, ${user.stats.gamesPlayed})" class="btn btn-primary" style="padding: 5px 10px; font-size: 0.8rem;" title="Edit Stats"><i class="fas fa-edit"></i></button>
+                    <button onclick="deleteUserFromDatabase('${escapeHtml(user.username)}')" class="btn btn-danger" style="padding: 5px 10px; font-size: 0.8rem;" title="Delete User"><i class="fas fa-trash"></i></button>
+                </div>
+            </div>
+        </div>
+    `}).join('');
+
+    modal.innerHTML = `
+        <div class="modal-content" style="max-width: 700px; max-height: 80vh; overflow-y: auto;">
+            <div class="modal-icon"><i class="fas fa-database"></i></div>
+            <h2>User Database (${total} users)</h2>
+            
+            <div style="max-height: 500px; overflow-y: auto; margin: 20px 0;">
+                ${usersHtml || '<p style="color: var(--text-secondary); text-align: center;">No users in database</p>'}
+            </div>
+            
+            <div class="modal-actions">
+                <button type="button" class="btn btn-secondary" onclick="hideModal('adminUserDatabaseModal')">Close</button>
+                <button type="button" class="btn btn-info" onclick="socket.emit('adminReloadUserDatabase')">
+                    <i class="fas fa-file-import"></i> Reload from File
+                </button>
+                <button type="button" class="btn btn-primary" onclick="socket.emit('adminGetUserDatabase')">
+                    <i class="fas fa-sync-alt"></i> Refresh View
+                </button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+    showModal('adminUserDatabaseModal');
+}
+
+function deleteUserFromDatabase(username) {
+    if (!confirm(`Delete user "${username}"? This will erase all their stats and profile picture!`)) {
+        return;
+    }
+    socket.emit('adminDeleteUser', { username });
+}
+
+function showBanUserModal(username) {
+    if (!isAdmin()) return;
+
+    const modal = document.createElement('div');
+    modal.className = 'modal admin-modal';
+    modal.id = 'adminBanUserModal';
+    modal.innerHTML = `
+        <div class="modal-content">
+            <div class="modal-icon"><i class="fas fa-ban" style="color: var(--error);"></i></div>
+            <h2>Ban User</h2>
+            <p style="color: var(--text-secondary); margin-bottom: 20px;">Banning: <strong>${escapeHtml(username)}</strong></p>
+            <div class="form-group">
+                <label>Ban Duration</label>
+                <select id="banDurationInput" style="width: 100%; padding: 12px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-primary);">
+                    <option value="1">1 hour</option>
+                    <option value="24">24 hours</option>
+                    <option value="168">7 days</option>
+                    <option value="720">30 days</option>
+                    <option value="0">Permanent</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Reason</label>
+                <input type="text" id="banReasonInput" placeholder="Reason for ban (optional)" style="width: 100%; padding: 12px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-primary);">
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-secondary" onclick="hideModal('adminBanUserModal')">Cancel</button>
+                <button type="button" class="btn btn-danger" onclick="banUser('${escapeHtml(username)}')">
+                    <i class="fas fa-ban"></i> Ban User
+                </button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+    showModal('adminBanUserModal');
+}
+
+function banUser(username) {
+    const durationInput = document.getElementById('banDurationInput');
+    const reasonInput = document.getElementById('banReasonInput');
+    const duration = parseInt(durationInput.value);
+    const reason = reasonInput.value.trim() || 'Banned by admin';
+
+    socket.emit('adminBanUser', { username, duration, reason });
+    hideModal('adminBanUserModal');
+}
+
+function unbanUserFromDB(username) {
+    if (!isAdmin()) return;
+    
+    if (!confirm(`Are you sure you want to unban "${username}"?`)) {
+        return;
+    }
+    
+    socket.emit('adminUnbanUser', { username });
+}
+
+function showEditUserStatsModal(username, currentWins, currentLosses, currentGames) {
+    if (!isAdmin()) return;
+
+    const modal = document.createElement('div');
+    modal.className = 'modal admin-modal';
+    modal.id = 'adminEditUserStatsModal';
+    modal.innerHTML = `
+        <div class="modal-content">
+            <div class="modal-icon"><i class="fas fa-edit" style="color: var(--info);"></i></div>
+            <h2>Edit User Stats</h2>
+            <p style="color: var(--text-secondary); margin-bottom: 20px;">
+                Editing stats for: <strong>${escapeHtml(username)}</strong>
+            </p>
+            <div class="form-group">
+                <label>Wins</label>
+                <input type="number" id="editStatsWins" value="${currentWins}" min="0" 
+                       style="width: 100%; padding: 12px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-primary);">
+            </div>
+            <div class="form-group">
+                <label>Losses</label>
+                <input type="number" id="editStatsLosses" value="${currentLosses}" min="0"
+                       style="width: 100%; padding: 12px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-primary);">
+            </div>
+            <div class="form-group">
+                <label>Games Played</label>
+                <input type="number" id="editStatsGames" value="${currentGames}" min="0"
+                       style="width: 100%; padding: 12px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-primary);">
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-secondary" onclick="hideModal('adminEditUserStatsModal')">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="saveUserStatsEdit('${escapeHtml(username)}')">
+                    <i class="fas fa-save"></i> Save Changes
+                </button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+    showModal('adminEditUserStatsModal');
+}
+
+function saveUserStatsEdit(username) {
+    const wins = parseInt(document.getElementById('editStatsWins').value) || 0;
+    const losses = parseInt(document.getElementById('editStatsLosses').value) || 0;
+    const gamesPlayed = parseInt(document.getElementById('editStatsGames').value) || 0;
+
+    socket.emit('adminEditUserStats', { 
+        username, 
+        stats: { wins, losses, gamesPlayed } 
+    });
+    hideModal('adminEditUserStatsModal');
+}
+
+function showDeleteAllUsersModal() {
+    if (!isAdmin()) return;
+
+    const modal = document.createElement('div');
+    modal.className = 'modal admin-modal';
+    modal.id = 'adminDeleteAllUsersModal';
+    modal.innerHTML = `
+        <div class="modal-content">
+            <div class="modal-icon" style="color: var(--error); font-size: 4rem;"><i class="fas fa-exclamation-triangle"></i></div>
+            <h2 style="color: var(--error);">⚠️ DANGER ZONE ⚠️</h2>
+            <p style="color: var(--text-primary); margin: 20px 0; font-size: 1.1rem;">
+                This will <strong>PERMANENTLY DELETE ALL USERS</strong> from the database!
+            </p>
+            <p style="color: var(--text-secondary);">
+                This action will:
+            </p>
+            <ul style="color: var(--text-secondary); text-align: left; margin: 15px 0;">
+                <li>Delete all user stats (wins, losses, games played)</li>
+                <li>Delete all profile pictures</li>
+                <li>Delete all user records</li>
+                <li><strong>This CANNOT be undone!</strong></li>
+            </ul>
+            <div class="modal-actions" style="margin-top: 30px;">
+                <button type="button" class="btn btn-secondary" onclick="hideModal('adminDeleteAllUsersModal')">Cancel</button>
+                <button type="button" class="btn btn-danger" onclick="confirmDeleteAllUsers()">
+                    <i class="fas fa-trash-alt"></i> DELETE ALL USERS
+                </button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+    showModal('adminDeleteAllUsersModal');
+}
+
+function confirmDeleteAllUsers() {
+    const confirmation = prompt('Type "DELETE ALL USERS" to confirm:');
+    if (confirmation === 'DELETE ALL USERS') {
+        socket.emit('adminDeleteAllUsers');
+        hideModal('adminDeleteAllUsersModal');
+    } else {
+        showNotification('Deletion cancelled', 'info');
+    }
+}
+
+function showDeleteRoomModal() {
+    if (!isAdmin()) return;
+
+    const modal = document.createElement('div');
+    modal.className = 'modal admin-modal';
+    modal.id = 'adminDeleteRoomModal';
+    modal.innerHTML = `
+        <div class="modal-content">
+            <div class="modal-icon"><i class="fas fa-trash"></i></div>
+            <h2>Delete Room</h2>
+            <div class="form-group">
+                <label>Room ID or Name</label>
+                <input type="text" id="adminDeleteRoomInput" placeholder="Enter room ID or name">
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-secondary" onclick="hideModal('adminDeleteRoomModal')">Cancel</button>
+                <button type="button" class="btn btn-danger" onclick="adminDeleteRoom()">Delete Room</button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+    showModal('adminDeleteRoomModal');
+}
+
+function adminDeleteRoom() {
+    const roomInput = document.getElementById('adminDeleteRoomInput');
+    const roomIdOrName = roomInput.value.trim();
+
+    if (!roomIdOrName) {
+        showNotification('Please enter a room ID or name', 'error');
+        return;
+    }
+
+    socket.emit('adminDeleteRoom', { roomIdOrName });
+    hideModal('adminDeleteRoomModal');
+}
+
+function showKickPlayerModal() {
+    if (!isAdmin()) return;
+
+    const modal = document.createElement('div');
+    modal.className = 'modal admin-modal';
+    modal.id = 'adminKickPlayerModal';
+    modal.innerHTML = `
+        <div class="modal-content">
+            <div class="modal-icon"><i class="fas fa-user-times"></i></div>
+            <h2>Kick Player</h2>
+            <div class="form-group">
+                <label>Username</label>
+                <input type="text" id="adminKickUsernameInput" placeholder="Enter username to kick">
+            </div>
+            <div class="form-group">
+                <label>Reason (optional)</label>
+                <input type="text" id="adminKickReasonInput" placeholder="Reason for kicking">
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-secondary" onclick="hideModal('adminKickPlayerModal')">Cancel</button>
+                <button type="button" class="btn btn-warning" onclick="adminKickPlayer()">Kick Player</button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+    showModal('adminKickPlayerModal');
+}
+
+function adminKickPlayer() {
+    const usernameInput = document.getElementById('adminKickUsernameInput');
+    const reasonInput = document.getElementById('adminKickReasonInput');
+    const username = usernameInput.value.trim();
+    const reason = reasonInput.value.trim() || 'Kicked by admin';
+
+    if (!username) {
+        showNotification('Please enter a username', 'error');
+        return;
+    }
+
+    socket.emit('adminKickPlayer', { username, reason });
+    hideModal('adminKickPlayerModal');
+}
+
+function showBanPlayerModal() {
+    if (!isAdmin()) return;
+
+    const modal = document.createElement('div');
+    modal.className = 'modal admin-modal';
+    modal.id = 'adminBanPlayerModal';
+    modal.innerHTML = `
+        <div class="modal-content">
+            <div class="modal-icon"><i class="fas fa-ban" style="color: var(--error);"></i></div>
+            <h2>Ban Player</h2>
+            <div class="form-group">
+                <label>Username</label>
+                <input type="text" id="adminBanUsernameInput" placeholder="Enter username to ban">
+            </div>
+            <div class="form-group">
+                <label>Duration (hours)</label>
+                <select id="adminBanDurationInput" style="width: 100%; padding: 12px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-primary);">
+                    <option value="1">1 hour</option>
+                    <option value="24">24 hours</option>
+                    <option value="168">7 days</option>
+                    <option value="720">30 days</option>
+                    <option value="0">Permanent</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Reason (optional)</label>
+                <input type="text" id="adminBanReasonInput" placeholder="Reason for banning">
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-secondary" onclick="hideModal('adminBanPlayerModal')">Cancel</button>
+                <button type="button" class="btn btn-danger" onclick="adminBanPlayer()">Ban Player</button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+    showModal('adminBanPlayerModal');
+}
+
+function adminBanPlayer() {
+    const usernameInput = document.getElementById('adminBanUsernameInput');
+    const durationInput = document.getElementById('adminBanDurationInput');
+    const reasonInput = document.getElementById('adminBanReasonInput');
+    const username = usernameInput.value.trim();
+    const duration = parseInt(durationInput.value);
+    const reason = reasonInput.value.trim() || 'Banned by admin';
+
+    if (!username) {
+        showNotification('Please enter a username', 'error');
+        return;
+    }
+
+    socket.emit('adminBanPlayer', { username, duration, reason });
+    hideModal('adminBanPlayerModal');
+}
+
+function showUnbanUserModal() {
+    if (!isAdmin()) return;
+
+    const modal = document.createElement('div');
+    modal.className = 'modal admin-modal';
+    modal.id = 'adminUnbanUserModal';
+    modal.innerHTML = `
+        <div class="modal-content">
+            <div class="modal-icon"><i class="fas fa-unlock" style="color: var(--success);"></i></div>
+            <h2>Unban User</h2>
+            <div class="form-group">
+                <label>Username</label>
+                <input type="text" id="adminUnbanUsernameInput" placeholder="Enter username to unban">
+            </div>
+            <p style="color: var(--text-secondary); font-size: 0.9rem; margin-top: 10px;">
+                This will remove the ban and allow the user to log in and join rooms again.
+            </p>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-secondary" onclick="hideModal('adminUnbanUserModal')">Cancel</button>
+                <button type="button" class="btn btn-success" onclick="adminUnbanUserFromPanel()">Unban User</button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+    showModal('adminUnbanUserModal');
+}
+
+function adminUnbanUserFromPanel() {
+    const usernameInput = document.getElementById('adminUnbanUsernameInput');
+    const username = usernameInput.value.trim();
+
+    if (!username) {
+        showNotification('Please enter a username', 'error');
+        return;
+    }
+
+    socket.emit('adminUnbanUser', { username });
+    hideModal('adminUnbanUserModal');
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// USER PROFILE INSPECTION
+// ═══════════════════════════════════════════════════════════════════════
+
+function displayUserProfileModal(data) {
+    // Close existing modal if open
+    const existingModal = document.getElementById('userProfileInspectModal');
+    if (existingModal) {
+        existingModal.remove();
+    }
+
+    const modal = document.createElement('div');
+    modal.className = 'modal';
+    modal.id = 'userProfileInspectModal';
+    
+    // Format dates
+    const firstLogin = data.firstLogin !== 'Hidden' ? new Date(data.firstLogin).toLocaleDateString() : 'Hidden';
+    const lastLogin = data.lastLogin !== 'Hidden' ? new Date(data.lastLogin).toLocaleDateString() : 'Hidden';
+    
+    // Calculate win rate
+    const wins = parseInt(data.stats.wins) || 0;
+    const losses = parseInt(data.stats.losses) || 0;
+    const gamesPlayed = parseInt(data.stats.gamesPlayed) || 0;
+    const winRate = gamesPlayed > 0 ? Math.round((wins / gamesPlayed) * 100) : 0;
+    
+    // Build admin buttons if inspector is admin
+    let adminButtons = '';
+    if (data.isInspectorAdmin && !data.isAdmin) {
+        adminButtons = `
+            <div class="admin-actions" style="margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--border-color);">
+                <h4 style="color: var(--warning); margin-bottom: 10px;">Admin Actions</h4>
+                <div style="display: flex; gap: 10px;">
+                    <button onclick="adminClearUserStats('${escapeHtml(data.username)}')" class="btn btn-danger" style="flex: 1;">
+                        <i class="fas fa-eraser"></i> Clear All Stats
+                    </button>
+                    <button onclick="adminEditInspectedUser('${escapeHtml(data.username)}', ${wins}, ${losses}, ${gamesPlayed})" class="btn btn-primary" style="flex: 1;">
+                        <i class="fas fa-edit"></i> Edit Stats
+                    </button>
+                </div>
+            </div>
+        `;
+    }
+    
+    // Check if this is a normal user inspecting an admin
+    const isNormalUserInspectingAdmin = data.isAdmin && !data.isInspectorAdmin;
+    
+    // Hidden message for admin profiles viewed by non-admins
+    const hiddenMessage = isNormalUserInspectingAdmin ? 
+        '<p style="color: var(--warning); text-align: center; margin: 10px 0;">🔒 Admin stats are hidden</p>' : '';
+    
+    // Hide win rate when normal user inspects admin
+    const winRateDisplay = isNormalUserInspectingAdmin ? 
+        `<div style="font-size: 1.8rem; font-weight: bold; color: var(--warning);">???</div>` :
+        `<div style="font-size: 1.8rem; font-weight: bold; color: var(--warning);">${winRate}%</div>`;
+    
+    modal.innerHTML = `
+        <div class="modal-content user-profile-modal" style="max-width: 400px;">
+            <button class="profile-close-btn" onclick="hideModal('userProfileInspectModal')" style="position: absolute; top: 15px; right: 15px; background: none; border: none; color: var(--text-secondary); font-size: 1.5rem; cursor: pointer;">
+                <i class="fas fa-times"></i>
+            </button>
+            
+            <div class="profile-header" style="text-align: center; margin-bottom: 20px;">
+                <div class="profile-avatar-large" style="width: 100px; height: 100px; margin: 0 auto 15px; border-radius: 50%; overflow: hidden; border: 3px solid var(--primary);">
+                    ${data.avatar 
+                        ? `<img src="${data.avatar}" alt="${escapeHtml(data.username)}" style="width: 100%; height: 100%; object-fit: cover;">`
+                        : `<div style="width: 100%; height: 100%; background: var(--bg-input); display: flex; align-items: center; justify-content: center; font-size: 3rem; font-weight: bold;">${data.username.charAt(0).toUpperCase()}</div>`
+                    }
+                </div>
+                <h2 style="margin: 0; font-size: 1.5rem;">${escapeHtml(data.username)} ${data.isAdmin ? '<span style="color: var(--warning); font-size: 0.8rem;">[ADMIN]</span>' : ''}</h2>
+                ${hiddenMessage}
+            </div>
+            
+            <div class="profile-stats" style="background: var(--bg-input); padding: 20px; border-radius: 10px; margin-bottom: 15px;">
+                <div class="stats-grid" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; text-align: center;">
+                    <div class="stat-item">
+                        <div style="font-size: 1.8rem; font-weight: bold; color: var(--success);">${data.stats.wins}</div>
+                        <div style="font-size: 0.85rem; color: var(--text-secondary);">Wins</div>
+                    </div>
+                    <div class="stat-item">
+                        <div style="font-size: 1.8rem; font-weight: bold; color: var(--error);">${data.stats.losses}</div>
+                        <div style="font-size: 0.85rem; color: var(--text-secondary);">Losses</div>
+                    </div>
+                    <div class="stat-item">
+                        <div style="font-size: 1.8rem; font-weight: bold; color: var(--info);">${data.stats.gamesPlayed}</div>
+                        <div style="font-size: 0.85rem; color: var(--text-secondary);">Games</div>
+                    </div>
+                    <div class="stat-item">
+                        ${winRateDisplay}
+                        <div style="font-size: 0.85rem; color: var(--text-secondary);">Win Rate</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="profile-info" style="background: var(--bg-input); padding: 15px; border-radius: 10px; font-size: 0.9rem; color: var(--text-secondary);">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                    <span>First Login:</span>
+                    <span style="color: var(--text-primary);">${firstLogin}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between;">
+                    <span>Last Seen:</span>
+                    <span style="color: var(--text-primary);">${lastLogin}</span>
+                </div>
+            </div>
+            
+            ${adminButtons}
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    showModal('userProfileInspectModal');
+}
+
+// Admin: Clear all stats for a user
+function adminClearUserStats(username) {
+    if (!isAdmin()) return;
+    
+    if (!confirm(`Are you sure you want to CLEAR ALL STATS for "${username}"?\n\nThis will reset:\n- Wins to 0\n- Losses to 0\n- Games Played to 0\n\nThis action cannot be undone!`)) {
+        return;
+    }
+    
+    socket.emit('adminEditUserStats', { 
+        username, 
+        stats: { wins: 0, losses: 0, gamesPlayed: 0 } 
+    });
+    
+    hideModal('userProfileInspectModal');
+    showNotification(`All stats cleared for ${username}`, 'success');
+}
+
+// Admin: Edit stats for inspected user
+function adminEditInspectedUser(username, currentWins, currentLosses, currentGames) {
+    hideModal('userProfileInspectModal');
+    showEditUserStatsModal(username, currentWins, currentLosses, currentGames);
+}
+
+function showClearChatModal() {
+    if (!isAdmin()) return;
+
+    const modal = document.createElement('div');
+    modal.className = 'modal admin-modal';
+    modal.id = 'adminClearChatModal';
+    modal.innerHTML = `
+        <div class="modal-content">
+            <div class="modal-icon"><i class="fas fa-broom" style="color: var(--info);"></i></div>
+            <h2>Clear Chat</h2>
+            <p style="color: var(--text-secondary); margin-bottom: 20px;">Select which chat to clear:</p>
+            <div class="modal-actions" style="flex-direction: column; gap: 10px;">
+                <button type="button" class="btn btn-primary" onclick="adminClearChat('lobby')">
+                    <i class="fas fa-comments"></i> Clear Lobby Chat
+                </button>
+                <button type="button" class="btn btn-primary" onclick="adminClearChat('current')">
+                    <i class="fas fa-door-open"></i> Clear Current Room Chat
+                </button>
+                <button type="button" class="btn btn-secondary" onclick="hideModal('adminClearChatModal')">Cancel</button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+    showModal('adminClearChatModal');
+}
+
+function adminClearChat(type) {
+    socket.emit('adminClearChat', { type });
+    hideModal('adminClearChatModal');
+}
+
+function showBroadcastModal() {
+    if (!isAdmin()) return;
+
+    const modal = document.createElement('div');
+    modal.className = 'modal admin-modal';
+    modal.id = 'adminBroadcastModal';
+    modal.innerHTML = `
+        <div class="modal-content">
+            <div class="modal-icon"><i class="fas fa-bullhorn" style="color: var(--warning);"></i></div>
+            <h2>Broadcast Message</h2>
+            <div class="form-group">
+                <label>Message</label>
+                <textarea id="adminBroadcastMessageInput" placeholder="Enter message to broadcast to all users..." rows="4" style="resize: vertical;"></textarea>
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-secondary" onclick="hideModal('adminBroadcastModal')">Cancel</button>
+                <button type="button" class="btn btn-warning" onclick="adminBroadcastMessage()">
+                    <i class="fas fa-paper-plane"></i> Broadcast
+                </button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+    showModal('adminBroadcastModal');
+}
+
+function adminBroadcastMessage() {
+    const messageInput = document.getElementById('adminBroadcastMessageInput');
+    const message = messageInput.value.trim();
+
+    if (!message) {
+        showNotification('Please enter a message', 'error');
+        return;
+    }
+
+    socket.emit('adminBroadcast', { message });
+    hideModal('adminBroadcastModal');
+}
+
+function refreshAllRooms() {
+    if (!isAdmin()) return;
+    socket.emit('getRooms');
+    showNotification('Refreshing rooms list...', 'info');
+    closeAdminPanel();
+}
+
+function requestServerInfo() {
+    if (!isAdmin()) return;
+    socket.emit('adminGetServerInfo');
+}
+
+function displayAdminServerInfo(data) {
+    const modal = document.createElement('div');
+    modal.className = 'modal admin-modal';
+    modal.id = 'adminServerInfoModal';
+
+    let roomsHtml = data.rooms.map(room => `
+        <div class="admin-info-item">
+            <strong>${escapeHtml(room.name)}</strong> (${room.mode})<br>
+            <small>Players: ${room.players}/${room.maxPlayers} | Status: ${room.status} | Host: ${escapeHtml(room.host)}</small>
+        </div>
+    `).join('');
+
+    let usersHtml = data.users.map(user => `
+        <div class="admin-info-item">
+            <strong>${escapeHtml(user.username)}</strong> ${user.isAdmin ? '<span style="color: var(--warning);">[ADMIN]</span>' : ''}<br>
+            <small>Room: ${user.room ? 'In room' : 'Lobby'}</small>
+        </div>
+    `).join('');
+
+    modal.innerHTML = `
+        <div class="modal-content" style="max-width: 600px; max-height: 80vh; overflow-y: auto;">
+            <div class="modal-icon"><i class="fas fa-server"></i></div>
+            <h2>Server Information</h2>
+
+            <div class="admin-info-section">
+                <h4>Overview</h4>
+                <div class="admin-info-item">
+                    <strong>Online Users:</strong> ${data.onlineUsers}
+                </div>
+                <div class="admin-info-item">
+                    <strong>Total Rooms:</strong> ${data.totalRooms}
+                </div>
+            </div>
+
+            <div class="admin-info-section">
+                <h4>Rooms (${data.rooms.length})</h4>
+                ${roomsHtml || '<p style="color: var(--text-secondary);">No active rooms</p>'}
+            </div>
+
+            <div class="admin-info-section">
+                <h4>Users (${data.users.length})</h4>
+                ${usersHtml || '<p style="color: var(--text-secondary);">No online users</p>'}
+            </div>
+
+            <div class="modal-actions">
+                <button type="button" class="btn btn-primary" onclick="hideModal('adminServerInfoModal')">Close</button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+    showModal('adminServerInfoModal');
+}
+
+// Admin chat command handler
+function handleAdminCommand(message) {
+    const parts = message.split(' ');
+    const command = parts[0].toLowerCase();
+
+    switch(command) {
+        case '/kick':
+            if (parts.length < 2) {
+                showNotification('Usage: /kick <username> [reason]', 'error');
+                return true;
+            }
+            const kickUsername = parts[1];
+            const kickReason = parts.slice(2).join(' ') || 'Kicked by admin';
+            socket.emit('adminKickPlayer', { username: kickUsername, reason: kickReason });
+            return true;
+
+        case '/deleteroom':
+            if (parts.length < 2) {
+                showNotification('Usage: /deleteroom <roomId or room name>', 'error');
+                return true;
+            }
+            const roomIdOrName = parts[1];
+            socket.emit('adminDeleteRoom', { roomIdOrName });
+            return true;
+
+        case '/adminpanel':
+            showAdminPanel();
+            return true;
+
+        case '/broadcast':
+            if (parts.length < 2) {
+                showNotification('Usage: /broadcast <message>', 'error');
+                return true;
+            }
+            const broadcastMessage = parts.slice(1).join(' ');
+            socket.emit('adminBroadcast', { message: broadcastMessage });
+            return true;
+
+        case '/ban':
+            if (parts.length < 2) {
+                showNotification('Usage: /ban <username> [duration_hours] [reason]', 'error');
+                return true;
+            }
+            const banUsername = parts[1];
+            const banDuration = parseInt(parts[2]) || 24;
+            const banReason = parts.slice(3).join(' ') || 'Banned by admin';
+            socket.emit('adminBanPlayer', { username: banUsername, duration: banDuration, reason: banReason });
+            return true;
+
+        case '/clearchat':
+            const clearType = parts[1] || 'lobby';
+            socket.emit('adminClearChat', { type: clearType });
+            return true;
+
+        case '/serverinfo':
+            requestServerInfo();
+            return true;
+
+        case '/help':
+            showNotification('Admin commands: /kick, /ban, /deleteroom, /broadcast, /clearchat, /serverinfo, /adminpanel, /help', 'info');
+            return true;
+
+        default:
+            return false;
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -149,50 +1159,24 @@ function getDeviceId() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// STATS MANAGEMENT FUNCTIONS
+// STATS MANAGEMENT FUNCTIONS - SERVER DATABASE ONLY
 // ═══════════════════════════════════════════════════════════════════════
 
-function getStatsCookieName() {
-    const deviceId = getDeviceId();
-    return 'hangman_stats_' + deviceId;
-}
+// Stats are now loaded ONLY from server database
+// No local cookie storage for stats
 
-function loadUserStats() {
-    const cookieName = getStatsCookieName();
-    const savedStats = getCookie(cookieName);
-    
-    if (savedStats) {
-        try {
-            const parsed = JSON.parse(savedStats);
-            userStats = {
-                wins: parsed.wins || 0,
-                losses: parsed.losses || 0,
-                totalGames: parsed.totalGames || 0
-            };
-        } catch (e) {
-            userStats = { wins: 0, losses: 0, totalGames: 0 };
-        }
-    } else {
-        userStats = { wins: 0, losses: 0, totalGames: 0 };
-    }
-}
-
-function saveUserStats() {
-    const cookieName = getStatsCookieName();
-    const statsJson = JSON.stringify(userStats);
-    setCookie(cookieName, statsJson, 365);
+function setUserStats(stats) {
+    userStats = {
+        wins: stats.wins || 0,
+        losses: stats.losses || 0,
+        totalGames: stats.gamesPlayed || 0
+    };
+    displayUserStats();
 }
 
 function updateStats(result) {
-    userStats.totalGames++;
-    
-    if (result === 'win') {
-        userStats.wins++;
-    } else if (result === 'loss') {
-        userStats.losses++;
-    }
-    
-    saveUserStats();
+    // Stats are updated on server automatically when games end
+    // Just refresh the display
     displayUserStats();
 }
 
@@ -235,6 +1219,11 @@ function displayUserStats() {
 // ═══════════════════════════════════════════════════════════════════════
 
 function getAvatarStorageKey() {
+    // Use username instead of device ID for cross-device sync
+    if (currentUser && currentUser.username) {
+        return 'hangman_avatar_' + currentUser.username.toLowerCase();
+    }
+    // Fallback to device ID if no user logged in yet
     const deviceId = getDeviceId();
     return 'hangman_avatar_' + deviceId;
 }
@@ -363,6 +1352,12 @@ function handleAvatarUpload(file) {
         saveUserAvatar(base64Image);
         displayUserAvatar();
         updateAvatarPreview();
+        
+        // Also save to server database
+        if (socket && socket.connected) {
+            socket.emit('updateAvatar', { avatar: base64Image });
+        }
+        
         showNotification('Avatar updated successfully!', 'success');
     });
 }
@@ -371,12 +1366,26 @@ function handleAvatarUpload(file) {
 // SHARED AVATAR HELPER
 // ═══════════════════════════════════════════════════════════════════════
 
-function buildAvatarHTML(avatar, username, size = 28) {
+function buildAvatarHTML(avatar, username, size = 28, clickable = true) {
+    const avatarId = `avatar-${Math.random().toString(36).substr(2, 9)}`;
+    const clickHandler = clickable ? `onclick="inspectUserProfile('${escapeHtml(username)}')"` : '';
+    
     if (avatar) {
-        return `<img src="${avatar}" alt="${escapeHtml(username)}" style="width:${size}px;height:${size}px;border-radius:50%;object-fit:cover;flex-shrink:0;">`;
+        return `<img id="${avatarId}" src="${avatar}" alt="${escapeHtml(username)}" ${clickHandler} class="message-avatar" style="width:${size}px;height:${size}px;border-radius:50%;object-fit:cover;flex-shrink:0;${clickable ? 'cursor:pointer;' : ''}">`;
     }
     const initial = username.charAt(0).toUpperCase();
-    return `<div class="player-avatar" style="width:${size}px;height:${size}px;font-size:${size * 0.4}px;margin:0;flex-shrink:0;">${initial}</div>`;
+    return `<div id="${avatarId}" class="player-avatar message-avatar" ${clickHandler} style="width:${size}px;height:${size}px;font-size:${size * 0.4}px;margin:0;flex-shrink:0;${clickable ? 'cursor:pointer;' : ''}">${initial}</div>`;
+}
+
+// Inspect user profile when clicking on avatar
+function inspectUserProfile(username) {
+    if (!socket || !socket.connected) return;
+    if (!currentUser) return;
+    
+    // Don't inspect yourself
+    if (username === currentUser.username) return;
+    
+    socket.emit('inspectUserProfile', { username });
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -391,7 +1400,8 @@ document.addEventListener('DOMContentLoaded', () => {
     roomView = document.getElementById('roomView');
     gameView = document.getElementById('gameView');
 
-    loadUserAvatar();
+    // Avatar will be loaded from server after authentication
+    // This ensures cross-device sync of profile pictures
     
     // FIX: Set default active state on hint count button
     document.querySelectorAll('.hint-count-btn').forEach(btn => {
@@ -475,7 +1485,7 @@ function checkServerAndShowError() {
     return true;
 }
 
-function connectSocket(username) {
+function connectSocket(username, adminPassword = null) {
     let connectionTimeout;
     
     if (socket) {
@@ -502,15 +1512,15 @@ function connectSocket(username) {
         }
     }, 5000);
     
-    setupSocketListeners(username, connectionTimeout);
+    setupSocketListeners(username, connectionTimeout, adminPassword);
 }
 
-function setupSocketListeners(username, connectionTimeout) {
+function setupSocketListeners(username, connectionTimeout, adminPassword = null) {
     socket.on('connect', () => {
         clearTimeout(connectionTimeout);
         mySocketId = socket.id;
         log('Connected to server:', socket.id);
-        socket.emit('authenticate', { username });
+        socket.emit('authenticate', { username, adminPassword });
     });
     
     socket.on('connect_error', (error) => {
@@ -535,13 +1545,191 @@ function setupSocketListeners(username, connectionTimeout) {
         log('Reconnected after', attemptNumber, 'attempts');
         showNotification('Reconnected to server!', 'success');
     });
-    
-    socket.on('authenticated', () => {
+
+    // Admin response handlers
+    socket.on('adminSuccess', (data) => {
+        showNotification(data.message, 'success');
+    });
+
+    socket.on('adminError', (data) => {
+        showNotification(data.message, 'error');
+    });
+
+    socket.on('adminServerInfo', (data) => {
+        displayAdminServerInfo(data);
+    });
+
+    socket.on('adminBroadcast', (data) => {
+        showNotification(`[ADMIN] ${data.from}: ${data.message}`, 'info', 5000);
+    });
+
+    socket.on('adminUserDatabase', (data) => {
+        displayUserDatabase(data.users, data.total);
+    });
+
+    // Kicked handler
+    socket.on('kicked', (data) => {
+        showNotification(`You have been kicked by ${data.by}. Reason: ${data.reason}`, 'error', 5000);
+        socket.disconnect();
+        clearSession();
+        setTimeout(() => location.reload(), 2000);
+    });
+
+    // Room deleted handler
+    socket.on('roomDeleted', (data) => {
+        showNotification(`Room "${data.roomName}" has been deleted by an admin`, 'error', 5000);
+        if (currentRoom) {
+            leaveRoom();
+        }
+    });
+
+    // Banned handler
+    socket.on('banned', (data) => {
+        const durationText = data.duration === 0 ? 'permanently' : `for ${data.duration} hour(s)`;
+        showNotification(`You have been banned ${durationText} by ${data.by}. Reason: ${data.reason}`, 'error', 8000);
+        socket.disconnect();
+        clearSession();
+        setTimeout(() => location.reload(), 3000);
+    });
+
+    // User data deleted handler (when admin deletes specific user)
+    socket.on('userDataDeleted', (data) => {
+        showNotification(`${data.message} by ${data.by}. Your stats and avatar have been reset.`, 'error', 5000);
+        
+        // Clear local stats (server database deleted)
+        userStats = { wins: 0, losses: 0, totalGames: 0 };
+        
+        // Clear local avatar
+        userAvatar = null;
+        saveUserAvatar(null);
+        
+        // Update UI
+        displayUserStats();
+        displayUserAvatar();
+        
+        // Disconnect and reload
+        socket.disconnect();
+        clearSession();
+        setTimeout(() => location.reload(), 3000);
+    });
+
+    // All user data deleted handler (when admin deletes all users)
+    socket.on('allUserDataDeleted', (data) => {
+        showNotification(`${data.message} by ${data.by}. All user data has been reset.`, 'error', 5000);
+        
+        // Clear local stats (server database deleted)
+        userStats = { wins: 0, losses: 0, totalGames: 0 };
+        
+        // Clear local avatar
+        userAvatar = null;
+        saveUserAvatar(null);
+        
+        // Update UI
+        displayUserStats();
+        displayUserAvatar();
+        
+        // Disconnect and reload
+        socket.disconnect();
+        clearSession();
+        setTimeout(() => location.reload(), 3000);
+    });
+
+    // Stats updated handler (when admin edits user stats)
+    socket.on('statsUpdated', (data) => {
+        showNotification(`Your stats have been updated by ${data.by}`, 'info', 3000);
+        
+        // Update local stats from server
+        if (data.stats) {
+            setUserStats(data.stats);
+        }
+    });
+
+    // Stats reloaded handler (when refreshing from database)
+    socket.on('statsReloaded', (data) => {
+        if (data.success && data.stats) {
+            setUserStats(data.stats);
+            log('Stats reloaded from database');
+        }
+    });
+
+    // Maintenance mode status
+    socket.on('maintenanceStatus', (data) => {
+        const input = document.getElementById('maintenanceMessageInput');
+        if (input && data.message) {
+            input.value = data.message;
+        }
+        log('Maintenance mode:', data.enabled ? 'ENABLED' : 'disabled');
+    });
+
+    // Maintenance mode enabled notification
+    socket.on('maintenanceModeEnabled', (data) => {
+        showNotification(data.message, 'warning', 5000);
+    });
+
+    // Backup list
+    socket.on('adminBackupList', (data) => {
+        displayBackupList(data.backups);
+    });
+
+    // User profile inspection handler
+    socket.on('userProfileData', (data) => {
+        displayUserProfileModal(data);
+    });
+
+    socket.on('userProfileError', (data) => {
+        showNotification(data.message, 'error');
+    });
+
+    // Chat cleared handler
+    socket.on('lobbyChatCleared', (data) => {
+        const lobbyChatMessages = document.getElementById('lobbyChatMessages');
+        if (lobbyChatMessages) {
+            lobbyChatMessages.innerHTML = '';
+        }
+        showNotification(`Lobby chat has been cleared by ${data.by}`, 'info', 3000);
+    });
+
+    socket.on('roomChatCleared', (data) => {
+        const chatMessages = document.getElementById('chatMessages');
+        const miniChatMessages = document.getElementById('miniChatMessages');
+        if (chatMessages) chatMessages.innerHTML = '';
+        if (miniChatMessages) miniChatMessages.innerHTML = '';
+        showNotification(`Room chat has been cleared by ${data.by}`, 'info', 3000);
+    });
+
+    socket.on('authenticated', (data) => {
         log('Authenticated successfully');
+        if (data && data.user) {
+            currentUser = data.user;
+            
+            // Load avatar from server if available
+            if (currentUser.avatar) {
+                userAvatar = currentUser.avatar;
+                saveUserAvatar(userAvatar);
+                displayUserAvatar();
+            }
+            
+            // Load stats from server ONLY (no local cookie storage)
+            if (currentUser.stats) {
+                setUserStats(currentUser.stats);
+            }
+        }
         saveSession(username);
         showGameScreen();
         loadLobby();
         socket.emit('getLobbyChat');
+
+        // Show admin indicator if user is admin
+        if (currentUser && currentUser.isAdmin) {
+            showAdminIndicator();
+        }
+    });
+    
+    // Handle avatar update confirmation
+    socket.on('avatarUpdated', (data) => {
+        if (data.success) {
+            log('Avatar saved to server database');
+        }
     });
     
     socket.on('authError', (data) => {
@@ -646,13 +1834,54 @@ function setupSocketListeners(username, connectionTimeout) {
     socket.on('hostChanged', (data) => {
         if (data.newHostId === mySocketId) {
             isHost = true;
+            currentRoom.hostId = mySocketId;
             updateRoomControls();
             showNotification('You are now the host!', 'info');
+        } else {
+            // Update the hostId in currentRoom
+            currentRoom.hostId = data.newHostId;
         }
+
+        // Update all player cards to show new host
+        document.querySelectorAll('.player-card').forEach(card => {
+            card.classList.remove('host');
+        });
+
+        const newHostCard = document.getElementById(`player-${data.newHostId}`);
+        if (newHostCard) {
+            newHostCard.classList.add('host');
+        }
+    });
+    
+    // Coin flip phase for custom word mode
+    socket.on('coinFlipPhase', (data) => {
+        showCoinFlipModal(data);
+    });
+    
+    // Coin side selected
+    socket.on('coinSideSelected', (data) => {
+        // Store isTeamMode in coinFlipData if provided
+        if (data.isTeamMode !== undefined && coinFlipData) {
+            coinFlipData.isTeamMode = data.isTeamMode;
+        }
+        updateCoinFlipSelection(data);
+    });
+    
+    // Coin flip result
+    socket.on('coinFlipResult', (data) => {
+        showCoinFlipResult(data);
+    });
+    
+    // Coin flip error
+    socket.on('coinFlipError', (data) => {
+        showNotification(data.message, 'error');
     });
     
     // Word selection phase for custom word mode
     socket.on('wordSelectionPhase', (data) => {
+        // Hide coin flip modal if it's still showing
+        hideModal('coinFlipModal');
+        
         isWordSetter = (data.wordSetter.id === mySocketId);
         hintsRemaining = data.hintCount || 5;
         
@@ -692,17 +1921,28 @@ function setupSocketListeners(username, connectionTimeout) {
     
     socket.on('gameStarted', (data) => {
         hideModal('waitingForWordModal');
+
+        // Store game data for after countdown
+        const gameData = data;
+
+        // Show countdown before starting game
+        showCountdown(() => {
+            startGameAfterCountdown(gameData);
+        });
+    });
+
+    function startGameAfterCountdown(data) {
         gameState = data.gameState;
-        
+
         // Store players array for turn lookups
         // IMPORTANT: Must use the full players array from server, not filtered activePlayers
         gameState.players = data.players;
-        
+
         // Initialize word for tracking
         if (!gameState.word && gameState.wordLength) {
             gameState.word = '';
         }
-        
+
         isWordSetter = (data.gameState.wordSetter === mySocketId);
         hintsRemaining = (data.gameState.hintsRemaining != null) ? data.gameState.hintsRemaining : 0;
 
@@ -745,20 +1985,20 @@ function setupSocketListeners(username, connectionTimeout) {
         }
 
         showGameView(data);
-    });
-    
+    }
+
     socket.on('guessResult', (data) => {
         updateGameState(data);
     });
     
     // Hint request received (for word setter)
     socket.on('hintRequested', (data) => {
-        showHintRequestModal(data.requesterName);
+        showHintRequestModal(data.requesterName, data.question);
     });
-    
+
     // Hint provided (for all players)
     socket.on('hintProvided', (data) => {
-        displayReceivedHint(data.hint, data.hintNumber);
+        displayReceivedHint(data.hint, data.hintNumber, data.question);
         hintsRemaining = data.hintsRemaining;
         updateHintsDisplay();
 
@@ -829,6 +2069,8 @@ function setupSocketListeners(username, connectionTimeout) {
 function initAuth() {
     const usernameForm = document.getElementById('usernameForm');
     const usernameInput = document.getElementById('usernameInput');
+    const adminPasswordGroup = document.getElementById('adminPasswordGroup');
+    const adminPasswordInput = document.getElementById('adminPasswordInput');
     const joinButton = usernameForm?.querySelector('button[type="submit"]');
     
     if (usernameForm) {
@@ -865,26 +2107,74 @@ function initAuth() {
                 usernameInput.focus();
             }, 500);
         }
+        
+        // Handle Admin password field visibility
+        if (usernameInput && adminPasswordGroup) {
+            usernameInput.addEventListener('input', (e) => {
+                const username = e.target.value.trim();
+                const isAdmin = username.toLowerCase() === 'admin';
+                
+                if (isAdmin) {
+                    adminPasswordGroup.classList.remove('hidden');
+                    // Focus on password field after a short delay
+                    setTimeout(() => {
+                        adminPasswordInput?.focus();
+                    }, 100);
+                } else {
+                    adminPasswordGroup.classList.add('hidden');
+                    if (adminPasswordInput) {
+                        adminPasswordInput.value = '';
+                    }
+                }
+            });
+        }
+        
+        // Handle Enter key on password input
+        if (adminPasswordInput) {
+            adminPasswordInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleJoinGame(e);
+                }
+            });
+        }
     }
 }
 
 function handleJoinGame(e) {
     e.preventDefault();
     const usernameInput = document.getElementById('usernameInput');
+    const adminPasswordInput = document.getElementById('adminPasswordInput');
     const username = usernameInput.value.trim();
+    const adminPassword = adminPasswordInput?.value.trim() || '';
     
-    const bannedVariations = ['shreyan', 'shreyn', 'shryn', 'shyn', 'sreyan', 'sreyn', 'sryan', 'sryn', 'shrayan', 'shrayn', 'shriyan', 'shriyn', 'shrian', 'shrien', 'shryen', 'shryan', 'shryon', 'shryun','samarth', 'samart', 'samarthh', 'samarath','samerth', 'samirth', 'somarth', 'sumarth', 'samurth','samrth', 'smarth', 'samarh', 'samath','samarat', 'samrat', 'samraat', 'samrath','samaryh', 'samaryth', 'samarht', 'samarthy','samrath', 'samarht', 'smaarth', 'saamarth','samrt', 'samr', 'samar','samarath', 'samarrth', 'samartht'];
-    
-    const usernameLower = username.toLowerCase();
-    for (const variation of bannedVariations) {
-        if (usernameLower.includes(variation)) {
-            showAuthError('This username is not accepted');
-            return;
+    // Check for banned usernames (excluding 'admin' which is handled separately)
+    if (username.toLowerCase() !== 'admin') {
+        const bannedVariations = ['shreyan', 'shreyn', 'shryn', 'shyn', 'sreyan', 'sreyn', 'sryan', 'sryn', 'shrayan', 'shrayn', 'shriyan', 'shriyn', 'shrian', 'shrien', 'shryen', 'shryan', 'shryon', 'shryun','samarth', 'samart', 'samarthh', 'samarath','samerth', 'samirth', 'somarth', 'sumarth', 'samurth','samrth', 'smarth', 'samarh', 'samath','samarat', 'samrat', 'samraat', 'samrath','samaryh', 'samaryth', 'samarht', 'samarthy','samrath', 'samarht', 'smaarth', 'saamarth','samrt', 'samr', 'samar','samarath', 'samarrth', 'samartht'];
+        
+        const usernameLower = username.toLowerCase();
+        for (const variation of bannedVariations) {
+            if (usernameLower.includes(variation)) {
+                showAuthError('This username is not accepted');
+                return;
+            }
         }
     }
     
     if (!username) {
         showAuthError('Please enter a username');
+        return;
+    }
+    
+    // Admin account validation
+    if (username.toLowerCase() === 'admin') {
+        if (!adminPassword) {
+            showAuthError('Password needed to login in the admin account');
+            return;
+        }
+        // Store admin info for authentication
+        currentUser = { username, isAdmin: true, adminPassword };
+        connectSocket(username, adminPassword);
         return;
     }
     
@@ -936,7 +2226,7 @@ function showGameScreen() {
     gameScreen.classList.remove('hidden');
     document.getElementById('currentUsername').textContent = currentUser.username;
     
-    loadUserStats();
+    // Stats are loaded from server on authentication, not from cookies
     displayUserStats();
     displayUserAvatar();
 }
@@ -1155,11 +2445,11 @@ function updatePlayersList(players) {
     
     players.forEach(player => {
         const playerCard = document.createElement('div');
-        playerCard.className = `player-card ${player.id === mySocketId ? 'me' : ''} ${currentRoom && player.id === currentRoom.hostId ? 'host' : ''}`;
+        playerCard.className = `player-card ${player.id === mySocketId ? 'me' : ''} ${currentRoom && player.id === currentRoom.hostId ? 'host' : ''} ${player.isAdmin ? 'admin' : ''}`;
         playerCard.id = `player-${player.id}`;
-        
+
         const avatarSrc = (player.id === mySocketId) ? userAvatar : (player.avatar || null);
-        
+
         playerCard.innerHTML = `
             <div class="player-avatar-wrap" style="display:flex;justify-content:center;margin-bottom:10px;">
                 ${buildAvatarHTML(avatarSrc, player.username, 50)}
@@ -1167,7 +2457,7 @@ function updatePlayersList(players) {
             <div class="player-name">${escapeHtml(player.username)}</div>
             ${player.team ? '<small>' + (player.team === 'team1' ? 'Team 1' : 'Team 2') + '</small>' : ''}
         `;
-        
+
         playersList.appendChild(playerCard);
     });
     
@@ -1235,13 +2525,13 @@ function updateTeamSelectionButtons(myTeam) {
 
 function addPlayerToRoom(player) {
     const playersList = document.getElementById('playersList');
-    
+
     const playerCard = document.createElement('div');
-    playerCard.className = 'player-card';
+    playerCard.className = `player-card ${player.isAdmin ? 'admin' : ''}`;
     playerCard.id = `player-${player.id}`;
-    
+
     const avatarSrc = player.avatar || null;
-    
+
     playerCard.innerHTML = `
         <div class="player-avatar-wrap" style="display:flex;justify-content:center;margin-bottom:10px;">
             ${buildAvatarHTML(avatarSrc, player.username, 50)}
@@ -1249,7 +2539,7 @@ function addPlayerToRoom(player) {
         <div class="player-name">${escapeHtml(player.username)}</div>
         ${player.team ? '<small>' + (player.team === 'team1' ? 'Team 1' : 'Team 2') + '</small>' : ''}
     `;
-    
+
     playersList.appendChild(playerCard);
     
     const currentCount = parseInt(document.getElementById('playerCount').textContent);
@@ -1321,6 +2611,209 @@ function showWaitingForWordModal(wordSetterName) {
     showModal('waitingForWordModal');
 }
 
+let coinFlipData = null;
+let hasSelectedCoinSide = false;
+
+function showCoinFlipModal(data) {
+    coinFlipData = data;
+    hasSelectedCoinSide = false;
+    
+    const modal = document.getElementById('coinFlipModal');
+    const selectionDiv = document.getElementById('coinFlipSelection');
+    const animationDiv = document.getElementById('coinFlipAnimation');
+    const winnerDiv = document.getElementById('coinFlipWinner');
+    const buttonsDiv = document.getElementById('coinFlipButtons');
+    const statusDiv = document.getElementById('coinFlipStatus');
+    
+    // Reset display
+    if (selectionDiv) selectionDiv.classList.remove('hidden');
+    if (animationDiv) animationDiv.classList.add('hidden');
+    if (winnerDiv) winnerDiv.classList.add('hidden');
+    if (buttonsDiv) buttonsDiv.classList.remove('hidden');
+    
+    // Update player names
+    const player1Name = document.getElementById('coinFlipPlayer1Name');
+    const player2Name = document.getElementById('coinFlipPlayer2Name');
+    const player1Choice = document.getElementById('coinFlipPlayer1Choice');
+    const player2Choice = document.getElementById('coinFlipPlayer2Choice');
+    
+    if (data.isTeamMode) {
+        if (player1Name) player1Name.innerHTML = 'Team 1 <small style="display: block; font-size: 0.7rem; color: var(--text-secondary);">(Team Leader)</small>';
+        if (player2Name) player2Name.innerHTML = 'Team 2 <small style="display: block; font-size: 0.7rem; color: var(--text-secondary);">(Team Leader)</small>';
+    } else {
+        if (player1Name) player1Name.textContent = data.player1?.username || 'Player 1';
+        if (player2Name) player2Name.textContent = data.player2?.username || 'Player 2';
+    }
+    
+    if (player1Choice) {
+        player1Choice.textContent = 'Waiting...';
+        player1Choice.className = 'player-choice';
+    }
+    if (player2Choice) {
+        player2Choice.textContent = 'Waiting...';
+        player2Choice.className = 'player-choice';
+    }
+    
+    // Check if current user is a participant (only team leaders can choose)
+    const isPlayer1 = data.player1?.id === mySocketId;
+    const isPlayer2 = data.player2?.id === mySocketId;
+    const isParticipant = isPlayer1 || isPlayer2;
+    
+    if (buttonsDiv) {
+        if (isParticipant) {
+            buttonsDiv.style.display = 'flex';
+        } else {
+            buttonsDiv.style.display = 'none';
+        }
+    }
+    
+    if (statusDiv) {
+        if (isParticipant) {
+            statusDiv.innerHTML = data.isTeamMode 
+                ? '<strong>You are the Team Leader!</strong><br>Choose Heads or Tails. The opposing team will automatically get the other side.' 
+                : '<strong>Choose Heads or Tails</strong><br>Your opponent will automatically get the other side.';
+        } else {
+            statusDiv.textContent = data.isTeamMode ? 'Waiting for Team Leaders to choose...' : 'Waiting for players to choose...';
+        }
+    }
+    
+    showModal('coinFlipModal');
+}
+
+function selectCoinSide(side) {
+    if (hasSelectedCoinSide) return;
+    if (!coinFlipData) return;
+    if (!currentRoom) return;
+    
+    hasSelectedCoinSide = true;
+    
+    // Disable buttons immediately
+    const buttons = document.querySelectorAll('.coin-btn');
+    buttons.forEach(btn => btn.disabled = true);
+    
+    const statusDiv = document.getElementById('coinFlipStatus');
+    const isTeamMode = coinFlipData.isTeamMode;
+    if (statusDiv) {
+        statusDiv.textContent = isTeamMode 
+            ? `You chose ${side}! Opposing team gets the other side automatically...` 
+            : `You chose ${side}! Opponent gets the other side automatically...`;
+    }
+    
+    socket.emit('selectCoinSide', {
+        roomId: currentRoom.roomId,
+        side: side
+    });
+}
+
+function updateCoinFlipSelection(data) {
+    const player1Choice = document.getElementById('coinFlipPlayer1Choice');
+    const player2Choice = document.getElementById('coinFlipPlayer2Choice');
+    const player1Div = document.getElementById('coinFlipPlayer1');
+    const player2Div = document.getElementById('coinFlipPlayer2');
+    const statusDiv = document.getElementById('coinFlipStatus');
+    
+    // Update both players' choices at once
+    if (data.player1Choice && player1Choice) {
+        player1Choice.textContent = data.player1Choice === 'heads' ? 'Heads' : 'Tails';
+        player1Choice.className = `player-choice ${data.player1Choice}`;
+        if (player1Div) player1Div.classList.add('chosen');
+    }
+    
+    if (data.player2Choice && player2Choice) {
+        player2Choice.textContent = data.player2Choice === 'heads' ? 'Heads' : 'Tails';
+        player2Choice.className = `player-choice ${data.player2Choice}`;
+        if (player2Div) player2Div.classList.add('chosen');
+    }
+    
+    if (statusDiv && coinFlipData) {
+        const p1Chosen = player1Div?.classList.contains('chosen');
+        const p2Chosen = player2Div?.classList.contains('chosen');
+        const isTeamMode = coinFlipData.isTeamMode;
+        
+        if (p1Chosen && p2Chosen) {
+            statusDiv.textContent = isTeamMode ? 'Both Team Leaders chose! Flipping coin...' : 'Both players chose! Flipping coin...';
+        }
+    }
+}
+
+function showCoinFlipResult(data) {
+    const selectionDiv = document.getElementById('coinFlipSelection');
+    const animationDiv = document.getElementById('coinFlipAnimation');
+    const winnerDiv = document.getElementById('coinFlipWinner');
+    const resultDiv = document.getElementById('coinFlipResult');
+    const counterDisplay = document.getElementById('coinCounterDisplay');
+    
+    if (selectionDiv) selectionDiv.classList.add('hidden');
+    if (animationDiv) animationDiv.classList.remove('hidden');
+    if (winnerDiv) winnerDiv.classList.add('hidden');
+    if (resultDiv) resultDiv.textContent = '';
+    
+    // Countdown sequence: 3, 2, 1, then HEADS/TAILS
+    const countdownNumbers = ['3', '2', '1'];
+    let currentIndex = 0;
+    
+    function showNextCount() {
+        if (currentIndex < countdownNumbers.length) {
+            // Show countdown number with animation
+            if (counterDisplay) {
+                counterDisplay.classList.remove('counting', 'result');
+                counterDisplay.textContent = countdownNumbers[currentIndex];
+                // Force reflow to restart animation
+                void counterDisplay.offsetWidth;
+                counterDisplay.classList.add('counting');
+            }
+            currentIndex++;
+            setTimeout(showNextCount, 1500); // 1.5 seconds between each number (slower)
+        } else {
+            // Show HEADS or TAILS result with slow reveal animation
+            if (counterDisplay) {
+                counterDisplay.classList.remove('counting');
+                const resultText = data.result === 'heads' ? 'HEADS' : 'TAILS';
+                counterDisplay.textContent = resultText;
+                // Force reflow to restart animation
+                void counterDisplay.offsetWidth;
+                counterDisplay.classList.add('result');
+            }
+            
+            if (resultDiv) {
+                const resultText = data.result === 'heads' ? 'HEADS!' : 'TAILS!';
+                resultDiv.textContent = resultText;
+            }
+            
+            // Show winner after a delay
+            setTimeout(() => {
+                if (winnerDiv) {
+                    winnerDiv.classList.remove('hidden');
+                    const winnerText = document.getElementById('coinFlipWinnerText');
+                    if (winnerText) {
+                        const isTeamMode = coinFlipData?.isTeamMode;
+                        if (isTeamMode) {
+                            const winnerTeam = data.winner.team === 'team1' ? 'Team 1' : 'Team 2';
+                            winnerText.textContent = `${winnerTeam} wins!`;
+                        } else {
+                            winnerText.textContent = `${data.winner.username} wins!`;
+                        }
+                    }
+                }
+                
+                // Highlight winner
+                const player1Div = document.getElementById('coinFlipPlayer1');
+                const player2Div = document.getElementById('coinFlipPlayer2');
+                
+                if (player1Div && player2Div) {
+                    if (data.winner.id === coinFlipData?.player1?.id) {
+                        player1Div.classList.add('winner');
+                    } else {
+                        player2Div.classList.add('winner');
+                    }
+                }
+            }, 2000);
+        }
+    }
+
+    showNextCount();
+}
+
 function submitCustomWord() {
     const wordInput = document.getElementById('customWord');
     const submitBtn = document.getElementById('submitWordBtn');
@@ -1367,7 +2860,7 @@ function submitCustomWord() {
 function requestHint() {
     if (!currentRoom || !socket) return;
     if (!checkServerAndShowError()) return;
-    
+
     if (isOnWordSetterTeam) {
         showNotification('Your team is setting the word — you cannot request hints!', 'warning');
         return;
@@ -1375,34 +2868,69 @@ function requestHint() {
         showNotification('You are the word setter — you cannot request hints!', 'warning');
         return;
     }
-    
+
     if (hintsRemaining <= 0) {
         showNotification('No hints remaining!', 'error');
         return;
     }
-    
+
+    // Show the question modal instead of directly requesting
+    const questionInput = document.getElementById('questionInput');
+    if (questionInput) {
+        questionInput.value = '';
+    }
+    showModal('askQuestionModal');
+}
+
+function submitQuestion() {
+    const questionInput = document.getElementById('questionInput');
+    const question = questionInput.value.trim();
+
+    if (!question) {
+        showNotification('Please enter a question', 'error');
+        return;
+    }
+
+    if (!checkServerAndShowError()) return;
+
+    // Disable the ask hint button while waiting for response
     const askHintBtn = document.getElementById('askHintBtn');
     if (askHintBtn) {
         askHintBtn.disabled = true;
-        askHintBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Requesting...';
+        askHintBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Waiting for host...';
     }
-    
-    socket.emit('requestHint', { roomId: currentRoom.roomId });
+
+    hideModal('askQuestionModal');
+
+    socket.emit('requestHint', {
+        roomId: currentRoom.roomId,
+        question: question
+    });
 }
 
-function showHintRequestModal(requesterName) {
+function showHintRequestModal(requesterName, question) {
     const modal = document.getElementById('hintRequestModal');
     const message = document.getElementById('hintRequestPlayer');
+    const questionLabel = document.getElementById('playerQuestionLabel');
+    const questionText = document.getElementById('playerQuestionText');
     const hintInput = document.getElementById('hintInput');
-    
+
     if (message) {
         message.textContent = `${requesterName} has requested a hint!`;
     }
-    
+
+    if (questionLabel) {
+        questionLabel.textContent = `${requesterName}'s Question:`;
+    }
+
+    if (questionText) {
+        questionText.textContent = question || 'No question provided';
+    }
+
     if (hintInput) {
         hintInput.value = '';
     }
-    
+
     showModal('hintRequestModal');
 }
 
@@ -1425,20 +2953,26 @@ function provideHint() {
     hideModal('hintRequestModal');
 }
 
-function displayReceivedHint(hint, hintNumber) {
+function displayReceivedHint(hint, hintNumber, question) {
     const receivedHints = document.getElementById('receivedHints');
     const hintsList = document.getElementById('hintsList');
-    
+
     receivedHints.classList.remove('hidden');
-    
+
     const hintItem = document.createElement('div');
     hintItem.className = 'hint-item';
     hintItem.innerHTML = `
-        <span class="hint-number">Hint ${hintNumber}</span>
-        <span class="hint-text">${escapeHtml(hint)}</span>
+        <div class="hint-header">
+            <span class="hint-number">Hint #${hintNumber}</span>
+        </div>
+        ${question ? `<div class="hint-question"><strong>Q:</strong> ${escapeHtml(question)}</div>` : ''}
+        <div class="hint-answer"><strong>A:</strong> ${escapeHtml(hint)}</div>
     `;
-    
+
     hintsList.appendChild(hintItem);
+
+    // Scroll to the new hint
+    hintsList.scrollTop = hintsList.scrollHeight;
 }
 
 function updateHintsDisplay() {
@@ -1457,6 +2991,53 @@ function updateHintsDisplay() {
             askHintBtn.innerHTML = '<i class="fas fa-question-circle"></i> Ask for Hint';
         }
     }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// COUNTDOWN
+// ═══════════════════════════════════════════════════════════════════════
+
+function showCountdown(callback) {
+    // Create countdown overlay
+    const overlay = document.createElement('div');
+    overlay.id = 'countdownOverlay';
+    overlay.className = 'countdown-overlay';
+    overlay.innerHTML = `
+        <div class="countdown-container">
+            <div class="countdown-number" id="countdownNumber">3</div>
+        </div>
+    `;
+
+    document.body.appendChild(overlay);
+
+    const numberEl = document.getElementById('countdownNumber');
+    let count = 3;
+
+    const countdownInterval = setInterval(() => {
+        count--;
+
+        if (count > 0) {
+            numberEl.textContent = count;
+            numberEl.classList.remove('animate');
+            void numberEl.offsetWidth; // Trigger reflow
+            numberEl.classList.add('animate');
+        } else if (count === 0) {
+            numberEl.textContent = 'GO!';
+            numberEl.classList.add('go');
+        } else {
+            clearInterval(countdownInterval);
+            overlay.style.opacity = '0';
+            setTimeout(() => {
+                overlay.remove();
+                if (callback) callback();
+            }, 300);
+        }
+    }, 1000);
+
+    // Initial animation
+    setTimeout(() => {
+        numberEl.classList.add('animate');
+    }, 100);
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -1704,24 +3285,25 @@ function updateGameState(data) {
 function updateScores(players) {
     const scoresList = document.getElementById('scoresList');
     scoresList.innerHTML = '';
-    
+
     players.forEach((player, index) => {
         const isWordSetterPlayer = (gameState && gameState.wordSetter === player.id);
         const scoreItem = document.createElement('div');
         scoreItem.className = `score-item ${index === gameState.currentTurn ? 'active' : ''} ${isWordSetterPlayer ? 'word-setter' : ''}`;
         scoreItem.dataset.playerId = player.id;
         if (player.id === mySocketId) scoreItem.dataset.isMe = 'true';
-        
+
         const avatarSrc = (player.id === mySocketId) ? userAvatar : (player.avatar || null);
-        
+        const adminBadge = player.isAdmin ? ' <span style="color: var(--warning); font-size: 0.7rem;">[ADMIN]</span>' : '';
+
         scoreItem.innerHTML = `
             <div class="score-player">
                 ${buildAvatarHTML(avatarSrc, player.username, 30)}
-                <span class="score-player-name">${escapeHtml(player.username)}${isWordSetterPlayer ? ' 📝' : ''}</span>
+                <span class="score-player-name">${escapeHtml(player.username)}${adminBadge}${isWordSetterPlayer ? ' 📝' : ''}</span>
             </div>
             <span class="score-value">0</span>
         `;
-        
+
         scoresList.appendChild(scoreItem);
     });
 }
@@ -1854,7 +3436,16 @@ function sendLobbyChatMessage() {
     const message = input.value.trim();
     if (!message) return;
     if (!checkServerAndShowError()) return;
-    
+
+    // Check for admin commands
+    if (isAdmin() && message.startsWith('/')) {
+        const handled = handleAdminCommand(message);
+        if (handled) {
+            input.value = '';
+            return;
+        }
+    }
+
     socket.emit('lobbyChatMessage', { message, username: currentUser.username, avatar: userAvatar || null });
     input.value = '';
 }
@@ -1927,7 +3518,16 @@ function sendChatMessage() {
     const message = input.value.trim();
     if (!message || !currentRoom) return;
     if (!checkServerAndShowError()) return;
-    
+
+    // Check for admin commands
+    if (isAdmin() && message.startsWith('/')) {
+        const handled = handleAdminCommand(message);
+        if (handled) {
+            input.value = '';
+            return;
+        }
+    }
+
     socket.emit('chatMessage', { roomId: currentRoom.roomId, message, username: currentUser.username, chatType: currentChatType, avatar: userAvatar || null });
     input.value = '';
 }
@@ -2024,7 +3624,15 @@ function initEventListeners() {
         updateAvatarPreview();
         showModal('settingsModal'); 
     });
-    
+
+    // Admin Panel Button
+    const adminPanelBtn = document.getElementById('adminPanelBtn');
+    if (adminPanelBtn) {
+        adminPanelBtn.addEventListener('click', () => {
+            showAdminPanel();
+        });
+    }
+
     const closeSettings = document.getElementById('closeSettings');
     if (closeSettings) closeSettings.addEventListener('click', () => hideModal('settingsModal'));
     
@@ -2270,7 +3878,23 @@ function initEventListeners() {
     if (askHintBtn) {
         askHintBtn.addEventListener('click', requestHint);
     }
-    
+
+    // Ask Question modal handlers
+    const askQuestionForm = document.getElementById('askQuestionForm');
+    if (askQuestionForm) {
+        askQuestionForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            submitQuestion();
+        });
+    }
+
+    const cancelAskQuestionBtn = document.getElementById('cancelAskQuestion');
+    if (cancelAskQuestionBtn) {
+        cancelAskQuestionBtn.addEventListener('click', () => {
+            hideModal('askQuestionModal');
+        });
+    }
+
     const provideHintForm = document.getElementById('provideHintForm');
     if (provideHintForm) {
         provideHintForm.addEventListener('submit', (e) => {
@@ -2278,7 +3902,7 @@ function initEventListeners() {
             provideHint();
         });
     }
-    
+
     const cancelHintBtn = document.getElementById('cancelHint');
     if (cancelHintBtn) {
         cancelHintBtn.addEventListener('click', () => {
@@ -2305,6 +3929,20 @@ function initEventListeners() {
     });
     
     document.addEventListener('keydown', (e) => {
+        // Admin panel shortcut (Ctrl+Shift+A)
+        if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'a') {
+            e.preventDefault();
+            if (isAdmin()) {
+                const existingPanel = document.getElementById('adminPanel');
+                if (existingPanel) {
+                    closeAdminPanel();
+                } else {
+                    showAdminPanel();
+                }
+            }
+            return;
+        }
+
         if (gameView.classList.contains('active')) {
             const activeElement = document.activeElement;
             if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA' || activeElement.isContentEditable)) return;
