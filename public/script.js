@@ -1410,8 +1410,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // Load build number from server
+    // Load build number and version from server
     loadBuildNumber();
+    loadVersion();
 
     const savedUsername = getSession();
     if (savedUsername) {
@@ -1425,7 +1426,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════
-// BUILD NUMBER
+// BUILD NUMBER & VERSION
 // ═══════════════════════════════════════════════════════════════════════
 
 async function loadBuildNumber() {
@@ -1444,6 +1445,83 @@ async function loadBuildNumber() {
         if (buildNumberEl) {
             buildNumberEl.textContent = 'dev';
         }
+    }
+}
+
+// Load version from CHANGELOG.md
+async function loadVersion() {
+    try {
+        const response = await fetch('https://raw.githubusercontent.com/werheq/hungmen/main/CHANGELOG.md');
+        if (response.ok) {
+            const changelogText = await response.text();
+            // Parse version from first header like "# v1.2.0" or "# Version 1.2.0"
+            const versionMatch = changelogText.match(/^#\s*(v?\d+\.\d+\.\d+.*?)$/m);
+            const versionNumberEl = document.getElementById('versionNumber');
+            if (versionNumberEl && versionMatch) {
+                versionNumberEl.textContent = versionMatch[1].trim();
+            } else if (versionNumberEl) {
+                versionNumberEl.textContent = '1.0.0';
+            }
+        }
+    } catch (error) {
+        log('Failed to load version:', error);
+        const versionNumberEl = document.getElementById('versionNumber');
+        if (versionNumberEl) {
+            versionNumberEl.textContent = '1.0.0';
+        }
+    }
+}
+
+// Show changelog modal
+async function showChangelog() {
+    try {
+        const response = await fetch('https://raw.githubusercontent.com/werheq/hungmen/main/CHANGELOG.md');
+        let changelogText = '# Changelog\n\nNo changelog available.';
+        
+        if (response.ok) {
+            changelogText = await response.text();
+        }
+        
+        // Convert markdown to HTML (basic conversion)
+        const htmlContent = changelogText
+            .replace(/^###\s+(.*$)/gim, '<h3>$1</h3>')
+            .replace(/^##\s+(.*$)/gim, '<h2>$1</h2>')
+            .replace(/^#\s+(.*$)/gim, '<h1>$1</h1>')
+            .replace(/^\*\s+(.*$)/gim, '<li>$1</li>')
+            .replace(/^-\s+(.*$)/gim, '<li>$1</li>')
+            .replace(/\n\n/gim, '</p><p>')
+            .replace(/\*\*(.*?)\*\*/gim, '<strong>$1</strong>')
+            .replace(/\*(.*?)\*/gim, '<em>$1</em>')
+            .replace(/`(.*?)`/gim, '<code>$1</code>');
+        
+        const modal = document.createElement('div');
+        modal.className = 'modal admin-modal';
+        modal.id = 'changelogModal';
+        modal.innerHTML = `
+            <div class="modal-content" style="max-width: 700px; max-height: 80vh; display: flex; flex-direction: column;">
+                <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid var(--border-color); padding-bottom: 15px;">
+                    <h2 style="margin: 0; display: flex; align-items: center; gap: 10px;">
+                        <i class="fas fa-list-alt" style="color: var(--primary);"></i>
+                        Changelog
+                    </h2>
+                    <button onclick="hideModal('changelogModal')" class="btn btn-secondary" style="padding: 5px 10px;">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <div class="changelog-content" style="overflow-y: auto; max-height: 60vh; padding: 10px; background: var(--bg-secondary); border-radius: 8px; font-size: 0.9rem; line-height: 1.6;">
+                    ${htmlContent}
+                </div>
+                <div class="modal-actions" style="margin-top: 20px; justify-content: center;">
+                    <button onclick="hideModal('changelogModal')" class="btn btn-primary">Close</button>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(modal);
+        showModal('changelogModal');
+    } catch (error) {
+        log('Failed to show changelog:', error);
+        showNotification('Failed to load changelog', 'error');
     }
 }
 
