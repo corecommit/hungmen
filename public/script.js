@@ -1472,35 +1472,37 @@ async function loadVersion() {
     }
 }
 
-// Parse changelog and format with clean UI
+// Parse changelog and format like Sendvia style
 function parseChangelogToHTML(text) {
     const lines = text.split('\n');
     let html = '';
-    let currentVersion = null;
     let inVersion = false;
     let inCategory = false;
-    let categoryType = '';
+    let currentItem = '';
     
-    const categoryColors = {
-        'ADDED': '#4ade80',
-        'CHANGED': '#fbbf24',
-        'FIXED': '#60a5fa',
-        'REMOVED': '#f87171',
-        'FEATURES': '#a78bfa'
+    const categoryStyles = {
+        'ADDED': { bg: '#dcfce7', color: '#166534', border: '#bbf7d0' },
+        'CHANGED': { bg: '#fef3c7', color: '#92400e', border: '#fde68a' },
+        'FIXED': { bg: '#dbeafe', color: '#1e40af', border: '#bfdbfe' },
+        'REMOVED': { bg: '#fee2e2', color: '#991b1b', border: '#fecaca' },
+        'FEATURES': { bg: '#f3e8ff', color: '#6b21a8', border: '#e9d5ff' }
     };
     
     for (let i = 0; i < lines.length; i++) {
         const line = lines[i].trim();
         
+        // Skip empty lines and dividers
+        if (line === '' || line === '---') continue;
+        
         // Version header (## v1.2.0)
         if (line.match(/^##\s+v?\d+\.\d+\.\d+/)) {
             if (inVersion) {
-                html += '</div></div>'; // Close previous version
+                html += '</div></div>';
             }
             const version = line.replace(/^##\s+/, '');
             html += `<div class="changelog-version">`;
-            html += `<h2 class="changelog-version-header">${version}</h2>`;
-            html += `<div class="changelog-version-content">`;
+            html += `<h2 class="changelog-version-title">${version}</h2>`;
+            html += `<div class="changelog-version-body">`;
             inVersion = true;
             inCategory = false;
             continue;
@@ -1511,11 +1513,11 @@ function parseChangelogToHTML(text) {
             if (inCategory) {
                 html += '</ul></div>';
             }
-            categoryType = line.replace(/\*\*/g, '');
-            const color = categoryColors[categoryType] || '#9ca3af';
-            html += `<div class="changelog-category">`;
-            html += `<span class="changelog-badge" style="background: ${color}20; color: ${color}; border: 1px solid ${color}40;">${categoryType}</span>`;
-            html += `<ul class="changelog-list">`;
+            const categoryType = line.replace(/\*\*/g, '');
+            const style = categoryStyles[categoryType] || { bg: '#f3f4f6', color: '#374151', border: '#e5e7eb' };
+            html += `<div class="changelog-section">`;
+            html += `<span class="changelog-pill" style="background: ${style.bg}; color: ${style.color}; border: 1px solid ${style.border};">${categoryType}</span>`;
+            html += `<ul class="changelog-items">`;
             inCategory = true;
             continue;
         }
@@ -1523,28 +1525,28 @@ function parseChangelogToHTML(text) {
         // Bullet point (• **Title** - Description)
         if (line.match(/^•\s+/)) {
             const content = line.replace(/^•\s+/, '');
-            // Parse bold title
-            const parsedContent = content
-                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-                .replace(/`(.*?)`/g, '<code>$1</code>');
-            html += `<li class="changelog-item">${parsedContent}</li>`;
+            // Parse bold title and description
+            let parsedContent = content;
+            
+            // Check if format is **Title** - Description
+            if (content.match(/^\*\*.*?\*\*\s*-/)) {
+                parsedContent = content
+                    .replace(/^\*\*(.*?)\*\*\s*-\s*/, '<strong>$1</strong> - ')
+                    .replace(/`(.*?)`/g, '<code>$1</code>');
+            } else {
+                parsedContent = content
+                    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                    .replace(/`(.*?)`/g, '<code>$1</code>');
+            }
+            
+            html += `<li class="changelog-entry"><span class="changelog-bullet"></span><span class="changelog-text">${parsedContent}</span></li>`;
             continue;
         }
         
-        // Regular bullet (- item)
-        if (line.match(/^[-\*]\s+/)) {
-            const content = line.replace(/^[-\*]\s+/, '');
-            const parsedContent = content
-                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-                .replace(/`(.*?)`/g, '<code>$1</code>');
-            html += `<li class="changelog-item">${parsedContent}</li>`;
-            continue;
-        }
-        
-        // Empty line - close category if needed
-        if (line === '' && inCategory) {
-            html += '</ul></div>';
-            inCategory = false;
+        // Continue previous bullet point (multi-line description)
+        if (inCategory && line && !line.match(/^##/) && !line.match(/^\*\*[A-Z]+\*\*$/) && !line.match(/^•\s+/)) {
+            // Append to previous li
+            html = html.replace(/<\/span><\/li>$/, ' ' + line + '</span></li>');
         }
     }
     

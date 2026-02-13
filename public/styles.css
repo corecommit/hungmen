@@ -4554,137 +4554,150 @@ html {
    ═══════════════════════════════════════════════════════════════════════ */
 
 .changelog-modal-content {
-    max-width: 700px;
+    max-width: 640px;
     max-height: 85vh;
     display: flex;
     flex-direction: column;
-    background: var(--bg-card);
-    border-radius: 12px;
+    background: #ffffff;
+    border-radius: 16px;
     overflow: hidden;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
 }
 
 .changelog-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 20px 24px;
-    border-bottom: 1px solid var(--border-color);
-    background: var(--bg-secondary);
+    padding: 20px 28px;
+    border-bottom: 1px solid #e5e7eb;
+    background: #ffffff;
 }
 
 .changelog-header h2 {
     margin: 0;
-    font-size: 1.4rem;
-    font-weight: 700;
-    color: var(--text-primary);
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: #111827;
 }
 
 .changelog-close-btn {
     background: transparent;
     border: none;
-    color: var(--text-secondary);
+    color: #6b7280;
     font-size: 1.2rem;
     cursor: pointer;
     padding: 8px;
-    border-radius: 6px;
+    border-radius: 8px;
     transition: all 0.2s ease;
 }
 
 .changelog-close-btn:hover {
-    background: var(--bg-hover);
-    color: var(--text-primary);
+    background: #f3f4f6;
+    color: #111827;
 }
 
 .changelog-body {
     overflow-y: auto;
     max-height: 60vh;
-    padding: 24px;
-    background: var(--bg-primary);
+    padding: 28px;
+    background: #ffffff;
 }
 
+/* Version styling */
 .changelog-version {
-    margin-bottom: 32px;
+    margin-bottom: 40px;
 }
 
 .changelog-version:last-child {
     margin-bottom: 0;
 }
 
-.changelog-version-header {
-    font-size: 1.5rem;
+.changelog-version-title {
+    font-size: 1.75rem;
     font-weight: 700;
-    color: var(--text-primary);
-    margin: 0 0 20px 0;
-    padding-bottom: 12px;
-    border-bottom: 1px solid var(--border-color);
+    color: #111827;
+    margin: 0 0 24px 0;
+    letter-spacing: -0.025em;
 }
 
-.changelog-category {
-    margin-bottom: 24px;
+/* Section with pill badge */
+.changelog-section {
+    margin-bottom: 32px;
 }
 
-.changelog-category:last-child {
+.changelog-section:last-child {
     margin-bottom: 0;
 }
 
-.changelog-badge {
+/* Pill badge styling */
+.changelog-pill {
     display: inline-block;
-    padding: 4px 12px;
-    border-radius: 20px;
-    font-size: 0.7rem;
+    padding: 6px 16px;
+    border-radius: 9999px;
+    font-size: 0.6875rem;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
-    margin-bottom: 12px;
+    letter-spacing: 0.05em;
+    margin-bottom: 16px;
+    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
 }
 
-.changelog-list {
+/* Items list */
+.changelog-items {
     list-style: none;
     padding: 0;
     margin: 0;
 }
 
-.changelog-item {
-    position: relative;
-    padding-left: 20px;
-    margin-bottom: 10px;
-    font-size: 0.9rem;
-    line-height: 1.5;
-    color: var(--text-secondary);
+/* Individual entry */
+.changelog-entry {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 16px;
+    font-size: 0.9375rem;
+    line-height: 1.6;
+    color: #4b5563;
 }
 
-.changelog-item:last-child {
+.changelog-entry:last-child {
     margin-bottom: 0;
 }
 
-.changelog-item::before {
-    content: '';
-    position: absolute;
-    left: 0;
-    top: 8px;
+/* Blue bullet point */
+.changelog-bullet {
+    flex-shrink: 0;
     width: 6px;
     height: 6px;
-    background: var(--primary);
+    background: #6366f1;
     border-radius: 50%;
+    margin-top: 9px;
 }
 
-.changelog-item strong {
-    color: var(--text-primary);
+/* Text content */
+.changelog-text {
+    flex: 1;
+}
+
+.changelog-text strong {
+    color: #111827;
     font-weight: 600;
 }
 
-.changelog-item code {
-    background: var(--bg-secondary);
+.changelog-text code {
+    background: #f3f4f6;
     padding: 2px 6px;
     border-radius: 4px;
-    font-family: monospace;
-    font-size: 0.85em;
+    font-family: ui-monospace, monospace;
+    font-size: 0.875em;
+    color: #374151;
 }
 
+/* Footer */
 .changelog-footer {
-    padding: 20px 24px;
-    border-top: 1px solid var(--border-color);
-    background: var(--bg-secondary);
+    padding: 20px 28px;
+    border-top: 1px solid #e5e7eb;
+    background: #f9fafb;
     display: flex;
     justify-content: center;
 }
@@ -4695,8 +4708,26 @@ html {
 
 /* Version divider */
 .changelog-version + .changelog-version {
-    padding-top: 24px;
-    border-top: 2px solid var(--border-color);
+    padding-top: 32px;
+    border-top: 1px solid #e5e7eb;
+}
+
+/* Scrollbar styling for light theme */
+.changelog-body::-webkit-scrollbar {
+    width: 8px;
+}
+
+.changelog-body::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.changelog-body::-webkit-scrollbar-thumb {
+    background: #d1d5db;
+    border-radius: 4px;
+}
+
+.changelog-body::-webkit-scrollbar-thumb:hover {
+    background: #9ca3af;
 }
 
 /* Mobile responsive */
@@ -4704,6 +4735,7 @@ html {
     .changelog-modal-content {
         max-width: 95vw;
         max-height: 90vh;
+        border-radius: 12px;
     }
     
     .changelog-header {
@@ -4711,19 +4743,30 @@ html {
     }
     
     .changelog-header h2 {
-        font-size: 1.2rem;
+        font-size: 1.125rem;
     }
     
     .changelog-body {
-        padding: 16px;
+        padding: 20px;
     }
     
-    .changelog-version-header {
-        font-size: 1.2rem;
+    .changelog-version-title {
+        font-size: 1.5rem;
+        margin-bottom: 20px;
     }
     
-    .changelog-item {
-        font-size: 0.85rem;
+    .changelog-pill {
+        font-size: 0.625rem;
+        padding: 5px 12px;
+    }
+    
+    .changelog-entry {
+        font-size: 0.875rem;
+        margin-bottom: 12px;
+    }
+    
+    .changelog-section {
+        margin-bottom: 24px;
     }
     
     .changelog-footer {
