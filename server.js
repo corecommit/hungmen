@@ -5,6 +5,8 @@ const cors = require('cors');
 const { v4: uuidv4 } = require('uuid');
 const path = require('path');
 const { execSync } = require('child_process');
+const mongoose = require('mongoose');
+const User = require('./models/User');
 
 const app = express();
 const server = http.createServer(app);
@@ -123,9 +125,474 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
+// ═══════════════════════════════════════════════════════════════════════
+// MONGODB CONNECTION
+// ═══════════════════════════════════════════════════════════════════════
+
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/hangman';
+
+async function connectToMongoDB() {
+    try {
+        console.log('[MONGODB] Connecting to MongoDB...');
+        await mongoose.connect(MONGODB_URI);
+        console.log('[MONGODB] Connected to MongoDB successfully!');
+        return true;
+    } catch (error) {
+        console.error('[MONGODB] Failed to connect:', error.message);
+        console.log('[MONGODB] Falling back to in-memory storage (data will be lost on restart)');
+        return false;
+    }
+}
+
+// Connect to MongoDB
+connectToMongoDB();
+
 let rooms = new Map();
 let onlineUsers = new Map();
 let lobbyMessages = [];
+
+// ═══════════════════════════════════════════════════════════════════════
+// MAINTENANCE MODE
+// ═══════════════════════════════════════════════════════════════════════
+
+let maintenanceMode = false;
+let maintenanceMessage = 'Website is under maintenance. Please try again later.';
+
+function isMaintenanceMode() {
+    return maintenanceMode;
+}
+
+function setMaintenanceMode(enabled, message = null) {
+    maintenanceMode = enabled;
+    if (message) {
+        maintenanceMessage = message;
+    }
+    console.log(`[MAINTENANCE] Maintenance mode ${enabled ? 'ENABLED' : 'DISABLED'}`);
+    if (enabled) {
+        console.log(`[MAINTENANCE] Message: ${maintenanceMessage}`);
+    }
+    return maintenanceMode;
+}
+
+function getMaintenanceMessage() {
+    return maintenanceMessage;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// USER DATABASE - MongoDB Storage
+// ═══════════════════════════════════════════════════════════════════════
+
+// Get or create user entry (MongoDB version)
+async function getUserData(username) {
+    try {
+        const key = username.toLowerCase();
+        let user = await User.findOne({ username: key });
+        
+        if (!user) {
+            // Create new user
+            user = new User({
+                username: key,
+                displayName: username,
+                stats: {
+                    wins: 0,
+                    losses: 0,
+                    gamesPlayed: 0
+                }
+            });
+            await user.save();
+            console.log(`[MONGODB] Created new user: ${key}`);
+        } else {
+            // Update last login
+            user.lastLogin = new Date();
+            await user.save();
+        }
+        
+        return user;
+    } catch (error) {
+        console.error('[MONGODB] Error in getUserData:', error);
+        // Return a default user object if database fails
+        return {
+            username: username.toLowerCase(),
+            displayName: username,
+            stats: { wins: 0, losses: 0, gamesPlayed: 0 },
+            avatar: null,
+            banned: false,
+            banExpiry: null,
+            banReason: null
+        };
+    }
+}
+
+// Get all users for admin panel
+async function getAllUsersInDatabase() {
+    try {
+        const users = await User.find({}).sort({ lastLogin: -1 });
+        return users.map(user => ({
+            username: user.displayName,
+            stats: user.stats,
+            avatar: user.avatar,
+            lastLogin: user.lastLogin,
+            banned: user.banned,
+            banExpiry: user.banExpiry,
+            banReason: user.banReason
+        }));
+    } catch (error) {
+        console.error('[MONGODB] Error getting all users:', error);
+        return [];
+    }
+}
+
+// Reload user database (for admin refresh)
+async function reloadUserDatabaseFromFile() {
+    console.log('[MONGODB] Reload not needed with MongoDB - data is always current');
+    return true;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// USER DATABASE BACKUP SYSTEM (Export/Import for MongoDB)
+// ═══════════════════════════════════════════════════════════════════════
+
+const fs = require('fs');
+const BACKUP_DIR = path.join(__dirname, 'backups');
+
+// Ensure backup directory exists
+function ensureBackupDir() {
+    if (!fs.existsSync(BACKUP_DIR)) {
+        fs.mkdirSync(BACKUP_DIR, { recursive: true });
+        console.log('[BACKUP] Created backup directory');
+    }
+}
+
+// Create a backup of the user database
+async function createDatabaseBackup() {
+    try {
+        ensureBackupDir();
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const backupFile = path.join(BACKUP_DIR, `user_database_backup_${timestamp}.json`);
+        
+        const users = await User.find({});
+        const backupData = users.map(user => ({
+            username: user.username,
+            displayName: user.displayName,
+            firstLogin: user.firstLogin,
+            lastLogin: user.lastLogin,
+            stats: user.stats,
+            avatar: user.avatar,
+            totalPlayTime: user.totalPlayTime,
+            banned: user.banned,
+            banExpiry: user.banExpiry,
+            banReason: user.banReason
+        }));
+        
+        fs.writeFileSync(backupFile, JSON.stringify(backupData, null, 2));
+        console.log(`[BACKUP] Database backup created: ${backupFile}`);
+        return { success: true, file: backupFile, timestamp: timestamp };
+    } catch (error) {
+        console.error('[BACKUP] Error creating backup:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+// Get list of all backups
+function getBackupList() {
+    try {
+        ensureBackupDir();
+        const files = fs.readdirSync(BACKUP_DIR);
+        const backups = files
+            .filter(f => f.startsWith('user_database_backup_') && f.endsWith('.json'))
+            .map(f => {
+                const stat = fs.statSync(path.join(BACKUP_DIR, f));
+                return {
+                    filename: f,
+                    created: stat.mtime,
+                    size: stat.size
+                };
+            })
+            .sort((a, b) => b.created - a.created);
+        return backups;
+    } catch (error) {
+        console.error('[BACKUP] Error listing backups:', error);
+        return [];
+    }
+}
+
+// Restore from a backup file
+async function restoreFromBackup(filename) {
+    try {
+        const backupPath = path.join(BACKUP_DIR, filename);
+        if (!fs.existsSync(backupPath)) {
+            return { success: false, message: 'Backup file not found' };
+        }
+        
+        // Create backup of current database before restoring
+        await createDatabaseBackup();
+        
+        const data = fs.readFileSync(backupPath, 'utf8');
+        const backupData = JSON.parse(data);
+        
+        // Clear existing users and restore from backup
+        await User.deleteMany({});
+        
+        for (const userData of backupData) {
+            const user = new User(userData);
+            await user.save();
+        }
+        
+        console.log(`[BACKUP] Database restored from: ${filename}`);
+        return { success: true, message: `Database restored from ${filename}`, userCount: backupData.length };
+    } catch (error) {
+        console.error('[BACKUP] Error restoring backup:', error);
+        return { success: false, message: error.message };
+    }
+}
+
+// Delete a backup file
+function deleteBackup(filename) {
+    try {
+        const backupPath = path.join(BACKUP_DIR, filename);
+        if (!fs.existsSync(backupPath)) {
+            return { success: false, message: 'Backup file not found' };
+        }
+        
+        fs.unlinkSync(backupPath);
+        console.log(`[BACKUP] Deleted backup: ${filename}`);
+        return { success: true, message: `Backup ${filename} deleted` };
+    } catch (error) {
+        console.error('[BACKUP] Error deleting backup:', error);
+        return { success: false, message: error.message };
+    }
+}
+
+// Check if user is currently banned
+async function isUserBanned(username) {
+    try {
+        const key = username.toLowerCase();
+        const user = await User.findOne({ username: key });
+        
+        if (!user || !user.banned) return { banned: false };
+        
+        // Check if temporary ban has expired
+        if (user.banExpiry) {
+            const expiryDate = new Date(user.banExpiry);
+            if (expiryDate <= new Date()) {
+                // Ban expired, auto-unban
+                user.banned = false;
+                user.banExpiry = null;
+                user.banReason = null;
+                await user.save();
+                return { banned: false };
+            }
+            return { 
+                banned: true, 
+                expiry: user.banExpiry, 
+                reason: user.banReason,
+                isPermanent: false
+            };
+        }
+        
+        // Permanent ban
+        return { 
+            banned: true, 
+            expiry: null, 
+            reason: user.banReason,
+            isPermanent: true
+        };
+    } catch (error) {
+        console.error('[MONGODB] Error in isUserBanned:', error);
+        return { banned: false };
+    }
+}
+
+// Ban user
+async function banUser(username, duration = null, reason = 'Banned by admin') {
+    try {
+        const key = username.toLowerCase();
+        console.log(`[MONGODB BAN] Attempting to ban user: ${username}`);
+        
+        const user = await User.findOne({ username: key });
+        if (!user) {
+            console.log(`[MONGODB BAN] User not found: ${username}`);
+            return false;
+        }
+        
+        user.banned = true;
+        user.banReason = reason;
+        
+        if (duration && duration > 0) {
+            // Temporary ban - calculate expiry
+            const expiry = new Date();
+            expiry.setHours(expiry.getHours() + parseInt(duration));
+            user.banExpiry = expiry;
+            console.log(`[MONGODB BAN] Temporary ban for ${username}, expires: ${expiry}`);
+        } else {
+            // Permanent ban
+            user.banExpiry = null;
+            console.log(`[MONGODB BAN] Permanent ban for ${username}`);
+        }
+        
+        await user.save();
+        console.log(`[MONGODB BAN] Successfully banned user: ${username}`);
+        return true;
+    } catch (error) {
+        console.error('[MONGODB] Error in banUser:', error);
+        return false;
+    }
+}
+
+// Unban user
+async function unbanUser(username) {
+    try {
+        const key = username.toLowerCase();
+        console.log(`[MONGODB UNBAN] Attempting to unban user: ${username}`);
+        
+        const user = await User.findOne({ username: key });
+        if (!user) {
+            console.log(`[MONGODB UNBAN] User not found: ${username}`);
+            return false;
+        }
+        
+        user.banned = false;
+        user.banExpiry = null;
+        user.banReason = null;
+        await user.save();
+        console.log(`[MONGODB UNBAN] Successfully unbanned user: ${username}`);
+        return true;
+    } catch (error) {
+        console.error('[MONGODB] Error in unbanUser:', error);
+        return false;
+    }
+}
+
+// Update user stats (incremental)
+async function updateUserStats(username, result) {
+    try {
+        const key = username.toLowerCase();
+        const user = await User.findOne({ username: key });
+        
+        if (user) {
+            user.stats.gamesPlayed++;
+            if (result === 'win') {
+                user.stats.wins++;
+            } else if (result === 'loss') {
+                user.stats.losses++;
+            }
+            await user.save();
+        }
+    } catch (error) {
+        console.error('[MONGODB] Error in updateUserStats:', error);
+    }
+}
+
+// Set user stats directly (for admin editing)
+async function setUserStats(username, stats) {
+    try {
+        const key = username.toLowerCase();
+        const user = await User.findOne({ username: key });
+        
+        if (user) {
+            user.stats = {
+                wins: parseInt(stats.wins) || 0,
+                losses: parseInt(stats.losses) || 0,
+                gamesPlayed: parseInt(stats.gamesPlayed) || 0
+            };
+            await user.save();
+            return true;
+        }
+        return false;
+    } catch (error) {
+        console.error('[MONGODB] Error in setUserStats:', error);
+        return false;
+    }
+}
+
+// Reload user stats from database (for live updates)
+async function reloadUserStats(username) {
+    try {
+        const key = username.toLowerCase();
+        const user = await User.findOne({ username: key });
+        
+        if (user) {
+            return user.stats;
+        }
+        return null;
+    } catch (error) {
+        console.error('[MONGODB] Error in reloadUserStats:', error);
+        return null;
+    }
+}
+
+// Update user avatar
+async function updateUserAvatar(username, avatarData) {
+    try {
+        const key = username.toLowerCase();
+        const user = await User.findOne({ username: key });
+
+        if (user) {
+            user.avatar = avatarData;
+            await user.save();
+        }
+    } catch (error) {
+        console.error('[MONGODB] Error in updateUserAvatar:', error);
+    }
+}
+
+// Delete user from database
+async function deleteUser(username) {
+    try {
+        const key = username.toLowerCase();
+        console.log(`[MONGODB DELETE] Attempting to delete user: ${username}`);
+        
+        const result = await User.deleteOne({ username: key });
+        
+        if (result.deletedCount > 0) {
+            console.log(`[MONGODB DELETE] Successfully deleted user: ${username}`);
+            return true;
+        }
+        console.log(`[MONGODB DELETE] User not found: ${username}`);
+        return false;
+    } catch (error) {
+        console.error('[MONGODB] Error in deleteUser:', error);
+        return false;
+    }
+}
+
+// Delete all users from database (admin only)
+async function deleteAllUsers() {
+    try {
+        await User.deleteMany({});
+        console.log('[MONGODB] All users deleted');
+        return true;
+    } catch (error) {
+        console.error('[MONGODB] Error in deleteAllUsers:', error);
+        return false;
+    }
+}
+
+// Get all users in database
+async function getAllUsersInDatabase() {
+    try {
+        const users = await User.find({}).sort({ lastLogin: -1 });
+        return users.map(user => {
+            const isBanned = user.banned || false;
+            
+            return {
+                key: user.username,
+                username: user.displayName,
+                firstLogin: user.firstLogin,
+                lastLogin: user.lastLogin,
+                stats: user.stats,
+                hasAvatar: !!user.avatar,
+                banned: isBanned,
+                isPermanent: isBanned ? !user.banExpiry : false,
+                banExpiry: isBanned ? user.banExpiry : null,
+                banReason: isBanned ? user.banReason : null
+            };
+        });
+    } catch (error) {
+        console.error('[MONGODB] Error getting all users:', error);
+        return [];
+    }
+}
 
 const wordDatabase = {
     easy: [
@@ -328,31 +795,40 @@ class Room {
             
             this.status = 'playing';
         } else if (gameMode === 'custom') {
-            // For custom word mode, the HOST is always the word setter
-            const hostTeam = this.players.find(p => p.id === this.hostId)?.team;
-
+            // For custom word mode, use coin flip to determine word setter
+            const isTeamMode = this.mode !== 'solo' && this.mode !== '1v1';
+            
             this.gameState = {
                 word: null,
                 hint: null,
                 guessedLetters: [],
                 wrongLetters: [],
-                currentTurn: 0, // Will be updated when game actually starts
-                status: 'word_selection',
+                currentTurn: 0,
+                status: 'coin_flip', // Start with coin flip phase
                 gameMode: gameMode,
                 scores: {},
                 isCustomWord: true,
                 hintsRemaining: hintCount,
                 hints: [],
-                wordSetter: this.hostId,
-                wordSetterTeam: hostTeam,
-                hintCount: hintCount
+                wordSetter: null, // Will be set after coin flip
+                wordSetterTeam: null,
+                hintCount: hintCount,
+                isTeamMode: isTeamMode,
+                coinFlip: {
+                    player1Choice: null,
+                    player2Choice: null,
+                    player1Id: null,
+                    player2Id: null,
+                    result: null,
+                    winner: null
+                }
             };
             
             this.players.forEach(player => {
                 this.gameState.scores[player.id] = 0;
             });
             
-            this.status = 'word_selection';
+            this.status = 'coin_flip';
         } else {
             // For other modes (easy, medium, hard), use random word
             const wordData = this.getRandomWord(gameMode);
@@ -576,12 +1052,75 @@ class Room {
 io.on('connection', (socket) => {
     console.log('New connection:', socket.id);
 
-    socket.on('authenticate', (data) => {
-        const { username } = data;
+    socket.on('authenticate', async (data) => {
+        const { username, adminPassword } = data;
         
         if (!username || username.trim().length === 0) {
             socket.emit('authError', { message: 'Username is required' });
             return;
+        }
+        
+        const trimmedUsername = username.trim();
+        
+        // Check if username contains "admin" but is not exactly "admin"
+        const lowerUsername = trimmedUsername.toLowerCase();
+        if (lowerUsername !== 'admin' && lowerUsername.includes('admin')) {
+            socket.emit('authError', { message: 'The username "admin" is reserved. You cannot use variations like admin67, admin69, etc.' });
+            return;
+        }
+        
+        // Check maintenance mode (admins can bypass)
+        const isAdminLogin = lowerUsername === 'admin';
+        if (isMaintenanceMode() && !isAdminLogin) {
+            socket.emit('authError', { 
+                message: getMaintenanceMessage(),
+                maintenance: true 
+            });
+            return;
+        }
+        
+        // Check if user is banned
+        console.log(`[AUTH] Checking ban status for: ${trimmedUsername}`);
+        const banStatus = await isUserBanned(trimmedUsername);
+        console.log(`[AUTH] Ban status for ${trimmedUsername}:`, banStatus);
+        if (banStatus.banned) {
+            console.log(`[AUTH] REJECTING banned user: ${trimmedUsername}`);
+            if (banStatus.isPermanent) {
+                socket.emit('authError', { 
+                    message: `You are permanently banned. Reason: ${banStatus.reason || 'No reason provided'}`,
+                    banned: true,
+                    permanent: true
+                });
+            } else {
+                const expiryDate = new Date(banStatus.expiry);
+                socket.emit('authError', { 
+                    message: `You are banned until ${expiryDate.toLocaleString()}. Reason: ${banStatus.reason || 'No reason provided'}`,
+                    banned: true,
+                    permanent: false,
+                    expiry: banStatus.expiry
+                });
+            }
+            return;
+        }
+        console.log(`[AUTH] User ${trimmedUsername} is not banned, proceeding with authentication`);
+        
+        // Admin account authentication
+        if (trimmedUsername.toLowerCase() === 'admin') {
+            // Set your admin password here - you can change this to any secure password
+            const ADMIN_PASSWORD = 'Admin@007';
+            
+            if (!adminPassword || adminPassword !== ADMIN_PASSWORD) {
+                socket.emit('authError', { message: 'Password needed to login in the admin account' });
+                return;
+            }
+            
+            // Check if admin is already logged in
+            for (const user of onlineUsers.values()) {
+                if (user.username.toLowerCase() === 'admin') {
+                    socket.emit('authError', { message: 'Admin account is already in use' });
+                    return;
+                }
+            }
         }
         
         if (isUsernameTaken(username)) {
@@ -589,17 +1128,26 @@ io.on('connection', (socket) => {
             return;
         }
         
+        // Get or create user data from database (username only)
+        const userData = await getUserData(trimmedUsername);
+        
         onlineUsers.set(socket.id, {
             id: socket.id,
-            username: username.trim(),
-            room: null
+            username: trimmedUsername,
+            room: null,
+            isAdmin: trimmedUsername.toLowerCase() === 'admin',
+            stats: userData.stats,
+            avatar: userData.avatar
         });
         
         socket.emit('authenticated', { 
             success: true, 
             user: { 
                 id: socket.id, 
-                username: username.trim() 
+                username: trimmedUsername,
+                isAdmin: trimmedUsername.toLowerCase() === 'admin',
+                stats: userData.stats,
+                avatar: userData.avatar
             } 
         });
         
@@ -656,18 +1204,19 @@ io.on('connection', (socket) => {
                     type: 'system',
                     message: `${oldUsername} changed their username to ${trimmedUsername}`
                 });
-                
+
                 io.to(user.room).emit('roomPlayersUpdate', {
                     players: room.players.map(p => ({
                         id: p.id,
                         username: p.username,
                         team: p.team,
-                        avatar: p.avatar
+                        avatar: p.avatar,
+                        isAdmin: onlineUsers.get(p.id)?.isAdmin || false
                     }))
                 });
             }
         }
-        
+
         // Update session
         socket.emit('usernameChanged', { 
             success: true, 
@@ -747,6 +1296,25 @@ io.on('connection', (socket) => {
         const { roomId, password, username, avatar } = data;
         const room = rooms.get(roomId);
         
+        // Check if user is banned
+        console.log(`[JOIN ROOM] Checking ban status for: ${username}`);
+        const banStatus = isUserBanned(username);
+        console.log(`[JOIN ROOM] Ban status for ${username}:`, banStatus);
+        if (banStatus.banned) {
+            console.log(`[JOIN ROOM] REJECTING banned user from joining room: ${username}`);
+            if (banStatus.isPermanent) {
+                socket.emit('joinError', { 
+                    message: `You are permanently banned from joining rooms. Reason: ${banStatus.reason || 'No reason provided'}` 
+                });
+            } else {
+                const expiryDate = new Date(banStatus.expiry);
+                socket.emit('joinError', { 
+                    message: `You are banned from joining rooms until ${expiryDate.toLocaleString()}. Reason: ${banStatus.reason || 'No reason provided'}` 
+                });
+            }
+            return;
+        }
+        
         if (!room) {
             socket.emit('joinError', { message: 'Room not found' });
             return;
@@ -790,7 +1358,8 @@ io.on('connection', (socket) => {
                 id: p.id,
                 username: p.username,
                 team: p.team,
-                avatar: p.avatar
+                avatar: p.avatar,
+                isAdmin: onlineUsers.get(p.id)?.isAdmin || false
             })),
             isHost: room.hostId === socket.id,
             hostId: room.hostId,
@@ -801,7 +1370,8 @@ io.on('connection', (socket) => {
             id: socket.id,
             username: username,
             team: player.team,
-            avatar: player.avatar
+            avatar: player.avatar,
+            isAdmin: onlineUsers.get(socket.id)?.isAdmin || false
         });
         
         io.emit('roomList', Array.from(rooms.values()).map(r => ({
@@ -825,20 +1395,21 @@ io.on('connection', (socket) => {
                 room.removePlayer(socket.id);
                 socket.leave(user.room);
                 socket.to(user.room).emit('playerLeft', { id: socket.id, username: user.username });
-                
+
                 io.to(user.room).emit('roomPlayersUpdate', {
                     players: room.players.map(p => ({
                         id: p.id,
                         username: p.username,
                         team: p.team,
-                        avatar: p.avatar
+                        avatar: p.avatar,
+                        isAdmin: onlineUsers.get(p.id)?.isAdmin || false
                     }))
                 });
-                
+
                 if (room.players.length > 0) {
                     io.to(user.room).emit('hostChanged', { newHostId: room.hostId });
                 }
-                
+
                 io.emit('roomList', Array.from(rooms.values()).map(r => ({
                     id: r.id,
                     name: r.name,
@@ -903,13 +1474,40 @@ io.on('connection', (socket) => {
         room.startGame(gameMode, hintCount);
         
         if (gameMode === 'custom') {
-            const wordSetter = room.players.find(p => p.id === room.gameState.wordSetter);
+            // For custom mode, start with coin flip phase to determine word setter
+            const isTeamMode = room.mode !== 'solo' && room.mode !== '1v1';
             
-            io.to(roomId).emit('wordSelectionPhase', {
-                wordSetter: {
-                    id: wordSetter.id,
-                    username: wordSetter.username
-                },
+            // Get representatives for coin flip
+            let player1, player2;
+            
+            if (isTeamMode) {
+                // Team mode: first player from each team
+                player1 = room.players.find(p => p.team === 'team1');
+                player2 = room.players.find(p => p.team === 'team2');
+            } else {
+                // 1v1 mode: both players
+                player1 = room.players[0];
+                player2 = room.players[1];
+            }
+            
+            // Store the player IDs for coin flip
+            if (player1 && player2) {
+                room.gameState.coinFlip.player1Id = player1.id;
+                room.gameState.coinFlip.player2Id = player2.id;
+            }
+            
+            io.to(roomId).emit('coinFlipPhase', {
+                isTeamMode: isTeamMode,
+                player1: player1 ? {
+                    id: player1.id,
+                    username: player1.username,
+                    team: player1.team
+                } : null,
+                player2: player2 ? {
+                    id: player2.id,
+                    username: player2.username,
+                    team: player2.team
+                } : null,
                 hintCount: room.gameState.hintCount
             });
         } else {
@@ -933,10 +1531,126 @@ io.on('connection', (socket) => {
                     username: p.username, 
                     index: index,
                     team: p.team,
-                    avatar: p.avatar
+                    avatar: p.avatar,
+                    isAdmin: onlineUsers.get(p.id)?.isAdmin || false
                 })),
                 mode: room.mode
             });
+        }
+    });
+
+    // Coin Flip handlers for custom word mode
+    socket.on('selectCoinSide', (data) => {
+        const { roomId, side } = data;
+        const room = rooms.get(roomId);
+        
+        if (!room || !room.gameState || room.gameState.status !== 'coin_flip') {
+            socket.emit('coinFlipError', { message: 'Coin flip not available' });
+            return;
+        }
+        
+        const playerId = socket.id;
+        const isPlayer1 = room.gameState.coinFlip.player1Id === playerId;
+        const isPlayer2 = room.gameState.coinFlip.player2Id === playerId;
+        
+        if (!isPlayer1 && !isPlayer2) {
+            const isTeamMode = room.gameState.isTeamMode;
+            const errorMsg = isTeamMode 
+                ? 'Only Team Leaders can choose Heads or Tails' 
+                : 'You are not a participant in this coin flip';
+            socket.emit('coinFlipError', { message: errorMsg });
+            return;
+        }
+        
+        // Check if coin flip is already in progress (prevent double submission)
+        if (room.gameState.coinFlip.player1Choice && room.gameState.coinFlip.player2Choice) {
+            socket.emit('coinFlipError', { message: 'Coin flip is already in progress' });
+            return;
+        }
+        
+        // Check if this player already made a choice
+        if (isPlayer1 && room.gameState.coinFlip.player1Choice) {
+            socket.emit('coinFlipError', { message: 'You already chose a side' });
+            return;
+        }
+        if (!isPlayer1 && room.gameState.coinFlip.player2Choice) {
+            socket.emit('coinFlipError', { message: 'You already chose a side' });
+            return;
+        }
+        
+        // Record the choice for the player who clicked
+        if (isPlayer1) {
+            room.gameState.coinFlip.player1Choice = side;
+            // Automatically assign opposite side to player 2
+            room.gameState.coinFlip.player2Choice = side === 'heads' ? 'tails' : 'heads';
+        } else {
+            room.gameState.coinFlip.player2Choice = side;
+            // Automatically assign opposite side to player 1
+            room.gameState.coinFlip.player1Choice = side === 'heads' ? 'tails' : 'heads';
+        }
+        
+        // Notify all players of both selections at once
+        io.to(roomId).emit('coinSideSelected', {
+            player1Choice: room.gameState.coinFlip.player1Choice,
+            player2Choice: room.gameState.coinFlip.player2Choice,
+            player1Id: room.gameState.coinFlip.player1Id,
+            player2Id: room.gameState.coinFlip.player2Id,
+            isTeamMode: room.gameState.isTeamMode
+        });
+        
+        // Both players have chosen (one manually, one automatically)
+        if (room.gameState.coinFlip.player1Choice && room.gameState.coinFlip.player2Choice) {
+            
+            // Start the coin flip animation (wait longer for the 3-2-1 countdown)
+            setTimeout(() => {
+                // Perform coin flip
+                const result = Math.random() < 0.5 ? 'heads' : 'tails';
+                room.gameState.coinFlip.result = result;
+                
+                // Determine winner
+                let winnerId, winnerName, winnerTeam;
+                if (room.gameState.coinFlip.player1Choice === result) {
+                    winnerId = room.gameState.coinFlip.player1Id;
+                    const winner = room.players.find(p => p.id === winnerId);
+                    winnerName = winner ? winner.username : 'Player 1';
+                    winnerTeam = winner ? winner.team : null;
+                } else {
+                    winnerId = room.gameState.coinFlip.player2Id;
+                    const winner = room.players.find(p => p.id === winnerId);
+                    winnerName = winner ? winner.username : 'Player 2';
+                    winnerTeam = winner ? winner.team : null;
+                }
+                
+                room.gameState.coinFlip.winner = winnerId;
+                
+                // Emit the result
+                io.to(roomId).emit('coinFlipResult', {
+                    result: result,
+                    winner: {
+                        id: winnerId,
+                        username: winnerName,
+                        team: winnerTeam
+                    }
+                });
+                
+                // Set the word setter to the winner
+                room.gameState.wordSetter = winnerId;
+                room.gameState.wordSetterTeam = winnerTeam;
+                
+                // After showing the result, proceed to word selection
+                setTimeout(() => {
+                    room.gameState.status = 'word_selection';
+                    const wordSetter = room.players.find(p => p.id === winnerId);
+                    
+                    io.to(roomId).emit('wordSelectionPhase', {
+                        wordSetter: {
+                            id: winnerId,
+                            username: winnerName
+                        },
+                        hintCount: room.gameState.hintCount
+                    });
+                }, 8000); // Wait 8 seconds to show the result (enough time for 3-2-1 countdown + HEADS/TAILS reveal + winner display)
+            }, 2000); // Wait 2 seconds after both selected before starting countdown
         }
     });
 
@@ -988,7 +1702,8 @@ io.on('connection', (socket) => {
                     username: p.username, 
                     index: index,
                     team: p.team,
-                    avatar: p.avatar
+                    avatar: p.avatar,
+                    isAdmin: onlineUsers.get(p.id)?.isAdmin || false
                 })),
                 mode: room.mode
             });
@@ -998,26 +1713,28 @@ io.on('connection', (socket) => {
     });
 
     socket.on('requestHint', (data) => {
-        const { roomId } = data;
+        const { roomId, question } = data;
         const room = rooms.get(roomId);
-        
+
         if (!room || !room.gameState) {
             socket.emit('hintError', { message: 'Game not found' });
             return;
         }
 
         const result = room.requestHint(socket.id);
-        
+
         if (result.success) {
             const requester = room.players.find(p => p.id === socket.id);
             const wordSetter = room.players.find(p => p.id === room.gameState.wordSetter);
-            
+
             room.gameState.lastHintRequester = socket.id;
-            
+            room.gameState.lastQuestion = question || null;
+
             if (wordSetter) {
                 io.to(wordSetter.id).emit('hintRequested', {
                     requesterId: socket.id,
-                    requesterName: requester.username
+                    requesterName: requester.username,
+                    question: question || null
                 });
             }
         } else {
@@ -1028,21 +1745,25 @@ io.on('connection', (socket) => {
     socket.on('provideHint', (data) => {
         const { roomId, hint } = data;
         const room = rooms.get(roomId);
-        
+
         if (!room || !room.gameState) {
             socket.emit('hintError', { message: 'Game not found' });
             return;
         }
 
         const result = room.provideHint(hint, socket.id);
-        
+
         if (result.success) {
             io.to(roomId).emit('hintProvided', {
                 hint: result.hint,
                 hintNumber: result.hintNumber,
                 hintsRemaining: result.hintsRemaining,
-                requesterId: room.gameState.lastHintRequester || null
+                requesterId: room.gameState.lastHintRequester || null,
+                question: room.gameState.lastQuestion || null
             });
+
+            // Clear the stored question after sending
+            room.gameState.lastQuestion = null;
         } else {
             socket.emit('hintError', { message: result.message });
         }
@@ -1126,6 +1847,15 @@ io.on('connection', (socket) => {
                     isWin: result.isWin
                 });
                 
+                // Update user stats in database for all players
+                room.players.forEach(player => {
+                    const user = onlineUsers.get(player.id);
+                    if (user && !user.isAdmin) {
+                        const isWinner = winner && winner[0] === player.id;
+                        updateUserStats(user.username, isWinner ? 'win' : 'loss');
+                    }
+                });
+                
                 room.messages = [];
                 io.to(roomId).emit('roomChatCleared');
                 
@@ -1189,7 +1919,8 @@ io.on('connection', (socket) => {
                 id: p.id,
                 username: p.username,
                 team: p.team,
-                avatar: p.avatar
+                avatar: p.avatar,
+                isAdmin: onlineUsers.get(p.id)?.isAdmin || false
             }))
         });
     });
@@ -1265,20 +1996,21 @@ io.on('connection', (socket) => {
             if (room) {
                 room.removePlayer(socket.id);
                 socket.to(user.room).emit('playerLeft', { id: socket.id, username: user.username });
-                
+
                 io.to(user.room).emit('roomPlayersUpdate', {
                     players: room.players.map(p => ({
                         id: p.id,
                         username: p.username,
                         team: p.team,
-                        avatar: p.avatar
+                        avatar: p.avatar,
+                        isAdmin: onlineUsers.get(p.id)?.isAdmin || false
                     }))
                 });
-                
+
                 if (room.players.length > 0) {
                     io.to(user.room).emit('hostChanged', { newHostId: room.hostId });
                 }
-                
+
                 io.emit('roomList', Array.from(rooms.values()).map(r => ({
                     id: r.id,
                     name: r.name,
@@ -1290,9 +2022,796 @@ io.on('connection', (socket) => {
                 })));
             }
         }
-        
+
         onlineUsers.delete(socket.id);
         io.emit('onlineCount', onlineUsers.size);
+    });
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // ADMIN COMMANDS
+    // ═══════════════════════════════════════════════════════════════════════
+
+    // Helper function to check if user is admin
+    function isAdmin(socketId) {
+        const user = onlineUsers.get(socketId);
+        return user && user.isAdmin;
+    }
+
+    // Delete room (admin only)
+    socket.on('adminDeleteRoom', (data) => {
+        if (!isAdmin(socket.id)) {
+            socket.emit('adminError', { message: 'Unauthorized - Admin only' });
+            return;
+        }
+
+        const { roomIdOrName } = data;
+        let roomToDelete = null;
+        let roomId = null;
+
+        // Try to find by ID first
+        if (rooms.has(roomIdOrName)) {
+            roomToDelete = rooms.get(roomIdOrName);
+            roomId = roomIdOrName;
+        } else {
+            // Try to find by name
+            for (const [id, room] of rooms.entries()) {
+                if (room.name.toLowerCase() === roomIdOrName.toLowerCase()) {
+                    roomToDelete = room;
+                    roomId = id;
+                    break;
+                }
+            }
+        }
+
+        if (!roomToDelete) {
+            socket.emit('adminError', { message: 'Room not found' });
+            return;
+        }
+
+        // Notify all players in the room
+        io.to(roomId).emit('roomDeleted', { 
+            message: 'Room has been deleted by an admin',
+            roomName: roomToDelete.name 
+        });
+
+        // Remove all players from the room
+        roomToDelete.players.forEach(player => {
+            const user = onlineUsers.get(player.id);
+            if (user) {
+                user.room = null;
+            }
+            player.socket.leave(roomId);
+        });
+
+        // Delete the room
+        rooms.delete(roomId);
+
+        // Update room list for everyone
+        io.emit('roomList', Array.from(rooms.values()).map(r => ({
+            id: r.id,
+            name: r.name,
+            mode: r.mode,
+            players: r.players.length,
+            maxPlayers: r.maxPlayers,
+            status: r.status,
+            hasPassword: !!r.password,
+            selectedGameMode: r.selectedGameMode,
+            selectedHintCount: r.selectedHintCount
+        })));
+
+        socket.emit('adminSuccess', { message: `Room "${roomToDelete.name}" has been deleted` });
+    });
+
+    // Kick player (admin only)
+    socket.on('adminKickPlayer', (data) => {
+        if (!isAdmin(socket.id)) {
+            socket.emit('adminError', { message: 'Unauthorized - Admin only' });
+            return;
+        }
+
+        const { username, reason } = data;
+        let targetSocketId = null;
+        let targetUser = null;
+
+        // Find player by username
+        for (const [id, user] of onlineUsers.entries()) {
+            if (user.username.toLowerCase() === username.toLowerCase()) {
+                targetSocketId = id;
+                targetUser = user;
+                break;
+            }
+        }
+
+        if (!targetSocketId) {
+            socket.emit('adminError', { message: 'Player not found' });
+            return;
+        }
+
+        // Can't kick other admins
+        if (targetUser.isAdmin) {
+            socket.emit('adminError', { message: 'Cannot kick other admins' });
+            return;
+        }
+
+        // If player is in a room, remove them
+        if (targetUser.room) {
+            const room = rooms.get(targetUser.room);
+            if (room) {
+                room.removePlayer(targetSocketId);
+                socket.to(targetUser.room).emit('playerLeft', { 
+                    id: targetSocketId, 
+                    username: targetUser.username 
+                });
+                
+                io.to(targetUser.room).emit('roomPlayersUpdate', {
+                    players: room.players.map(p => ({
+                        id: p.id,
+                        username: p.username,
+                        team: p.team,
+                        avatar: p.avatar,
+                        isAdmin: onlineUsers.get(p.id)?.isAdmin || false
+                    }))
+                });
+                
+                if (room.players.length > 0) {
+                    io.to(targetUser.room).emit('hostChanged', { newHostId: room.hostId });
+                }
+            }
+        }
+
+        // Notify the kicked player
+        io.to(targetSocketId).emit('kicked', { 
+            reason: reason || 'Kicked by admin',
+            by: onlineUsers.get(socket.id).username
+        });
+
+        // Disconnect the player
+        const targetSocket = io.sockets.sockets.get(targetSocketId);
+        if (targetSocket) {
+            targetSocket.disconnect(true);
+        }
+
+        // Remove from online users
+        onlineUsers.delete(targetSocketId);
+        io.emit('onlineCount', onlineUsers.size);
+
+        socket.emit('adminSuccess', { message: `Player "${username}" has been kicked` });
+    });
+
+    // Get server info (admin only)
+    socket.on('adminGetServerInfo', () => {
+        if (!isAdmin(socket.id)) {
+            socket.emit('adminError', { message: 'Unauthorized - Admin only' });
+            return;
+        }
+
+        const serverInfo = {
+            onlineUsers: onlineUsers.size,
+            totalRooms: rooms.size,
+            rooms: Array.from(rooms.values()).map(room => ({
+                id: room.id,
+                name: room.name,
+                mode: room.mode,
+                players: room.players.length,
+                maxPlayers: room.maxPlayers,
+                status: room.status,
+                host: room.players.find(p => p.id === room.hostId)?.username || 'Unknown'
+            })),
+            users: Array.from(onlineUsers.values()).map(user => ({
+                id: user.id,
+                username: user.username,
+                room: user.room,
+                isAdmin: user.isAdmin
+            }))
+        };
+
+        socket.emit('adminServerInfo', serverInfo);
+    });
+
+    // Broadcast message (admin only)
+    socket.on('adminBroadcast', (data) => {
+        if (!isAdmin(socket.id)) {
+            socket.emit('adminError', { message: 'Unauthorized - Admin only' });
+            return;
+        }
+
+        const { message } = data;
+        const adminName = onlineUsers.get(socket.id).username;
+
+        // Broadcast to all connected clients
+        io.emit('adminBroadcast', {
+            message: message,
+            from: adminName,
+            timestamp: new Date().toISOString()
+        });
+
+        socket.emit('adminSuccess', { message: 'Broadcast sent successfully' });
+    });
+
+    // Ban player (admin only)
+    socket.on('adminBanPlayer', (data) => {
+        if (!isAdmin(socket.id)) {
+            socket.emit('adminError', { message: 'Unauthorized - Admin only' });
+            return;
+        }
+
+        const { username, duration, reason } = data;
+        let targetSocketId = null;
+        let targetUser = null;
+
+        // Find player by username
+        for (const [id, user] of onlineUsers.entries()) {
+            if (user.username.toLowerCase() === username.toLowerCase()) {
+                targetSocketId = id;
+                targetUser = user;
+                break;
+            }
+        }
+
+        if (!targetSocketId) {
+            socket.emit('adminError', { message: 'Player not found' });
+            return;
+        }
+
+        // Can't ban other admins
+        if (targetUser.isAdmin) {
+            socket.emit('adminError', { message: 'Cannot ban other admins' });
+            return;
+        }
+
+        // If player is in a room, remove them
+        if (targetUser.room) {
+            const room = rooms.get(targetUser.room);
+            if (room) {
+                room.removePlayer(targetSocketId);
+                socket.to(targetUser.room).emit('playerLeft', { 
+                    id: targetSocketId, 
+                    username: targetUser.username 
+                });
+                
+                io.to(targetUser.room).emit('roomPlayersUpdate', {
+                    players: room.players.map(p => ({
+                        id: p.id,
+                        username: p.username,
+                        team: p.team,
+                        avatar: p.avatar,
+                        isAdmin: onlineUsers.get(p.id)?.isAdmin || false
+                    }))
+                });
+                
+                if (room.players.length > 0) {
+                    io.to(targetUser.room).emit('hostChanged', { newHostId: room.hostId });
+                }
+            }
+        }
+
+        // Notify the banned player
+        io.to(targetSocketId).emit('banned', { 
+            reason: reason || 'Banned by admin',
+            by: onlineUsers.get(socket.id).username,
+            duration: duration
+        });
+
+        // Disconnect the player
+        const targetSocket = io.sockets.sockets.get(targetSocketId);
+        if (targetSocket) {
+            targetSocket.disconnect(true);
+        }
+
+        // Remove from online users
+        onlineUsers.delete(targetSocketId);
+        io.emit('onlineCount', onlineUsers.size);
+
+        const durationText = duration === 0 ? 'permanently' : `for ${duration} hour(s)`;
+        socket.emit('adminSuccess', { message: `Player "${username}" has been banned ${durationText}` });
+    });
+
+    // Clear chat (admin only)
+    socket.on('adminClearChat', (data) => {
+        if (!isAdmin(socket.id)) {
+            socket.emit('adminError', { message: 'Unauthorized - Admin only' });
+            return;
+        }
+
+        const { type } = data;
+        const adminName = onlineUsers.get(socket.id).username;
+
+        if (type === 'lobby') {
+            // Clear lobby chat
+            lobbyMessages = [];
+            io.emit('lobbyChatUpdate', { messages: [] });
+            io.emit('lobbyChatCleared', { by: adminName });
+            socket.emit('adminSuccess', { message: 'Lobby chat cleared' });
+        } else if (type === 'current' || type === 'room') {
+            // Clear current room chat
+            const user = onlineUsers.get(socket.id);
+            if (user && user.room) {
+                const room = rooms.get(user.room);
+                if (room) {
+                    room.messages = [];
+                    io.to(user.room).emit('roomChatCleared', { by: adminName });
+                    socket.emit('adminSuccess', { message: 'Room chat cleared' });
+                } else {
+                    socket.emit('adminError', { message: 'You are not in a room' });
+                }
+            } else {
+                socket.emit('adminError', { message: 'You are not in a room' });
+            }
+        } else {
+            socket.emit('adminError', { message: 'Invalid chat type' });
+        }
+    });
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // USER DATABASE MANAGEMENT (Admin only)
+    // ═══════════════════════════════════════════════════════════════════════
+
+    // Get user database (admin only) - reloads from file first
+    socket.on('adminGetUserDatabase', async () => {
+        if (!isAdmin(socket.id)) {
+            socket.emit('adminError', { message: 'Unauthorized - Admin only' });
+            return;
+        }
+
+        // Reload database from file to get any external edits
+        await reloadUserDatabaseFromFile();
+
+        const users = await getAllUsersInDatabase();
+        socket.emit('adminUserDatabase', { 
+            users: users, 
+            total: users.length 
+        });
+    });
+
+    // Reload user database from file (admin only)
+    socket.on('adminReloadUserDatabase', async () => {
+        if (!isAdmin(socket.id)) {
+            socket.emit('adminError', { message: 'Unauthorized - Admin only' });
+            return;
+        }
+
+        const success = await reloadUserDatabaseFromFile();
+        if (success) {
+            socket.emit('adminSuccess', { message: 'User database reloaded from MongoDB' });
+            
+            // Refresh the database view
+            const users = await getAllUsersInDatabase();
+            socket.emit('adminUserDatabase', { 
+                users: users, 
+                total: users.length 
+            });
+        } else {
+            socket.emit('adminError', { message: 'Failed to reload user database' });
+        }
+    });
+
+    // Delete user from database (admin only)
+    socket.on('adminDeleteUser', async (data) => {
+        if (!isAdmin(socket.id)) {
+            socket.emit('adminError', { message: 'Unauthorized - Admin only' });
+            return;
+        }
+
+        const { username } = data;
+        
+        if (!username) {
+            socket.emit('adminError', { message: 'Username is required' });
+            return;
+        }
+
+        // Find the user in online users to notify them
+        let targetSocketId = null;
+        for (const [id, user] of onlineUsers.entries()) {
+            if (user.username.toLowerCase() === username.toLowerCase()) {
+                targetSocketId = id;
+                break;
+            }
+        }
+
+        // Delete from database (username only)
+        const success = await deleteUser(username);
+        
+        if (success) {
+            // If user is online, notify them and clear their local data
+            if (targetSocketId) {
+                io.to(targetSocketId).emit('userDataDeleted', { 
+                    message: 'Your account data has been deleted by an admin',
+                    by: onlineUsers.get(socket.id).username
+                });
+            }
+            
+            socket.emit('adminSuccess', { message: `User "${username}" has been deleted from database` });
+            
+            // Refresh the database view for the admin
+            const users = await getAllUsersInDatabase();
+            socket.emit('adminUserDatabase', { 
+                users: users, 
+                total: users.length 
+            });
+        } else {
+            socket.emit('adminError', { message: 'User not found in database' });
+        }
+    });
+
+    // Edit user stats (admin only)
+    socket.on('adminEditUserStats', async (data) => {
+        if (!isAdmin(socket.id)) {
+            socket.emit('adminError', { message: 'Unauthorized - Admin only' });
+            return;
+        }
+
+        const { username, stats } = data;
+        
+        if (!username || !stats) {
+            socket.emit('adminError', { message: 'Username and stats are required' });
+            return;
+        }
+
+        // Update stats in database (username only)
+        const success = await setUserStats(username, stats);
+        
+        if (success) {
+            // Find the user in online users to notify them of stat update
+            let targetSocketId = null;
+            for (const [id, user] of onlineUsers.entries()) {
+                if (user.username.toLowerCase() === username.toLowerCase()) {
+                    targetSocketId = id;
+                    break;
+                }
+            }
+
+            // If user is online, update their stats in memory and notify them
+            if (targetSocketId) {
+                const user = onlineUsers.get(targetSocketId);
+                user.stats = {
+                    wins: parseInt(stats.wins) || 0,
+                    losses: parseInt(stats.losses) || 0,
+                    gamesPlayed: parseInt(stats.gamesPlayed) || 0
+                };
+                
+                // Notify the user that their stats were updated
+                io.to(targetSocketId).emit('statsUpdated', { 
+                    stats: user.stats,
+                    by: onlineUsers.get(socket.id).username
+                });
+            }
+            
+            socket.emit('adminSuccess', { message: `Stats updated for "${username}"` });
+            
+            // Refresh the database view for the admin
+            const users = await getAllUsersInDatabase();
+            socket.emit('adminUserDatabase', { 
+                users: users, 
+                total: users.length 
+            });
+        } else {
+            socket.emit('adminError', { message: 'User not found in database' });
+        }
+    });
+
+    // Delete all users from database (admin only)
+    socket.on('adminDeleteAllUsers', async () => {
+        if (!isAdmin(socket.id)) {
+            socket.emit('adminError', { message: 'Unauthorized - Admin only' });
+            return;
+        }
+
+        const adminName = onlineUsers.get(socket.id).username;
+        
+        // Notify all online users that their data has been deleted
+        onlineUsers.forEach((user, userSocketId) => {
+            if (!user.isAdmin) {
+                io.to(userSocketId).emit('allUserDataDeleted', { 
+                    message: 'All user data has been deleted by an admin',
+                    by: adminName
+                });
+            }
+        });
+
+        // Delete all users from database
+        await deleteAllUsers();
+        
+        socket.emit('adminSuccess', { message: 'All users have been deleted from database' });
+        
+        // Refresh the database view
+        const users = await getAllUsersInDatabase();
+        socket.emit('adminUserDatabase', { 
+            users: users, 
+            total: users.length 
+        });
+    });
+
+    // Handle avatar update
+    socket.on('updateAvatar', async (data) => {
+        const user = onlineUsers.get(socket.id);
+        if (!user) return;
+
+        const { avatar } = data;
+        
+        // Update in database (username only)
+        await updateUserAvatar(user.username, avatar);
+        
+        // Update in memory
+        user.avatar = avatar;
+        
+        socket.emit('avatarUpdated', { success: true, avatar });
+    });
+
+    // Reload user stats from database (for live updates)
+    socket.on('reloadUserStats', async () => {
+        const user = onlineUsers.get(socket.id);
+        if (!user) return;
+
+        // Reload fresh stats from database (username only)
+        const freshStats = await reloadUserStats(user.username);
+        if (freshStats) {
+            // Update in-memory stats
+            user.stats = freshStats;
+            
+            // Send updated stats to client
+            socket.emit('statsReloaded', { 
+                success: true, 
+                stats: freshStats 
+            });
+        }
+    });
+
+    // Inspect user profile (any user can inspect any other user)
+    socket.on('inspectUserProfile', (data) => {
+        const { username } = data;
+        const inspector = onlineUsers.get(socket.id);
+        
+        if (!inspector || !username) return;
+        
+        // Get user data from database
+        const userData = getUserData(username);
+        if (!userData) {
+            socket.emit('userProfileError', { message: 'User not found' });
+            return;
+        }
+        
+        // Check if inspecting an admin
+        const isTargetAdmin = username.toLowerCase() === 'admin';
+        const isInspectorAdmin = inspector.isAdmin;
+        
+        // Build profile data
+        const profileData = {
+            username: userData.username,
+            avatar: userData.avatar,
+            stats: userData.stats,
+            firstLogin: userData.firstLogin,
+            lastLogin: userData.lastLogin,
+            isAdmin: isTargetAdmin,
+            isInspectorAdmin: isInspectorAdmin
+        };
+        
+        // If normal user inspecting admin, show limited info
+        if (isTargetAdmin && !isInspectorAdmin) {
+            profileData.stats = { wins: '???', losses: '???', gamesPlayed: '???' };
+            profileData.firstLogin = 'Hidden';
+            profileData.lastLogin = 'Hidden';
+        }
+        
+        socket.emit('userProfileData', profileData);
+    });
+
+    // Admin: Ban user
+    socket.on('adminBanUser', async (data) => {
+        if (!isAdmin(socket.id)) {
+            socket.emit('adminError', { message: 'Unauthorized - Admin only' });
+            return;
+        }
+
+        const { username, duration, reason } = data;
+        
+        if (!username) {
+            socket.emit('adminError', { message: 'Username is required' });
+            return;
+        }
+
+        // Can't ban other admins
+        if (username.toLowerCase() === 'admin') {
+            socket.emit('adminError', { message: 'Cannot ban other admins' });
+            return;
+        }
+
+        // Ban the user
+        const success = await banUser(username, duration, reason);
+        
+        if (success) {
+            const banStatus = await isUserBanned(username);
+            const durationText = banStatus.isPermanent ? 'permanently' : `for ${duration} hour(s)`;
+            
+            // Find the user in online users to kick them
+            for (const [id, user] of onlineUsers.entries()) {
+                if (user.username.toLowerCase() === username.toLowerCase()) {
+                    io.to(id).emit('banned', { 
+                        reason: reason || 'Banned by admin',
+                        by: onlineUsers.get(socket.id).username,
+                        duration: duration
+                    });
+                    
+                    const targetSocket = io.sockets.sockets.get(id);
+                    if (targetSocket) {
+                        targetSocket.disconnect(true);
+                    }
+                    onlineUsers.delete(id);
+                    break;
+                }
+            }
+            
+            socket.emit('adminSuccess', { message: `User "${username}" has been banned ${durationText}` });
+            
+            // Refresh database view
+            await reloadUserDatabaseFromFile();
+            const users = await getAllUsersInDatabase();
+            socket.emit('adminUserDatabase', { 
+                users: users, 
+                total: users.length 
+            });
+        } else {
+            socket.emit('adminError', { message: 'User not found in database' });
+        }
+    });
+
+    // Admin: Unban user
+    socket.on('adminUnbanUser', async (data) => {
+        if (!isAdmin(socket.id)) {
+            socket.emit('adminError', { message: 'Unauthorized - Admin only' });
+            return;
+        }
+
+        const { username } = data;
+        
+        if (!username) {
+            socket.emit('adminError', { message: 'Username is required' });
+            return;
+        }
+
+        // Unban the user
+        const success = await unbanUser(username);
+        
+        if (success) {
+            socket.emit('adminSuccess', { message: `User "${username}" has been unbanned` });
+            
+            // Refresh database view
+            await reloadUserDatabaseFromFile();
+            const users = await getAllUsersInDatabase();
+            socket.emit('adminUserDatabase', { 
+                users: users, 
+                total: users.length 
+            });
+        } else {
+            socket.emit('adminError', { message: 'User not found in database' });
+        }
+    });
+
+    // Admin: Toggle maintenance mode
+    socket.on('adminToggleMaintenance', (data) => {
+        if (!isAdmin(socket.id)) {
+            socket.emit('adminError', { message: 'Unauthorized - Admin only' });
+            return;
+        }
+
+        const { enabled, message } = data;
+        const result = setMaintenanceMode(enabled, message);
+        
+        socket.emit('adminSuccess', { 
+            message: `Maintenance mode ${result ? 'ENABLED' : 'DISABLED'}`,
+            maintenanceMode: result,
+            maintenanceMessage: getMaintenanceMessage()
+        });
+        
+        // Notify all online users about maintenance mode
+        if (result) {
+            io.emit('maintenanceModeEnabled', { message: getMaintenanceMessage() });
+        }
+    });
+
+    // Admin: Get maintenance mode status
+    socket.on('adminGetMaintenanceStatus', () => {
+        if (!isAdmin(socket.id)) {
+            socket.emit('adminError', { message: 'Unauthorized - Admin only' });
+            return;
+        }
+
+        socket.emit('maintenanceStatus', {
+            enabled: isMaintenanceMode(),
+            message: getMaintenanceMessage()
+        });
+    });
+
+    // Admin: Create database backup
+    socket.on('adminCreateBackup', async () => {
+        if (!isAdmin(socket.id)) {
+            socket.emit('adminError', { message: 'Unauthorized - Admin only' });
+            return;
+        }
+
+        const result = await createDatabaseBackup();
+        
+        if (result.success) {
+            socket.emit('adminSuccess', { 
+                message: `Backup created successfully`,
+                backup: {
+                    filename: path.basename(result.file),
+                    timestamp: result.timestamp
+                }
+            });
+        } else {
+            socket.emit('adminError', { message: `Failed to create backup: ${result.error}` });
+        }
+    });
+
+    // Admin: List all backups
+    socket.on('adminListBackups', () => {
+        if (!isAdmin(socket.id)) {
+            socket.emit('adminError', { message: 'Unauthorized - Admin only' });
+            return;
+        }
+
+        const backups = getBackupList();
+        socket.emit('adminBackupList', { backups });
+    });
+
+    // Admin: Restore from backup
+    socket.on('adminRestoreBackup', async (data) => {
+        if (!isAdmin(socket.id)) {
+            socket.emit('adminError', { message: 'Unauthorized - Admin only' });
+            return;
+        }
+
+        const { filename } = data;
+        
+        if (!filename) {
+            socket.emit('adminError', { message: 'Backup filename is required' });
+            return;
+        }
+
+        const result = await restoreFromBackup(filename);
+        
+        if (result.success) {
+            socket.emit('adminSuccess', { 
+                message: result.message,
+                userCount: result.userCount
+            });
+            
+            // Refresh database view
+            const users = await getAllUsersInDatabase();
+            socket.emit('adminUserDatabase', { 
+                users: users, 
+                total: users.length 
+            });
+        } else {
+            socket.emit('adminError', { message: result.message });
+        }
+    });
+
+    // Admin: Delete backup
+    socket.on('adminDeleteBackup', (data) => {
+        if (!isAdmin(socket.id)) {
+            socket.emit('adminError', { message: 'Unauthorized - Admin only' });
+            return;
+        }
+
+        const { filename } = data;
+        
+        if (!filename) {
+            socket.emit('adminError', { message: 'Backup filename is required' });
+            return;
+        }
+
+        const result = deleteBackup(filename);
+        
+        if (result.success) {
+            socket.emit('adminSuccess', { message: result.message });
+            
+            // Refresh backup list
+            const backups = getBackupList();
+            socket.emit('adminBackupList', { backups });
+        } else {
+            socket.emit('adminError', { message: result.message });
+        }
     });
 });
 
