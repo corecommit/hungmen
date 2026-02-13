@@ -5,7 +5,7 @@
 
 // ── Configuration ──
 const CONFIG = {
-    SERVER_URL: window.location.hostname === 'localhost' ? 'http://localhost:3000' : '', // Auto-detect for production
+    SERVER_URL: window.location.hostname === 'localhost' ? 'http://localhost:3000' : window.location.protocol + '//' + window.location.host,
     MAX_WRONG_GUESSES: 6,
     MAX_USERNAME_LENGTH: 20,
     MAX_ROOM_NAME_LENGTH: 30,
@@ -505,9 +505,10 @@ function showEditUserStatsModal(username, currentWins, currentLosses, currentGam
                        style="width: 100%; padding: 12px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-primary);">
             </div>
             <div class="form-group">
-                <label>Games Played</label>
-                <input type="number" id="editStatsGames" value="${currentGames}" min="0"
-                       style="width: 100%; padding: 12px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-primary);">
+                <label>Games Played (Calculated automatically)</label>
+                <input type="number" id="editStatsGames" value="${currentGames}" min="0" disabled
+                       style="width: 100%; padding: 12px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-secondary); opacity: 0.7;">
+                <small style="color: var(--text-secondary);">Games = Wins + Losses</small>
             </div>
             <div class="modal-actions">
                 <button type="button" class="btn btn-secondary" onclick="hideModal('adminEditUserStatsModal')">Cancel</button>
@@ -520,6 +521,20 @@ function showEditUserStatsModal(username, currentWins, currentLosses, currentGam
 
     document.body.appendChild(modal);
     showModal('adminEditUserStatsModal');
+    
+    // Add event listeners to recalculate games when wins or losses change
+    const winsInput = document.getElementById('editStatsWins');
+    const lossesInput = document.getElementById('editStatsLosses');
+    const gamesInput = document.getElementById('editStatsGames');
+    
+    const updateGames = () => {
+        const wins = parseInt(winsInput.value) || 0;
+        const losses = parseInt(lossesInput.value) || 0;
+        gamesInput.value = wins + losses;
+    };
+    
+    winsInput.addEventListener('input', updateGames);
+    lossesInput.addEventListener('input', updateGames);
 }
 
 function saveUserStatsEdit(username) {
@@ -801,17 +816,9 @@ function displayUserProfileModal(data) {
         `;
     }
     
-    // Check if this is a normal user inspecting an admin
-    const isNormalUserInspectingAdmin = data.isAdmin && !data.isInspectorAdmin;
-    
-    // Hidden message for admin profiles viewed by non-admins
-    const hiddenMessage = isNormalUserInspectingAdmin ? 
-        '<p style="color: var(--warning); text-align: center; margin: 10px 0;">🔒 Admin stats are hidden</p>' : '';
-    
-    // Hide win rate when normal user inspects admin
-    const winRateDisplay = isNormalUserInspectingAdmin ? 
-        `<div style="font-size: 1.8rem; font-weight: bold; color: var(--warning);">???</div>` :
-        `<div style="font-size: 1.8rem; font-weight: bold; color: var(--warning);">${winRate}%</div>`;
+    // Show admin stats to everyone (removed restriction)
+    const hiddenMessage = '';
+    const winRateDisplay = `<div style="font-size: 1.8rem; font-weight: bold; color: var(--warning);">${winRate}%</div>`;
     
     modal.innerHTML = `
         <div class="modal-content user-profile-modal" style="max-width: 400px;">
@@ -1797,6 +1804,62 @@ function setupSocketListeners(username, connectionTimeout, adminPassword = null)
         if (globalChatOnline) {
             globalChatOnline.textContent = count;
         }
+    });
+    
+    socket.on('onlineUsersUpdate', (data) => {
+        const dropdownList = document.getElementById('onlineUsersList');
+        const dropdownCount = document.getElementById('dropdownOnlineCount');
+        
+        if (!dropdownList) return;
+        
+        if (dropdownCount) {
+            dropdownCount.textContent = data.users.length;
+        }
+        
+        if (data.users.length === 0) {
+            dropdownList.innerHTML = '<div class="no-users-message">No users online</div>';
+            return;
+        }
+        
+        let html = `
+            <div class="dropdown-header-names">
+                <span></span>
+                <span>User</span>
+                <span>Wins</span>
+                <span>Losses</span>
+                <span>Games</span>
+                <span>Win%</span>
+            </div>
+        `;
+        
+        data.users.forEach(user => {
+            const stats = user.stats || { wins: 0, losses: 0, gamesPlayed: 0 };
+            const gamesPlayed = (parseInt(stats.wins) || 0) + (parseInt(stats.losses) || 0);
+            const winRate = gamesPlayed > 0 ? Math.round((stats.wins / gamesPlayed) * 100) : 0;
+            const adminBadge = user.isAdmin ? '<span class="admin-badge" title="Admin"><i class="fas fa-hammer"></i></span>' : '<span class="admin-badge empty"></span>';
+            html += `
+                <div class="online-user-item">
+                    ${adminBadge}
+                    <span class="user-name" data-username="${user.username}" title="Click to inspect">${user.username}</span>
+                    <span class="user-stat wins">${stats.wins}</span>
+                    <span class="user-stat losses">${stats.losses}</span>
+                    <span class="user-stat">${gamesPlayed}</span>
+                    <span class="user-stat winrate">${winRate}%</span>
+                </div>
+            `;
+        });
+        
+        dropdownList.innerHTML = html;
+        
+        // Add click handlers for user inspection
+        dropdownList.querySelectorAll('.user-name').forEach(el => {
+            el.addEventListener('click', (e) => {
+                const username = e.target.dataset.username;
+                if (username) {
+                    socket.emit('inspectUserProfile', { username });
+                }
+            });
+        });
     });
     
     socket.on('lobbyChatUpdate', (data) => {
@@ -2846,14 +2909,14 @@ function submitCustomWord() {
         return;
     }
     
-    if (word.length > 20) {
-        showModalError('wordSelectionError', 'Word is too long (maximum 20 characters)');
+    if (word.length > 25) {
+        showModalError('wordSelectionError', 'Word is too long (maximum 25 characters)');
         return;
     }
     
-    const wordRegex = /^[A-Za-z]+$/;
+    const wordRegex = /^[A-Za-z\s]+$/;
     if (!wordRegex.test(word)) {
-        showModalError('wordSelectionError', 'Word can only contain letters (no spaces or numbers)');
+        showModalError('wordSelectionError', 'Word can only contain letters and spaces (no numbers)');
         return;
     }
     
@@ -3096,6 +3159,11 @@ function setupGameUI(data) {
         const box = document.createElement('div');
         box.className = 'letter-box';
         box.dataset.index = i;
+        
+        if (data.gameState.spaceIndices && data.gameState.spaceIndices.includes(i)) {
+            box.classList.add('space');
+        }
+        
         wordDisplay.appendChild(box);
     }
     
@@ -3757,6 +3825,26 @@ function initEventListeners() {
     });
     
     document.getElementById('createRoomBtn').addEventListener('click', () => showModal('createRoomModal'));
+    
+    // Online users dropdown toggle
+    const onlineStatusBtn = document.getElementById('onlineStatusBtn');
+    const onlineUsersDropdown = document.getElementById('onlineUsersDropdown');
+    
+    if (onlineStatusBtn && onlineUsersDropdown) {
+        onlineStatusBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            onlineStatusBtn.classList.toggle('active');
+            onlineUsersDropdown.classList.toggle('hidden');
+        });
+        
+        // Close dropdown when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!onlineStatusBtn.contains(e.target) && !onlineUsersDropdown.contains(e.target)) {
+                onlineStatusBtn.classList.remove('active');
+                onlineUsersDropdown.classList.add('hidden');
+            }
+        });
+    }
     
     // Create room form with difficulty and hint count
     let selectedDifficulty = 'easy';

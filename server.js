@@ -150,6 +150,7 @@ connectToMongoDB();
 let rooms = new Map();
 let onlineUsers = new Map();
 let lobbyMessages = [];
+let inMemoryUsers = new Map(); // Fallback when MongoDB is unavailable
 
 // ═══════════════════════════════════════════════════════════════════════
 // MAINTENANCE MODE
@@ -182,13 +183,21 @@ function getMaintenanceMessage() {
 // USER DATABASE - MongoDB Storage
 // ═══════════════════════════════════════════════════════════════════════
 
-// Get or create user entry (MongoDB version)
+// Get or create user entry (with in-memory fallback)
 async function getUserData(username) {
+    const key = username.toLowerCase();
+    
     try {
-        const key = username.toLowerCase();
         let user = await User.findOne({ username: key });
         
         if (!user) {
+            // Check in-memory fallback first
+            if (inMemoryUsers.has(key)) {
+                const memUser = inMemoryUsers.get(key);
+                memUser.lastLogin = new Date();
+                return memUser;
+            }
+            
             // Create new user
             user = new User({
                 username: key,
@@ -209,17 +218,28 @@ async function getUserData(username) {
         
         return user;
     } catch (error) {
-        console.error('[MONGODB] Error in getUserData:', error);
-        // Return a default user object if database fails
-        return {
-            username: username.toLowerCase(),
+        console.error('[MONGODB] Error in getUserData:', error.message);
+        // Use in-memory fallback if database fails
+        if (inMemoryUsers.has(key)) {
+            const memUser = inMemoryUsers.get(key);
+            memUser.lastLogin = new Date();
+            return memUser;
+        }
+        
+        // Create new in-memory user
+        const newMemUser = {
+            username: key,
             displayName: username,
             stats: { wins: 0, losses: 0, gamesPlayed: 0 },
             avatar: null,
             banned: false,
             banExpiry: null,
-            banReason: null
+            banReason: null,
+            lastLogin: new Date(),
+            firstLogin: new Date()
         };
+        inMemoryUsers.set(key, newMemUser);
+        return newMemUser;
     }
 }
 
@@ -227,7 +247,7 @@ async function getUserData(username) {
 async function getAllUsersInDatabase() {
     try {
         const users = await User.find({}).sort({ lastLogin: -1 });
-        return users.map(user => ({
+        const mongoUsers = users.map(user => ({
             username: user.displayName,
             stats: user.stats,
             avatar: user.avatar,
@@ -236,9 +256,31 @@ async function getAllUsersInDatabase() {
             banExpiry: user.banExpiry,
             banReason: user.banReason
         }));
+        
+        // Also include in-memory users
+        const memUsers = Array.from(inMemoryUsers.values()).map(user => ({
+            username: user.displayName,
+            stats: user.stats,
+            avatar: user.avatar,
+            lastLogin: user.lastLogin,
+            banned: user.banned,
+            banExpiry: user.banExpiry,
+            banReason: user.banReason
+        }));
+        
+        return [...mongoUsers, ...memUsers];
     } catch (error) {
-        console.error('[MONGODB] Error getting all users:', error);
-        return [];
+        console.error('[MONGODB] Error getting all users:', error.message);
+        // Return in-memory users on error
+        return Array.from(inMemoryUsers.values()).map(user => ({
+            username: user.displayName,
+            stats: user.stats,
+            avatar: user.avatar,
+            lastLogin: user.lastLogin,
+            banned: user.banned,
+            banExpiry: user.banExpiry,
+            banReason: user.banReason
+        }));
     }
 }
 
@@ -365,27 +407,39 @@ function deleteBackup(filename) {
 
 // Check if user is currently banned
 async function isUserBanned(username) {
+    const key = username.toLowerCase();
+    
     try {
-        const key = username.toLowerCase();
         const user = await User.findOne({ username: key });
         
-        if (!user || !user.banned) return { banned: false };
+        // Check in-memory if not in MongoDB
+        let memUser = inMemoryUsers.get(key);
+        
+        const userData = user || memUser;
+        
+        if (!userData || !userData.banned) return { banned: false };
         
         // Check if temporary ban has expired
-        if (user.banExpiry) {
-            const expiryDate = new Date(user.banExpiry);
+        if (userData.banExpiry) {
+            const expiryDate = new Date(userData.banExpiry);
             if (expiryDate <= new Date()) {
                 // Ban expired, auto-unban
-                user.banned = false;
-                user.banExpiry = null;
-                user.banReason = null;
-                await user.save();
+                if (user) {
+                    user.banned = false;
+                    user.banExpiry = null;
+                    user.banReason = null;
+                    await user.save();
+                } else if (memUser) {
+                    memUser.banned = false;
+                    memUser.banExpiry = null;
+                    memUser.banReason = null;
+                }
                 return { banned: false };
             }
             return { 
                 banned: true, 
-                expiry: user.banExpiry, 
-                reason: user.banReason,
+                expiry: userData.banExpiry, 
+                reason: userData.banReason,
                 isPermanent: false
             };
         }
@@ -394,79 +448,131 @@ async function isUserBanned(username) {
         return { 
             banned: true, 
             expiry: null, 
-            reason: user.banReason,
+            reason: userData.banReason,
             isPermanent: true
         };
     } catch (error) {
-        console.error('[MONGODB] Error in isUserBanned:', error);
+        console.error('[MONGODB] Error in isUserBanned:', error.message);
+        // Check in-memory fallback
+        const memUser = inMemoryUsers.get(key);
+        if (memUser && memUser.banned) {
+            return { banned: true, expiry: memUser.banExpiry, reason: memUser.banReason, isPermanent: !memUser.banExpiry };
+        }
         return { banned: false };
     }
 }
 
 // Ban user
 async function banUser(username, duration = null, reason = 'Banned by admin') {
+    const key = username.toLowerCase();
+    
     try {
-        const key = username.toLowerCase();
         console.log(`[MONGODB BAN] Attempting to ban user: ${username}`);
         
         const user = await User.findOne({ username: key });
-        if (!user) {
-            console.log(`[MONGODB BAN] User not found: ${username}`);
-            return false;
+        
+        if (user) {
+            user.banned = true;
+            user.banReason = reason;
+            
+            if (duration && duration > 0) {
+                const expiry = new Date();
+                expiry.setHours(expiry.getHours() + parseInt(duration));
+                user.banExpiry = expiry;
+                console.log(`[MONGODB BAN] Temporary ban for ${username}, expires: ${expiry}`);
+            } else {
+                user.banExpiry = null;
+                console.log(`[MONGODB BAN] Permanent ban for ${username}`);
+            }
+            
+            await user.save();
+            console.log(`[MONGODB BAN] Successfully banned user: ${username}`);
+            return true;
         }
         
-        user.banned = true;
-        user.banReason = reason;
-        
-        if (duration && duration > 0) {
-            // Temporary ban - calculate expiry
-            const expiry = new Date();
-            expiry.setHours(expiry.getHours() + parseInt(duration));
-            user.banExpiry = expiry;
-            console.log(`[MONGODB BAN] Temporary ban for ${username}, expires: ${expiry}`);
-        } else {
-            // Permanent ban
-            user.banExpiry = null;
-            console.log(`[MONGODB BAN] Permanent ban for ${username}`);
+        // Try in-memory fallback
+        const memUser = inMemoryUsers.get(key);
+        if (memUser) {
+            memUser.banned = true;
+            memUser.banReason = reason;
+            if (duration && duration > 0) {
+                const expiry = new Date();
+                expiry.setHours(expiry.getHours() + parseInt(duration));
+                memUser.banExpiry = expiry;
+            } else {
+                memUser.banExpiry = null;
+            }
+            return true;
         }
         
-        await user.save();
-        console.log(`[MONGODB BAN] Successfully banned user: ${username}`);
-        return true;
+        console.log(`[MONGODB BAN] User not found: ${username}`);
+        return false;
     } catch (error) {
-        console.error('[MONGODB] Error in banUser:', error);
+        console.error('[MONGODB] Error in banUser:', error.message);
+        const memUser = inMemoryUsers.get(key);
+        if (memUser) {
+            memUser.banned = true;
+            memUser.banReason = reason;
+            if (duration && duration > 0) {
+                const expiry = new Date();
+                expiry.setHours(expiry.getHours() + parseInt(duration));
+                memUser.banExpiry = expiry;
+            } else {
+                memUser.banExpiry = null;
+            }
+            return true;
+        }
         return false;
     }
 }
 
 // Unban user
 async function unbanUser(username) {
+    const key = username.toLowerCase();
+    
     try {
-        const key = username.toLowerCase();
         console.log(`[MONGODB UNBAN] Attempting to unban user: ${username}`);
         
         const user = await User.findOne({ username: key });
-        if (!user) {
-            console.log(`[MONGODB UNBAN] User not found: ${username}`);
-            return false;
+        
+        if (user) {
+            user.banned = false;
+            user.banExpiry = null;
+            user.banReason = null;
+            await user.save();
+            console.log(`[MONGODB UNBAN] Successfully unbanned user: ${username}`);
+            return true;
         }
         
-        user.banned = false;
-        user.banExpiry = null;
-        user.banReason = null;
-        await user.save();
-        console.log(`[MONGODB UNBAN] Successfully unbanned user: ${username}`);
-        return true;
+        // Try in-memory fallback
+        const memUser = inMemoryUsers.get(key);
+        if (memUser) {
+            memUser.banned = false;
+            memUser.banExpiry = null;
+            memUser.banReason = null;
+            return true;
+        }
+        
+        console.log(`[MONGODB UNBAN] User not found: ${username}`);
+        return false;
     } catch (error) {
-        console.error('[MONGODB] Error in unbanUser:', error);
+        console.error('[MONGODB] Error in unbanUser:', error.message);
+        const memUser = inMemoryUsers.get(key);
+        if (memUser) {
+            memUser.banned = false;
+            memUser.banExpiry = null;
+            memUser.banReason = null;
+            return true;
+        }
         return false;
     }
 }
 
 // Update user stats (incremental)
 async function updateUserStats(username, result) {
+    const key = username.toLowerCase();
+    
     try {
-        const key = username.toLowerCase();
         const user = await User.findOne({ username: key });
         
         if (user) {
@@ -477,16 +583,88 @@ async function updateUserStats(username, result) {
                 user.stats.losses++;
             }
             await user.save();
+            
+            // Update online users' stats in memory
+            for (const onlineUser of onlineUsers.values()) {
+                if (onlineUser.username.toLowerCase() === key) {
+                    onlineUser.stats = { ...user.stats };
+                    break;
+                }
+            }
+            
+            // Emit updated online users list
+            const onlineUsersList = Array.from(onlineUsers.values()).map(u => ({
+                username: u.username,
+                stats: u.stats || { wins: 0, losses: 0, gamesPlayed: 0 },
+                avatar: u.avatar,
+                isAdmin: u.isAdmin || false
+            })).sort((a, b) => (b.stats.wins || 0) - (a.stats.wins || 0));
+            io.emit('onlineUsersUpdate', { users: onlineUsersList });
+            
+            return;
+        }
+        
+        // Try in-memory fallback
+        const memUser = inMemoryUsers.get(key);
+        if (memUser) {
+            memUser.stats.gamesPlayed++;
+            if (result === 'win') {
+                memUser.stats.wins++;
+            } else if (result === 'loss') {
+                memUser.stats.losses++;
+            }
+            
+            // Update online users
+            for (const onlineUser of onlineUsers.values()) {
+                if (onlineUser.username.toLowerCase() === key) {
+                    onlineUser.stats = { ...memUser.stats };
+                    break;
+                }
+            }
+            
+            // Emit updated online users list
+            const onlineUsersList = Array.from(onlineUsers.values()).map(u => ({
+                username: u.username,
+                stats: u.stats || { wins: 0, losses: 0, gamesPlayed: 0 },
+                avatar: u.avatar,
+                isAdmin: u.isAdmin || false
+            })).sort((a, b) => (b.stats.wins || 0) - (a.stats.wins || 0));
+            io.emit('onlineUsersUpdate', { users: onlineUsersList });
         }
     } catch (error) {
-        console.error('[MONGODB] Error in updateUserStats:', error);
+        console.error('[MONGODB] Error in updateUserStats:', error.message);
+        // Try in-memory fallback
+        const memUser = inMemoryUsers.get(key);
+        if (memUser) {
+            memUser.stats.gamesPlayed++;
+            if (result === 'win') memUser.stats.wins++;
+            else if (result === 'loss') memUser.stats.losses++;
+            
+            // Update online users
+            for (const onlineUser of onlineUsers.values()) {
+                if (onlineUser.username.toLowerCase() === key) {
+                    onlineUser.stats = { ...memUser.stats };
+                    break;
+                }
+            }
+            
+            // Emit updated online users list
+            const onlineUsersList = Array.from(onlineUsers.values()).map(u => ({
+                username: u.username,
+                stats: u.stats || { wins: 0, losses: 0, gamesPlayed: 0 },
+                avatar: u.avatar,
+                isAdmin: u.isAdmin || false
+            })).sort((a, b) => (b.stats.wins || 0) - (a.stats.wins || 0));
+            io.emit('onlineUsersUpdate', { users: onlineUsersList });
+        }
     }
 }
 
 // Set user stats directly (for admin editing)
 async function setUserStats(username, stats) {
+    const key = username.toLowerCase();
+    
     try {
-        const key = username.toLowerCase();
         const user = await User.findOne({ username: key });
         
         if (user) {
@@ -498,60 +676,116 @@ async function setUserStats(username, stats) {
             await user.save();
             return true;
         }
+        
+        // Try in-memory fallback
+        const memUser = inMemoryUsers.get(key);
+        if (memUser) {
+            memUser.stats = {
+                wins: parseInt(stats.wins) || 0,
+                losses: parseInt(stats.losses) || 0,
+                gamesPlayed: parseInt(stats.gamesPlayed) || 0
+            };
+            return true;
+        }
         return false;
     } catch (error) {
-        console.error('[MONGODB] Error in setUserStats:', error);
+        console.error('[MONGODB] Error in setUserStats:', error.message);
+        // Try in-memory fallback
+        const memUser = inMemoryUsers.get(key);
+        if (memUser) {
+            memUser.stats = {
+                wins: parseInt(stats.wins) || 0,
+                losses: parseInt(stats.losses) || 0,
+                gamesPlayed: parseInt(stats.gamesPlayed) || 0
+            };
+            return true;
+        }
         return false;
     }
 }
 
 // Reload user stats from database (for live updates)
 async function reloadUserStats(username) {
+    const key = username.toLowerCase();
+    
     try {
-        const key = username.toLowerCase();
         const user = await User.findOne({ username: key });
         
         if (user) {
             return user.stats;
         }
+        
+        // Try in-memory fallback
+        const memUser = inMemoryUsers.get(key);
+        if (memUser) {
+            return memUser.stats;
+        }
         return null;
     } catch (error) {
-        console.error('[MONGODB] Error in reloadUserStats:', error);
+        console.error('[MONGODB] Error in reloadUserStats:', error.message);
+        const memUser = inMemoryUsers.get(key);
+        if (memUser) return memUser.stats;
         return null;
     }
 }
 
 // Update user avatar
 async function updateUserAvatar(username, avatarData) {
+    const key = username.toLowerCase();
+    
     try {
-        const key = username.toLowerCase();
         const user = await User.findOne({ username: key });
 
         if (user) {
             user.avatar = avatarData;
             await user.save();
+            return;
+        }
+        
+        // Try in-memory fallback
+        const memUser = inMemoryUsers.get(key);
+        if (memUser) {
+            memUser.avatar = avatarData;
         }
     } catch (error) {
-        console.error('[MONGODB] Error in updateUserAvatar:', error);
+        console.error('[MONGODB] Error in updateUserAvatar:', error.message);
+        const memUser = inMemoryUsers.get(key);
+        if (memUser) memUser.avatar = avatarData;
     }
 }
 
 // Delete user from database
 async function deleteUser(username) {
+    const key = username.toLowerCase();
+    
     try {
-        const key = username.toLowerCase();
         console.log(`[MONGODB DELETE] Attempting to delete user: ${username}`);
         
         const result = await User.deleteOne({ username: key });
         
         if (result.deletedCount > 0) {
             console.log(`[MONGODB DELETE] Successfully deleted user: ${username}`);
+            // Also delete from in-memory
+            inMemoryUsers.delete(key);
             return true;
         }
+        
+        // Check in-memory fallback
+        if (inMemoryUsers.has(key)) {
+            inMemoryUsers.delete(key);
+            console.log(`[MONGODB DELETE] Deleted from in-memory: ${username}`);
+            return true;
+        }
+        
         console.log(`[MONGODB DELETE] User not found: ${username}`);
         return false;
     } catch (error) {
-        console.error('[MONGODB] Error in deleteUser:', error);
+        console.error('[MONGODB] Error in deleteUser:', error.message);
+        // Try in-memory fallback
+        if (inMemoryUsers.has(key)) {
+            inMemoryUsers.delete(key);
+            return true;
+        }
         return false;
     }
 }
@@ -560,61 +794,118 @@ async function deleteUser(username) {
 async function deleteAllUsers() {
     try {
         await User.deleteMany({});
+        inMemoryUsers.clear();
         console.log('[MONGODB] All users deleted');
         return true;
     } catch (error) {
-        console.error('[MONGODB] Error in deleteAllUsers:', error);
+        console.error('[MONGODB] Error in deleteAllUsers:', error.message);
+        inMemoryUsers.clear();
         return false;
     }
 }
 
 // Transfer user data from old username to new username
 async function transferUserData(oldUsername, newUsername) {
+    const oldKey = oldUsername.toLowerCase();
+    const newKey = newUsername.toLowerCase();
+    
     try {
-        const oldKey = oldUsername.toLowerCase();
-        const newKey = newUsername.toLowerCase();
+        console.log(`[TRANSFER] Transferring data from ${oldUsername} to ${newUsername}`);
         
-        console.log(`[MONGODB] Transferring data from ${oldUsername} to ${newUsername}`);
+        // Try MongoDB first
+        let oldUser = await User.findOne({ username: oldKey });
         
-        // Find the old user
-        const oldUser = await User.findOne({ username: oldKey });
+        // If not in MongoDB, check in-memory
+        if (!oldUser && inMemoryUsers.has(oldKey)) {
+            oldUser = inMemoryUsers.get(oldKey);
+        }
+        
         if (!oldUser) {
-            console.log(`[MONGODB] No data to transfer - old user ${oldUsername} not found`);
+            console.log(`[TRANSFER] No data to transfer - old user ${oldUsername} not found`);
             return { success: true, message: 'No existing data to transfer' };
         }
         
         // Check if new user already exists
-        const newUser = await User.findOne({ username: newKey });
+        let newUser = await User.findOne({ username: newKey });
+        
+        // If not in MongoDB, check in-memory
+        if (!newUser && inMemoryUsers.has(newKey)) {
+            newUser = inMemoryUsers.get(newKey);
+        }
         
         if (newUser) {
-            // New user exists - transfer old data to it
-            console.log(`[MONGODB] Merging data from ${oldUsername} into existing ${newUsername}`);
-            newUser.stats = oldUser.stats;
-            newUser.avatar = oldUser.avatar;
-            newUser.totalPlayTime = oldUser.totalPlayTime;
-            newUser.banned = oldUser.banned;
-            newUser.banExpiry = oldUser.banExpiry;
-            newUser.banReason = oldUser.banReason;
-            newUser.firstLogin = oldUser.firstLogin;
-            await newUser.save();
+            // Transfer old data to existing new user
+            if (newUser.save) {
+                // MongoDB document
+                newUser.stats = oldUser.stats;
+                newUser.avatar = oldUser.avatar;
+                newUser.totalPlayTime = oldUser.totalPlayTime;
+                newUser.banned = oldUser.banned;
+                newUser.banExpiry = oldUser.banExpiry;
+                newUser.banReason = oldUser.banReason;
+                newUser.firstLogin = oldUser.firstLogin;
+                await newUser.save();
+            } else {
+                // In-memory object
+                newUser.stats = oldUser.stats;
+                newUser.avatar = oldUser.avatar;
+                newUser.totalPlayTime = oldUser.totalPlayTime;
+                newUser.banned = oldUser.banned;
+                newUser.banExpiry = oldUser.banExpiry;
+                newUser.banReason = oldUser.banReason;
+                newUser.firstLogin = oldUser.firstLogin;
+            }
             
-            // Delete the old user
-            await User.deleteOne({ username: oldKey });
+            // Delete old user
+            if (oldUser.save) {
+                await User.deleteOne({ username: oldKey });
+            } else {
+                inMemoryUsers.delete(oldKey);
+            }
             
-            console.log(`[MONGODB] Data transferred and old user ${oldUsername} deleted`);
+            console.log(`[TRANSFER] Data transferred and old user ${oldUsername} deleted`);
             return { success: true, message: 'Data transferred successfully' };
         } else {
-            // New user doesn't exist - rename the old user
-            console.log(`[MONGODB] Renaming ${oldUsername} to ${newUsername}`);
-            oldUser.username = newKey;
-            oldUser.displayName = newUsername;
-            await oldUser.save();
+            // Rename old user to new username
+            if (oldUser.save) {
+                // MongoDB document
+                oldUser.username = newKey;
+                oldUser.displayName = newUsername;
+                await oldUser.save();
+            } else {
+                // In-memory object - rename
+                inMemoryUsers.delete(oldKey);
+                oldUser.username = newKey;
+                oldUser.displayName = newUsername;
+                inMemoryUsers.set(newKey, oldUser);
+            }
             
-            console.log(`[MONGODB] User renamed successfully`);
+            console.log(`[TRANSFER] User renamed successfully`);
             return { success: true, message: 'User renamed successfully' };
         }
     } catch (error) {
-        console.error('[MONGODB] Error transferring user data:', error);
+        console.error('[TRANSFER] Error:', error.message);
+        
+        // Try in-memory fallback
+        if (inMemoryUsers.has(oldKey)) {
+            const oldUser = inMemoryUsers.get(oldKey);
+            if (inMemoryUsers.has(newKey)) {
+                const newUser = inMemoryUsers.get(newKey);
+                newUser.stats = oldUser.stats;
+                newUser.avatar = oldUser.avatar;
+                newUser.totalPlayTime = oldUser.totalPlayTime;
+                newUser.banned = oldUser.banned;
+                newUser.banExpiry = oldUser.banExpiry;
+                newUser.banReason = oldUser.banReason;
+                newUser.firstLogin = oldUser.firstLogin;
+            } else {
+                oldUser.username = newKey;
+                oldUser.displayName = newUsername;
+            }
+            inMemoryUsers.delete(oldKey);
+            return { success: true, message: 'Data transferred (in-memory)' };
+        }
+        
         return { success: false, message: error.message };
     }
 }
@@ -1204,6 +1495,15 @@ io.on('connection', (socket) => {
         
         io.emit('onlineCount', onlineUsers.size);
         
+        // Send online users with stats (sorted by wins descending)
+        const onlineUsersList = Array.from(onlineUsers.values()).map(user => ({
+            username: user.username,
+            stats: user.stats || { wins: 0, losses: 0, gamesPlayed: 0 },
+            avatar: user.avatar,
+            isAdmin: user.isAdmin || false
+        })).sort((a, b) => (b.stats.wins || 0) - (a.stats.wins || 0));
+        io.emit('onlineUsersUpdate', { users: onlineUsersList });
+        
         socket.emit('lobbyChatUpdate', { messages: lobbyMessages });
     });
 
@@ -1731,9 +2031,9 @@ io.on('connection', (socket) => {
             return;
         }
 
-        const wordRegex = /^[A-Za-z]+$/;
+        const wordRegex = /^[A-Za-z\s]+$/;
         if (!wordRegex.test(word.trim())) {
-            socket.emit('wordSubmitError', { message: 'Word can only contain letters' });
+            socket.emit('wordSubmitError', { message: 'Word can only contain letters and spaces' });
             return;
         }
 
@@ -1744,11 +2044,28 @@ io.on('connection', (socket) => {
         if (success) {
             socket.emit('wordAccepted');
             
+            // Get indices of spaces in the word
+            const spaceIndices = [];
+            const word = room.gameState.word;
+            for (let i = 0; i < word.length; i++) {
+                if (word[i] === ' ') {
+                    spaceIndices.push(i);
+                }
+            }
+            
+            // Pre-fill spaces as guessed letters
+            spaceIndices.forEach(index => {
+                if (!room.gameState.guessedLetters.includes(word[index])) {
+                    room.gameState.guessedLetters.push(word[index]);
+                }
+            });
+            
             // Start the game for all players
             io.to(roomId).emit('gameStarted', {
                 gameState: {
                     word: null, // Don't send actual word to clients
                     wordLength: room.gameState.word.length,
+                    spaceIndices: spaceIndices,
                     hint: null,
                     guessedLetters: room.gameState.guessedLetters,
                     wrongLetters: room.gameState.wrongLetters,
@@ -2088,6 +2405,13 @@ io.on('connection', (socket) => {
 
         onlineUsers.delete(socket.id);
         io.emit('onlineCount', onlineUsers.size);
+        const onlineUsersList = Array.from(onlineUsers.values()).map(user => ({
+            username: user.username,
+            stats: user.stats || { wins: 0, losses: 0, gamesPlayed: 0 },
+            avatar: user.avatar,
+            isAdmin: user.isAdmin || false
+        })).sort((a, b) => (b.stats.wins || 0) - (a.stats.wins || 0));
+        io.emit('onlineUsersUpdate', { users: onlineUsersList });
     });
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -2237,6 +2561,13 @@ io.on('connection', (socket) => {
         // Remove from online users
         onlineUsers.delete(targetSocketId);
         io.emit('onlineCount', onlineUsers.size);
+        const onlineUsersList1 = Array.from(onlineUsers.values()).map(user => ({
+            username: user.username,
+            stats: user.stats || { wins: 0, losses: 0, gamesPlayed: 0 },
+            avatar: user.avatar,
+            isAdmin: user.isAdmin || false
+        })).sort((a, b) => (b.stats.wins || 0) - (a.stats.wins || 0));
+        io.emit('onlineUsersUpdate', { users: onlineUsersList1 });
 
         socket.emit('adminSuccess', { message: `Player "${username}" has been kicked` });
     });
@@ -2364,6 +2695,13 @@ io.on('connection', (socket) => {
         // Remove from online users
         onlineUsers.delete(targetSocketId);
         io.emit('onlineCount', onlineUsers.size);
+        const onlineUsersList2 = Array.from(onlineUsers.values()).map(user => ({
+            username: user.username,
+            stats: user.stats || { wins: 0, losses: 0, gamesPlayed: 0 },
+            avatar: user.avatar,
+            isAdmin: user.isAdmin || false
+        })).sort((a, b) => (b.stats.wins || 0) - (a.stats.wins || 0));
+        io.emit('onlineUsersUpdate', { users: onlineUsersList2 });
 
         const durationText = duration === 0 ? 'permanently' : `for ${duration} hour(s)`;
         socket.emit('adminSuccess', { message: `Player "${username}" has been banned ${durationText}` });
@@ -2620,14 +2958,14 @@ io.on('connection', (socket) => {
     });
 
     // Inspect user profile (any user can inspect any other user)
-    socket.on('inspectUserProfile', (data) => {
+    socket.on('inspectUserProfile', async (data) => {
         const { username } = data;
         const inspector = onlineUsers.get(socket.id);
         
         if (!inspector || !username) return;
         
         // Get user data from database
-        const userData = getUserData(username);
+        const userData = await getUserData(username);
         if (!userData) {
             socket.emit('userProfileError', { message: 'User not found' });
             return;
@@ -2637,9 +2975,9 @@ io.on('connection', (socket) => {
         const isTargetAdmin = username.toLowerCase() === 'admin';
         const isInspectorAdmin = inspector.isAdmin;
         
-        // Build profile data
+        // Build profile data - use displayName if available, otherwise username
         const profileData = {
-            username: userData.username,
+            username: userData.displayName || userData.username,
             avatar: userData.avatar,
             stats: userData.stats,
             firstLogin: userData.firstLogin,
@@ -2648,14 +2986,35 @@ io.on('connection', (socket) => {
             isInspectorAdmin: isInspectorAdmin
         };
         
-        // If normal user inspecting admin, show limited info
-        if (isTargetAdmin && !isInspectorAdmin) {
-            profileData.stats = { wins: '???', losses: '???', gamesPlayed: '???' };
-            profileData.firstLogin = 'Hidden';
-            profileData.lastLogin = 'Hidden';
-        }
+        // Show admin stats to everyone (removed restriction)
         
         socket.emit('userProfileData', profileData);
+    });
+    
+    // Admin: Quick inspect user from online users dropdown
+    socket.on('adminInspectUser', async (data) => {
+        if (!isAdmin(socket.id)) {
+            socket.emit('adminError', { message: 'Unauthorized - Admin only' });
+            return;
+        }
+        
+        const { username } = data;
+        if (!username) return;
+        
+        const userData = await getUserData(username);
+        
+        socket.emit('userProfileData', {
+            username: userData.displayName || userData.username || username,
+            avatar: userData.avatar,
+            stats: userData.stats,
+            firstLogin: userData.firstLogin,
+            lastLogin: userData.lastLogin,
+            isAdmin: username.toLowerCase() === 'admin',
+            isInspectorAdmin: true,
+            banned: userData.banned,
+            banExpiry: userData.banExpiry,
+            banReason: userData.banReason
+        });
     });
 
     // Admin: Ban user

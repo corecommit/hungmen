@@ -86,8 +86,8 @@
                 <span class="build-label">Build:</span>
                 <span class="build-number" id="buildNumber">Loading...</span>
                 <span class="version-separator">|</span>
-                <span class="version-label">Ver:</span>
-                <span class="version-number" id="versionNumber">v1.3.2</span>
+                <span class="version-label">Version:</span>
+                <span class="version-number" id="versionNumber">v1.4.1</span>
             </div>
         </div>
     </div>
@@ -109,9 +109,18 @@
                     </h1>
                 </div>
                 <div class="header-center">
-                    <div class="online-status">
+                    <div class="online-status" id="onlineStatusBtn">
                         <span class="online-dot"></span>
                         <span><span id="onlineCount">0</span> Online</span>
+                        <i class="fas fa-chevron-down"></i>
+                    </div>
+                    <div class="online-users-dropdown hidden" id="onlineUsersDropdown">
+                        <div class="dropdown-header">
+                            <span>Leaderboard</span>
+                        </div>
+                        <div class="dropdown-content" id="onlineUsersList">
+                            <!-- Online users will be populated here -->
+                        </div>
                     </div>
                 </div>
                 <div class="header-right">
@@ -518,12 +527,12 @@
                         <input 
                             type="text" 
                             id="customWord" 
-                            placeholder="Enter a word (letters only)" 
-                            maxlength="20"
+                            placeholder="Enter a word (e.g. The World, Wither Skull, etc.)" 
+                            maxlength="30"
                             required
                             autocomplete="off"
                         >
-                        <small class="form-hint">3-20 letters, no spaces or numbers</small>
+                        <small class="form-hint">3-25 characters, letters and spaces only</small>
                     </div>
                     
                     <div class="modal-actions">

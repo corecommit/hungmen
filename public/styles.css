@@ -339,21 +339,6 @@ body::before {
     text-align: center;
 }
 
-/* Admin Badge */
-.admin-badge {
-    background: linear-gradient(135deg, #f59e0b, #d97706);
-    color: #000;
-    padding: 6px 12px;
-    border-radius: 20px;
-    font-size: 0.75rem;
-    font-weight: 700;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    margin-left: 10px;
-    box-shadow: 0 0 10px rgba(245, 158, 11, 0.5);
-}
-
 /* Admin Panel */
 .admin-panel {
     position: fixed;
@@ -879,6 +864,7 @@ body::before {
     border-radius: 20px;
     border: 1px solid var(--border-color);
     gap: 20px;
+    z-index: 1;
     width: 100%;
     box-shadow: var(--shadow);
 }
@@ -912,6 +898,7 @@ body::before {
 .header-center .online-status {
     display: flex;
     align-items: center;
+    align-content: center;
     gap: 8px;
     color: var(--text-secondary);
     font-size: 0.9rem;
@@ -919,6 +906,150 @@ body::before {
     background: var(--bg-input);
     border-radius: 20px;
     border: 1px solid var(--border-color-light);
+    cursor: pointer;
+    position: relative;
+    transition: all 0.2s ease;
+}
+
+.header-center .online-status:hover {
+    background: var(--bg-hover);
+    border-color: white;
+}
+
+.header-center .online-status .fa-chevron-down {
+    font-size: 0.7rem;
+    transition: transform 0.2s ease;
+}
+
+.header-center .online-status.active .fa-chevron-down {
+    transform: rotate(180deg);
+}
+
+.online-users-dropdown {
+    position: absolute;
+    top: calc(100% + 10px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    min-width: 450px;
+    max-width: 500px;
+    max-height: 400px;
+    overflow: hidden;
+    z-index: 10001;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    animation: fadeIn 0.2s ease;
+}
+
+.dropdown-header {
+    display: flex;
+    justify-content: left;
+    align-items: center;
+    padding: 12px 16px;
+    background: var(--bg-secondary);
+    text-shadow: 0 0 30px rgba(255, 255, 255, 0.4);
+    border-bottom: 1px solid var(--border-color);
+    font-weight: 600;
+}
+
+.dropdown-content {
+    max-height: 340px;
+    overflow-y: auto;
+}
+
+.online-user-item {
+    display: grid;
+    grid-template-columns: 25px 1fr 70px 40px 70px 40px;
+    gap: 5px;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border-color-light);
+    align-items: center;
+    font-size: 0.85rem;
+}
+
+.online-user-item:last-child {
+    border-bottom: none;
+}
+
+.online-user-item .user-name {
+    font-weight: 500;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: color 0.2s ease;
+    text-align: left;
+}
+
+.online-user-item .user-name:hover {
+    text-decoration: underline;
+}
+
+.online-user-item .user-stat {
+    text-align: center;
+    color: var(--text-secondary);
+}
+
+.online-user-item .user-stat.winrate {
+    color: var(--warning);
+    font-weight: 600;
+}
+
+.admin-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+}
+
+.admin-badge.empty {
+    visibility: hidden;
+}
+
+.online-user-item .user-stat.wins {
+    color: var(--success);
+}
+
+.online-user-item .user-stat.losses {
+    color: var(--error);
+}
+
+.dropdown-header-names {
+    display: grid;
+    grid-template-columns: 34px 1fr 70px 40px 70px 40px;
+    gap: 5px;
+    padding: 8px 10px;
+    background: var(--bg-primary);
+    border-bottom: 1px solid var(--border-color);
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.dropdown-header-names span {
+    text-align: center;
+}
+
+.dropdown-header-names span:nth-child(1) {
+    text-align: center;
+}
+
+.dropdown-header-names span:nth-child(2) {
+    text-align: left;
+}
+
+.no-users-message {
+    padding: 20px;
+    text-align: center;
+    color: var(--text-secondary);
+}
+
+.header-center {
+    position: relative;
 }
 
 .online-dot {
@@ -3647,6 +3778,24 @@ select option {
     
     .header-center .online-status {
         justify-content: center;
+    }
+    
+    .online-users-dropdown {
+        min-width: 320px;
+        max-width: 360px;
+        left: calc(50%);
+    }
+    
+    .online-user-item {
+        grid-template-columns: 25px 1fr 50px 50px 45px 40px;
+        font-size: 0.7rem;
+        padding: 8px 10px;
+    }
+    
+    .dropdown-header-names {
+        grid-template-columns: 33px 1fr 50px 50px 45px 40px;
+        font-size: 0.6rem;
+        padding: 6px 10px;
     }
     
     .header-right .user-menu {
