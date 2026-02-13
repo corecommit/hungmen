@@ -1,6 +1,5 @@
 // User Model for MongoDB
 const mongoose = require('mongoose');
-
 const userSchema = new mongoose.Schema({
     username: {
         type: String,
@@ -50,10 +49,7 @@ const userSchema = new mongoose.Schema({
     timestamps: true
 });
 
-// Index for faster queries
-userSchema.index({ username: 1 });
+// Index for banned users (for faster ban checks)
 userSchema.index({ banned: 1 });
-
 const User = mongoose.model('User', userSchema);
-
 module.exports = User;
