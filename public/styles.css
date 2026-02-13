@@ -932,93 +932,81 @@ body::before {
     justify-self: end;
 }
 
-/* Build Info */
-.build-info {
-    font-size: 0.75rem;
-    color: var(--text-muted);
-    background: rgba(0, 0, 0, 0.3);
-    padding: 6px 12px;
+/* Build Info Container */
+.build-info-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    margin-top: 20px;
+    padding: 15px 20px;
+    background: var(--bg-card);
     border-radius: 12px;
-    border: 1px solid var(--border-color-light);
+    border: 1px solid var(--border-color);
+}
+
+.version-build-line {
+    font-family: monospace;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
     display: flex;
     align-items: center;
-    gap: 5px;
-    opacity: 0.7;
-    transition: opacity var(--transition-fast);
+    gap: 6px;
 }
 
-/* Build info in game screen header (if still used elsewhere) */
-.game-header .build-info,
-header .build-info {
-    position: absolute;
-    top: 10px;
-    right: 20px;
-    z-index: 100;
-}
-
-.build-info:hover {
-    opacity: 1;
-}
-
-.build-label {
-    font-weight: 500;
-}
-
-.build-number {
-    font-family: monospace;
+.version-build-line #versionDisplay {
+    color: var(--text-primary);
     font-weight: 600;
-    color: var(--text-secondary);
 }
 
-.version-separator {
-    margin: 0 5px;
+.dot-separator {
     opacity: 0.5;
 }
 
-.version-label {
-    font-weight: 500;
-    margin-left: 5px;
+.build-text {
+    opacity: 0.7;
 }
 
-.version-number {
-    font-family: monospace;
-    font-weight: 600;
-    color: var(--primary);
+.build-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
 }
 
-.changelog-btn {
+.build-action-btn {
     background: transparent;
     border: 1px solid var(--border-color);
     color: var(--text-secondary);
-    padding: 3px 8px;
-    margin-left: 10px;
+    padding: 6px 14px;
     border-radius: 6px;
     font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.5px;
     cursor: pointer;
     transition: all 0.2s ease;
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
+    text-transform: uppercase;
 }
 
-.changelog-btn:hover {
+.build-action-btn:hover {
     background: var(--bg-hover);
     color: var(--text-primary);
     border-color: var(--primary);
 }
 
 @media (max-width: 768px) {
-    .build-info {
-        font-size: 0.6rem;
-        padding: 3px 8px;
-        top: 5px;
-        right: 10px;
+    .build-info-container {
+        padding: 12px 15px;
+        gap: 10px;
     }
     
-    .changelog-btn {
-        font-size: 0.6rem;
-        padding: 2px 6px;
-        margin-left: 5px;
+    .version-build-line {
+        font-size: 0.75rem;
+    }
+    
+    .build-action-btn {
+        font-size: 0.65rem;
+        padding: 5px 10px;
     }
 }
 
@@ -4547,4 +4535,186 @@ html {
 .coin-flip-team.team2 .team-badge {
     background: rgba(239, 68, 68, 0.2);
     color: #f87171;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   CLEAN CHANGELOG UI
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.changelog-modal-content {
+    max-width: 700px;
+    max-height: 85vh;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-card);
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+.changelog-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--border-color);
+    background: var(--bg-secondary);
+}
+
+.changelog-header h2 {
+    margin: 0;
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.changelog-close-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 1.2rem;
+    cursor: pointer;
+    padding: 8px;
+    border-radius: 6px;
+    transition: all 0.2s ease;
+}
+
+.changelog-close-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.changelog-body {
+    overflow-y: auto;
+    max-height: 60vh;
+    padding: 24px;
+    background: var(--bg-primary);
+}
+
+.changelog-version {
+    margin-bottom: 32px;
+}
+
+.changelog-version:last-child {
+    margin-bottom: 0;
+}
+
+.changelog-version-header {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin: 0 0 20px 0;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.changelog-category {
+    margin-bottom: 24px;
+}
+
+.changelog-category:last-child {
+    margin-bottom: 0;
+}
+
+.changelog-badge {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 12px;
+}
+
+.changelog-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.changelog-item {
+    position: relative;
+    padding-left: 20px;
+    margin-bottom: 10px;
+    font-size: 0.9rem;
+    line-height: 1.5;
+    color: var(--text-secondary);
+}
+
+.changelog-item:last-child {
+    margin-bottom: 0;
+}
+
+.changelog-item::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 8px;
+    width: 6px;
+    height: 6px;
+    background: var(--primary);
+    border-radius: 50%;
+}
+
+.changelog-item strong {
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.changelog-item code {
+    background: var(--bg-secondary);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: monospace;
+    font-size: 0.85em;
+}
+
+.changelog-footer {
+    padding: 20px 24px;
+    border-top: 1px solid var(--border-color);
+    background: var(--bg-secondary);
+    display: flex;
+    justify-content: center;
+}
+
+.changelog-footer .btn {
+    min-width: 120px;
+}
+
+/* Version divider */
+.changelog-version + .changelog-version {
+    padding-top: 24px;
+    border-top: 2px solid var(--border-color);
+}
+
+/* Mobile responsive */
+@media (max-width: 768px) {
+    .changelog-modal-content {
+        max-width: 95vw;
+        max-height: 90vh;
+    }
+    
+    .changelog-header {
+        padding: 16px 20px;
+    }
+    
+    .changelog-header h2 {
+        font-size: 1.2rem;
+    }
+    
+    .changelog-body {
+        padding: 16px;
+    }
+    
+    .changelog-version-header {
+        font-size: 1.2rem;
+    }
+    
+    .changelog-item {
+        font-size: 0.85rem;
+    }
+    
+    .changelog-footer {
+        padding: 16px 20px;
+    }
 }

@@ -1434,16 +1434,16 @@ async function loadBuildNumber() {
         const response = await fetch('/api/build');
         if (response.ok) {
             const buildInfo = await response.json();
-            const buildNumberEl = document.getElementById('buildNumber');
-            if (buildNumberEl) {
-                buildNumberEl.textContent = buildInfo.buildNumber || 'dev';
+            const buildDisplayEl = document.getElementById('buildDisplay');
+            if (buildDisplayEl) {
+                buildDisplayEl.textContent = buildInfo.buildNumber || 'dev';
             }
         }
     } catch (error) {
         log('Failed to load build number:', error);
-        const buildNumberEl = document.getElementById('buildNumber');
-        if (buildNumberEl) {
-            buildNumberEl.textContent = 'dev';
+        const buildDisplayEl = document.getElementById('buildDisplay');
+        if (buildDisplayEl) {
+            buildDisplayEl.textContent = 'dev';
         }
     }
 }
@@ -1451,67 +1451,138 @@ async function loadBuildNumber() {
 // Load version from CHANGELOG.md
 async function loadVersion() {
     try {
-        const response = await fetch('https://raw.githubusercontent.com/werheq/hungmen/main/CHANGELOG.md');
+        const response = await fetch('https://raw.githubusercontent.com/shreyanroy/hungmen/main/CHANGELOG.md');
         if (response.ok) {
             const changelogText = await response.text();
             // Parse version from first header like "# v1.2.0" or "# Version 1.2.0"
             const versionMatch = changelogText.match(/^#\s*(v?\d+\.\d+\.\d+.*?)$/m);
-            const versionNumberEl = document.getElementById('versionNumber');
-            if (versionNumberEl && versionMatch) {
-                versionNumberEl.textContent = versionMatch[1].trim();
-            } else if (versionNumberEl) {
-                versionNumberEl.textContent = '1.0.0';
+            const versionDisplayEl = document.getElementById('versionDisplay');
+            if (versionDisplayEl && versionMatch) {
+                versionDisplayEl.textContent = versionMatch[1].trim();
+            } else if (versionDisplayEl) {
+                versionDisplayEl.textContent = 'v1.0.0';
             }
         }
     } catch (error) {
         log('Failed to load version:', error);
-        const versionNumberEl = document.getElementById('versionNumber');
-        if (versionNumberEl) {
-            versionNumberEl.textContent = '1.0.0';
+        const versionDisplayEl = document.getElementById('versionDisplay');
+        if (versionDisplayEl) {
+            versionDisplayEl.textContent = 'v1.0.0';
         }
     }
+}
+
+// Parse changelog and format with clean UI
+function parseChangelogToHTML(text) {
+    const lines = text.split('\n');
+    let html = '';
+    let currentVersion = null;
+    let inVersion = false;
+    let inCategory = false;
+    let categoryType = '';
+    
+    const categoryColors = {
+        'ADDED': '#4ade80',
+        'CHANGED': '#fbbf24',
+        'FIXED': '#60a5fa',
+        'REMOVED': '#f87171',
+        'FEATURES': '#a78bfa'
+    };
+    
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+        
+        // Version header (## v1.2.0)
+        if (line.match(/^##\s+v?\d+\.\d+\.\d+/)) {
+            if (inVersion) {
+                html += '</div></div>'; // Close previous version
+            }
+            const version = line.replace(/^##\s+/, '');
+            html += `<div class="changelog-version">`;
+            html += `<h2 class="changelog-version-header">${version}</h2>`;
+            html += `<div class="changelog-version-content">`;
+            inVersion = true;
+            inCategory = false;
+            continue;
+        }
+        
+        // Category header (**ADDED**)
+        if (line.match(/^\*\*[A-Z]+\*\*$/)) {
+            if (inCategory) {
+                html += '</ul></div>';
+            }
+            categoryType = line.replace(/\*\*/g, '');
+            const color = categoryColors[categoryType] || '#9ca3af';
+            html += `<div class="changelog-category">`;
+            html += `<span class="changelog-badge" style="background: ${color}20; color: ${color}; border: 1px solid ${color}40;">${categoryType}</span>`;
+            html += `<ul class="changelog-list">`;
+            inCategory = true;
+            continue;
+        }
+        
+        // Bullet point (• **Title** - Description)
+        if (line.match(/^•\s+/)) {
+            const content = line.replace(/^•\s+/, '');
+            // Parse bold title
+            const parsedContent = content
+                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                .replace(/`(.*?)`/g, '<code>$1</code>');
+            html += `<li class="changelog-item">${parsedContent}</li>`;
+            continue;
+        }
+        
+        // Regular bullet (- item)
+        if (line.match(/^[-\*]\s+/)) {
+            const content = line.replace(/^[-\*]\s+/, '');
+            const parsedContent = content
+                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                .replace(/`(.*?)`/g, '<code>$1</code>');
+            html += `<li class="changelog-item">${parsedContent}</li>`;
+            continue;
+        }
+        
+        // Empty line - close category if needed
+        if (line === '' && inCategory) {
+            html += '</ul></div>';
+            inCategory = false;
+        }
+    }
+    
+    // Close any open sections
+    if (inCategory) html += '</ul></div>';
+    if (inVersion) html += '</div></div>';
+    
+    return html;
 }
 
 // Show changelog modal
 async function showChangelog() {
     try {
-        const response = await fetch('https://raw.githubusercontent.com/werheq/hungmen/main/CHANGELOG.md');
-        let changelogText = '# Changelog\n\nNo changelog available.';
+        const response = await fetch('https://raw.githubusercontent.com/shreyanroy/hungmen/main/CHANGELOG.md');
+        let changelogText = '# Changelog\n\n## v1.0.0\n\n**ADDED**\n\n• Initial release\n\n---\n\nNo changelog available.';
         
         if (response.ok) {
             changelogText = await response.text();
         }
         
-        // Convert markdown to HTML (basic conversion)
-        const htmlContent = changelogText
-            .replace(/^###\s+(.*$)/gim, '<h3>$1</h3>')
-            .replace(/^##\s+(.*$)/gim, '<h2>$1</h2>')
-            .replace(/^#\s+(.*$)/gim, '<h1>$1</h1>')
-            .replace(/^\*\s+(.*$)/gim, '<li>$1</li>')
-            .replace(/^-\s+(.*$)/gim, '<li>$1</li>')
-            .replace(/\n\n/gim, '</p><p>')
-            .replace(/\*\*(.*?)\*\*/gim, '<strong>$1</strong>')
-            .replace(/\*(.*?)\*/gim, '<em>$1</em>')
-            .replace(/`(.*?)`/gim, '<code>$1</code>');
+        // Parse changelog with clean UI
+        const htmlContent = parseChangelogToHTML(changelogText);
         
         const modal = document.createElement('div');
-        modal.className = 'modal admin-modal';
+        modal.className = 'modal';
         modal.id = 'changelogModal';
         modal.innerHTML = `
-            <div class="modal-content" style="max-width: 700px; max-height: 80vh; display: flex; flex-direction: column;">
-                <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid var(--border-color); padding-bottom: 15px;">
-                    <h2 style="margin: 0; display: flex; align-items: center; gap: 10px;">
-                        <i class="fas fa-list-alt" style="color: var(--primary);"></i>
-                        Changelog
-                    </h2>
-                    <button onclick="hideModal('changelogModal')" class="btn btn-secondary" style="padding: 5px 10px;">
+            <div class="modal-content changelog-modal-content">
+                <div class="changelog-header">
+                    <h2>Changelog</h2>
+                    <button onclick="hideModal('changelogModal')" class="changelog-close-btn">
                         <i class="fas fa-times"></i>
                     </button>
                 </div>
-                <div class="changelog-content" style="overflow-y: auto; max-height: 60vh; padding: 10px; background: var(--bg-secondary); border-radius: 8px; font-size: 0.9rem; line-height: 1.6;">
+                <div class="changelog-body">
                     ${htmlContent}
                 </div>
-                <div class="modal-actions" style="margin-top: 20px; justify-content: center;">
+                <div class="changelog-footer">
                     <button onclick="hideModal('changelogModal')" class="btn btn-primary">Close</button>
                 </div>
             </div>
@@ -1523,6 +1594,19 @@ async function showChangelog() {
         log('Failed to show changelog:', error);
         showNotification('Failed to load changelog', 'error');
     }
+}
+
+// Placeholder functions for other buttons
+function showHelp() {
+    showNotification('Help documentation coming soon!', 'info');
+}
+
+function showAbout() {
+    showNotification('About page coming soon!', 'info');
+}
+
+function showPrivacy() {
+    showNotification('Privacy & Terms page coming soon!', 'info');
 }
 
 // ═══════════════════════════════════════════════════════════════════════
