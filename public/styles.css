@@ -962,7 +962,7 @@ body::before {
     display: grid;
     grid-template-columns: 25px 1fr 70px 40px 70px 40px;
     gap: 5px;
-    padding: 8px 10px;
+    padding: 9px 10px;
     border-bottom: 1px solid var(--border-color-light);
     align-items: center;
     font-size: 0.85rem;
@@ -1019,12 +1019,12 @@ body::before {
 
 .dropdown-header-names {
     display: grid;
-    grid-template-columns: 34px 1fr 70px 40px 70px 40px;
+    grid-template-columns: 29px 1fr 70px 40px 70px 40px;
     gap: 5px;
-    padding: 8px 10px;
+    padding: 9px 10px;
     background: var(--bg-primary);
     border-bottom: 1px solid var(--border-color);
-    font-size: 0.75rem;
+    font-size: 0.8rem;
     color: var(--text-secondary);
     font-weight: 600;
     text-transform: uppercase;
@@ -3793,9 +3793,9 @@ select option {
     }
     
     .dropdown-header-names {
-        grid-template-columns: 33px 1fr 50px 50px 45px 40px;
-        font-size: 0.6rem;
-        padding: 6px 10px;
+        grid-template-columns: 29px 1fr 50px 50px 45px 40px;
+        font-size: 0.65rem;
+        padding: 7px 10px;
     }
     
     .header-right .user-menu {
