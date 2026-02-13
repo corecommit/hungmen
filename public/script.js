@@ -1747,6 +1747,19 @@ function setupSocketListeners(username, connectionTimeout, adminPassword = null)
         log('Username changed to:', data.username);
         currentUser.username = data.username;
         
+        // Update transferred stats and avatar
+        if (data.stats) {
+            currentUser.stats = data.stats;
+            setUserStats(data.stats);
+            displayUserStats();
+        }
+        if (data.avatar) {
+            currentUser.avatar = data.avatar;
+            userAvatar = data.avatar;
+            saveUserAvatar(data.avatar);
+            displayUserAvatar();
+        }
+        
         // Update UI
         const currentUsernameEl = document.getElementById('currentUsername');
         if (currentUsernameEl) {
@@ -1766,7 +1779,7 @@ function setupSocketListeners(username, connectionTimeout, adminPassword = null)
             usernameError.style.display = 'none';
         }
         
-        showNotification('Username changed successfully!', 'success');
+        showNotification('Username changed successfully! Your stats have been transferred.', 'success');
     });
     
     socket.on('usernameChangeError', (data) => {

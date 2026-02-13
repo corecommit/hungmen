@@ -568,6 +568,57 @@ async function deleteAllUsers() {
     }
 }
 
+// Transfer user data from old username to new username
+async function transferUserData(oldUsername, newUsername) {
+    try {
+        const oldKey = oldUsername.toLowerCase();
+        const newKey = newUsername.toLowerCase();
+        
+        console.log(`[MONGODB] Transferring data from ${oldUsername} to ${newUsername}`);
+        
+        // Find the old user
+        const oldUser = await User.findOne({ username: oldKey });
+        if (!oldUser) {
+            console.log(`[MONGODB] No data to transfer - old user ${oldUsername} not found`);
+            return { success: true, message: 'No existing data to transfer' };
+        }
+        
+        // Check if new user already exists
+        const newUser = await User.findOne({ username: newKey });
+        
+        if (newUser) {
+            // New user exists - transfer old data to it
+            console.log(`[MONGODB] Merging data from ${oldUsername} into existing ${newUsername}`);
+            newUser.stats = oldUser.stats;
+            newUser.avatar = oldUser.avatar;
+            newUser.totalPlayTime = oldUser.totalPlayTime;
+            newUser.banned = oldUser.banned;
+            newUser.banExpiry = oldUser.banExpiry;
+            newUser.banReason = oldUser.banReason;
+            newUser.firstLogin = oldUser.firstLogin;
+            await newUser.save();
+            
+            // Delete the old user
+            await User.deleteOne({ username: oldKey });
+            
+            console.log(`[MONGODB] Data transferred and old user ${oldUsername} deleted`);
+            return { success: true, message: 'Data transferred successfully' };
+        } else {
+            // New user doesn't exist - rename the old user
+            console.log(`[MONGODB] Renaming ${oldUsername} to ${newUsername}`);
+            oldUser.username = newKey;
+            oldUser.displayName = newUsername;
+            await oldUser.save();
+            
+            console.log(`[MONGODB] User renamed successfully`);
+            return { success: true, message: 'User renamed successfully' };
+        }
+    } catch (error) {
+        console.error('[MONGODB] Error transferring user data:', error);
+        return { success: false, message: error.message };
+    }
+}
+
 // Get all users in database
 async function getAllUsersInDatabase() {
     try {
@@ -1157,7 +1208,7 @@ io.on('connection', (socket) => {
     });
 
     // Handle username change
-    socket.on('changeUsername', (data) => {
+    socket.on('changeUsername', async (data) => {
         const { newUsername } = data;
         const user = onlineUsers.get(socket.id);
         
@@ -1188,6 +1239,16 @@ io.on('connection', (socket) => {
         }
         
         const oldUsername = user.username;
+        
+        // Transfer user data from old username to new username
+        const transferResult = await transferUserData(oldUsername, trimmedUsername);
+        console.log(`[USERNAME CHANGE] ${oldUsername} -> ${trimmedUsername}:`, transferResult.message);
+        
+        // Reload user data to get transferred stats
+        const newUserData = await getUserData(trimmedUsername);
+        user.stats = newUserData.stats;
+        user.avatar = newUserData.avatar;
+        
         user.username = trimmedUsername;
         
         // Update username in room if user is in a room
@@ -1220,7 +1281,9 @@ io.on('connection', (socket) => {
         // Update session
         socket.emit('usernameChanged', { 
             success: true, 
-            username: trimmedUsername 
+            username: trimmedUsername,
+            stats: user.stats,
+            avatar: user.avatar
         });
         
         // Update lobby chat display name for future messages
