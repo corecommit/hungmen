@@ -137,3 +137,13 @@ dist
 # Vite logs files
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+
+# User database - DO NOT COMMIT user data
+user_database.json
+user_database.json.*
+
+# Backup directory
+backups/
+
+# Database corruption backups
+*.corrupted.*
