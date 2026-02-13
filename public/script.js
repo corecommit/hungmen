@@ -1412,7 +1412,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Load build number and version from server
     loadBuildNumber();
-    loadVersion();
 
     const savedUsername = getSession();
     if (savedUsername) {
