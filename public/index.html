@@ -82,19 +82,15 @@
                 </button>
             </form>
             <p id="authError" class="auth-error"></p>
-            <div class="build-info-container" id="buildInfoContainer">
-                <div class="version-build-line">
-                    <span id="versionDisplay">v1.0.0</span>
-                    <span class="dot-separator">•</span>
-                    <span class="build-text">build</span>
-                    <span id="buildDisplay">dev</span>
-                </div>
-                <div class="build-actions">
-                    <button class="build-action-btn" onclick="showChangelog()">CHANGELOG</button>
-                    <button class="build-action-btn" onclick="showHelp()">HELP</button>
-                    <button class="build-action-btn" onclick="showAbout()">ABOUT</button>
-                    <button class="build-action-btn" onclick="showPrivacy()">PRIVACY&amp;TERMS</button>
-                </div>
+            <div class="build-info" id="buildInfo">
+                <span class="build-label">Build:</span>
+                <span class="build-number" id="buildNumber">Loading...</span>
+                <span class="version-separator">|</span>
+                <span class="version-label">Ver:</span>
+                <span class="version-number" id="versionNumber">Loading...</span>
+                <button class="changelog-btn" id="changelogBtn" onclick="showChangelog()">
+                    <i class="fas fa-list-alt"></i> Changelog
+                </button>
             </div>
         </div>
     </div>

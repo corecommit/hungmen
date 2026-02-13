@@ -932,81 +932,93 @@ body::before {
     justify-self: end;
 }
 
-/* Build Info Container */
-.build-info-container {
+/* Build Info */
+.build-info {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    background: rgba(0, 0, 0, 0.3);
+    padding: 6px 12px;
+    border-radius: 10px;
+    border: 1px solid var(--border-color-light);
     display: flex;
-    flex-direction: column;
     align-items: center;
-    gap: 12px;
-    margin-top: 20px;
-    padding: 15px 20px;
-    background: var(--bg-card);
-    border-radius: 12px;
-    border: 1px solid var(--border-color);
+    gap: 5px;
+    opacity: 0.7;
+    transition: opacity var(--transition-fast);
 }
 
-.version-build-line {
+/* Build info in game screen header (if still used elsewhere) */
+.game-header .build-info,
+header .build-info {
+    position: absolute;
+    top: 10px;
+    right: 20px;
+    z-index: 100;
+}
+
+.build-info:hover {
+    opacity: 1;
+}
+
+.build-label {
+    font-weight: 500;
+}
+
+.build-number {
     font-family: monospace;
-    font-size: 0.85rem;
-    color: var(--text-secondary);
-    display: flex;
-    align-items: center;
-    gap: 6px;
-}
-
-.version-build-line #versionDisplay {
-    color: var(--text-primary);
     font-weight: 600;
+    color: var(--text-secondary);
 }
 
-.dot-separator {
+.version-separator {
+    margin: 0 5px;
     opacity: 0.5;
 }
 
-.build-text {
-    opacity: 0.7;
+.version-label {
+    font-weight: 500;
+    margin-left: 5px;
 }
 
-.build-actions {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    gap: 8px;
+.version-number {
+    font-family: monospace;
+    font-weight: 600;
+    color: var(--primary);
 }
 
-.build-action-btn {
+.changelog-btn {
     background: transparent;
     border: 1px solid var(--border-color);
     color: var(--text-secondary);
-    padding: 6px 14px;
+    padding: 3px 8px;
+    margin-left: 10px;
     border-radius: 6px;
     font-size: 0.7rem;
-    font-weight: 600;
-    letter-spacing: 0.5px;
     cursor: pointer;
     transition: all 0.2s ease;
-    text-transform: uppercase;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
 }
 
-.build-action-btn:hover {
+.changelog-btn:hover {
     background: var(--bg-hover);
     color: var(--text-primary);
     border-color: var(--primary);
 }
 
 @media (max-width: 768px) {
-    .build-info-container {
-        padding: 12px 15px;
-        gap: 10px;
+    .build-info {
+        font-size: 0.6rem;
+        padding: 3px 8px;
+        top: 5px;
+        right: 10px;
     }
     
-    .version-build-line {
-        font-size: 0.75rem;
-    }
-    
-    .build-action-btn {
-        font-size: 0.65rem;
-        padding: 5px 10px;
+    .changelog-btn {
+        font-size: 0.6rem;
+        padding: 2px 6px;
+        margin-left: 5px;
     }
 }
 

@@ -1434,16 +1434,16 @@ async function loadBuildNumber() {
         const response = await fetch('/api/build');
         if (response.ok) {
             const buildInfo = await response.json();
-            const buildDisplayEl = document.getElementById('buildDisplay');
-            if (buildDisplayEl) {
-                buildDisplayEl.textContent = buildInfo.buildNumber || 'dev';
+            const buildNumberEl = document.getElementById('buildNumber');
+            if (buildNumberEl) {
+                buildNumberEl.textContent = buildInfo.buildNumber || 'dev';
             }
         }
     } catch (error) {
         log('Failed to load build number:', error);
-        const buildDisplayEl = document.getElementById('buildDisplay');
-        if (buildDisplayEl) {
-            buildDisplayEl.textContent = 'dev';
+        const buildNumberEl = document.getElementById('buildNumber');
+        if (buildNumberEl) {
+            buildNumberEl.textContent = 'dev';
         }
     }
 }
@@ -1456,18 +1456,18 @@ async function loadVersion() {
             const changelogText = await response.text();
             // Parse version from first header like "# v1.2.0" or "# Version 1.2.0"
             const versionMatch = changelogText.match(/^#\s*(v?\d+\.\d+\.\d+.*?)$/m);
-            const versionDisplayEl = document.getElementById('versionDisplay');
-            if (versionDisplayEl && versionMatch) {
-                versionDisplayEl.textContent = versionMatch[1].trim();
-            } else if (versionDisplayEl) {
-                versionDisplayEl.textContent = 'v1.0.0';
+            const versionNumberEl = document.getElementById('versionNumber');
+            if (versionNumberEl && versionMatch) {
+                versionNumberEl.textContent = versionMatch[1].trim();
+            } else if (versionNumberEl) {
+                versionNumberEl.textContent = 'v1.0.0';
             }
         }
     } catch (error) {
         log('Failed to load version:', error);
-        const versionDisplayEl = document.getElementById('versionDisplay');
-        if (versionDisplayEl) {
-            versionDisplayEl.textContent = 'v1.0.0';
+        const versionNumberEl = document.getElementById('versionNumber');
+        if (versionNumberEl) {
+            versionNumberEl.textContent = 'v1.0.0';
         }
     }
 }
@@ -1594,19 +1594,6 @@ async function showChangelog() {
         log('Failed to show changelog:', error);
         showNotification('Failed to load changelog', 'error');
     }
-}
-
-// Placeholder functions for other buttons
-function showHelp() {
-    showNotification('Help documentation coming soon!', 'info');
-}
-
-function showAbout() {
-    showNotification('About page coming soon!', 'info');
-}
-
-function showPrivacy() {
-    showNotification('Privacy & Terms page coming soon!', 'info');
 }
 
 // ═══════════════════════════════════════════════════════════════════════
