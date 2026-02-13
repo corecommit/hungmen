@@ -1448,30 +1448,6 @@ async function loadBuildNumber() {
     }
 }
 
-// Load version from CHANGELOG.md
-async function loadVersion() {
-    try {
-        const response = await fetch('https://raw.githubusercontent.com/shreyanroy/hungmen/main/CHANGELOG.md');
-        if (response.ok) {
-            const changelogText = await response.text();
-            // Parse version from first header like "# v1.2.0" or "# Version 1.2.0"
-            const versionMatch = changelogText.match(/^#\s*(v?\d+\.\d+\.\d+.*?)$/m);
-            const versionNumberEl = document.getElementById('versionNumber');
-            if (versionNumberEl && versionMatch) {
-                versionNumberEl.textContent = versionMatch[1].trim();
-            } else if (versionNumberEl) {
-                versionNumberEl.textContent = 'v1.0.0';
-            }
-        }
-    } catch (error) {
-        log('Failed to load version:', error);
-        const versionNumberEl = document.getElementById('versionNumber');
-        if (versionNumberEl) {
-            versionNumberEl.textContent = 'v1.0.0';
-        }
-    }
-}
-
 // ═══════════════════════════════════════════════════════════════════════
 // SERVER CONNECTION
 // ═══════════════════════════════════════════════════════════════════════
