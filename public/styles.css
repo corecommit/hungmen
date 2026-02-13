@@ -989,8 +989,9 @@ header .build-info {
 
 @media (max-width: 768px) {
     .build-info {
-        font-size: 0.6rem;
-        padding: 3px 8px;
+        font-size: 0.7rem;
+        padding: 3px 7px;
+        border-radius: 7px;
         top: 5px;
         right: 10px;
     }
