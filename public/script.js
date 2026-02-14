@@ -3010,55 +3010,143 @@ function showCoinFlipResult(data) {
     const animationDiv = document.getElementById('coinFlipAnimation');
     const winnerDiv = document.getElementById('coinFlipWinner');
     const resultDiv = document.getElementById('coinFlipResult');
-    const counterDisplay = document.getElementById('coinCounterDisplay');
+    const track = document.getElementById('csgoRouletteTrack');
     
     if (selectionDiv) selectionDiv.classList.add('hidden');
     if (animationDiv) animationDiv.classList.remove('hidden');
     if (winnerDiv) winnerDiv.classList.add('hidden');
     if (resultDiv) resultDiv.textContent = '';
     
-    // Show coin flip result immediately
-    if (counterDisplay) {
-        counterDisplay.classList.remove('counting');
-        const resultText = data.result === 'heads' ? 'HEADS' : 'TAILS';
-        counterDisplay.textContent = resultText;
-        void counterDisplay.offsetWidth;
-        counterDisplay.classList.add('result');
+    // CS:GO Style Roulette Animation
+    if (!track) return;
+    
+    // Clear previous items
+    track.innerHTML = '';
+    track.classList.remove('spinning');
+    
+    // Generate roulette items
+    const itemWidth = 130; // width + margin
+    const containerWidth = 600;
+    const centerOffset = containerWidth / 2 - itemWidth / 2;
+    const totalItems = 50; // Number of items to create
+    const winningIndex = Math.floor(totalItems * 0.7) + Math.floor(Math.random() * 5); // Win around 70% through
+    
+    // Create items
+    for (let i = 0; i < totalItems; i++) {
+        const item = document.createElement('div');
+        item.className = 'csgo-roulette-item';
+        
+        // The winning item
+        if (i === winningIndex) {
+            item.classList.add(data.result);
+            item.innerHTML = `
+                <div class="item-icon">${data.result === 'heads' ? '👑' : '💎'}</div>
+                <div class="item-name">${data.result}</div>
+            `;
+        } else {
+            // Random heads or tails
+            const isHeads = Math.random() > 0.5;
+            item.classList.add(isHeads ? 'heads' : 'tails');
+            item.innerHTML = `
+                <div class="item-icon">${isHeads ? '🟡' : '🔵'}</div>
+                <div class="item-name">${isHeads ? 'Heads' : 'Tails'}</div>
+            `;
+        }
+        
+        track.appendChild(item);
     }
     
-    if (resultDiv) {
-        const resultText = data.result === 'heads' ? 'HEADS!' : 'TAILS!';
-        resultDiv.textContent = resultText;
-    }
+    // Calculate end position to center the winning item
+    const endPosition = -(winningIndex * itemWidth - centerOffset);
+    track.style.setProperty('--end-position', `${endPosition}px`);
     
-    // Show winner after a short delay
+    // Start animation
+    void track.offsetWidth; // Force reflow
+    track.classList.add('spinning');
+    
+    // Play tick sound effect (if available)
+    playRouletteTickSound();
+    
+    // Show result after animation completes
     setTimeout(() => {
-        if (winnerDiv) {
-            winnerDiv.classList.remove('hidden');
-            const winnerText = document.getElementById('coinFlipWinnerText');
-            if (winnerText) {
-                const isTeamMode = coinFlipData?.isTeamMode;
-                if (isTeamMode) {
-                    const winnerTeam = data.winner.team === 'team1' ? 'Team 1' : 'Team 2';
-                    winnerText.textContent = `${winnerTeam} wins!`;
-                } else {
-                    winnerText.textContent = `${data.winner.username} wins!`;
+        // Highlight the winning item
+        const winningItem = track.children[winningIndex];
+        if (winningItem) {
+            winningItem.classList.add('winner-reveal');
+        }
+        
+        if (resultDiv) {
+            const resultText = data.result === 'heads' ? 'HEADS!' : 'TAILS!';
+            resultDiv.textContent = resultText;
+            resultDiv.style.animation = 'winnerPulse 0.5s ease-out';
+        }
+        
+        // Show winner after a short delay
+        setTimeout(() => {
+            if (winnerDiv) {
+                winnerDiv.classList.remove('hidden');
+                const winnerText = document.getElementById('coinFlipWinnerText');
+                if (winnerText) {
+                    const isTeamMode = coinFlipData?.isTeamMode;
+                    if (isTeamMode) {
+                        const winnerTeam = data.winner.team === 'team1' ? 'Team 1' : 'Team 2';
+                        winnerText.textContent = `${winnerTeam} wins!`;
+                    } else {
+                        winnerText.textContent = `${data.winner.username} wins!`;
+                    }
                 }
             }
-        }
-        
-        // Highlight winner
-        const player1Div = document.getElementById('coinFlipPlayer1');
-        const player2Div = document.getElementById('coinFlipPlayer2');
-        
-        if (player1Div && player2Div) {
-            if (data.winner.id === coinFlipData?.player1?.id) {
-                player1Div.classList.add('winner');
-            } else {
-                player2Div.classList.add('winner');
+            
+            // Highlight winner
+            const player1Div = document.getElementById('coinFlipPlayer1');
+            const player2Div = document.getElementById('coinFlipPlayer2');
+            
+            if (player1Div && player2Div) {
+                if (data.winner.id === coinFlipData?.player1?.id) {
+                    player1Div.classList.add('winner');
+                } else {
+                    player2Div.classList.add('winner');
+                }
             }
+        }, 1000);
+    }, 6000); // Wait for roulette animation to complete
+}
+
+function playRouletteTickSound() {
+    // Create a simple tick sound using Web Audio API
+    try {
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const tickCount = 20;
+        let currentTick = 0;
+        
+        function playTick() {
+            if (currentTick >= tickCount) return;
+            
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            
+            oscillator.frequency.value = 800 + Math.random() * 200;
+            oscillator.type = 'square';
+            
+            gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.05);
+            
+            oscillator.start(audioContext.currentTime);
+            oscillator.stop(audioContext.currentTime + 0.05);
+            
+            currentTick++;
+            // Decrease interval as it slows down
+            const nextInterval = 100 + (currentTick * 250);
+            setTimeout(playTick, nextInterval);
         }
-    }, 1500);
+        
+        playTick();
+    } catch (e) {
+        // Silent fail if audio not supported
+    }
 }
 
 function submitCustomWord() {
