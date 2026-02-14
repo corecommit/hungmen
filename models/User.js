@@ -34,15 +34,19 @@ const userSchema = new mongoose.Schema({
         type: Number,
         default: 0
     },
-    banned: {
+    serverBan: {
         type: Boolean,
         default: false
     },
-    banExpiry: {
+    serverBanExpiry: {
         type: Date,
         default: null
     },
-    banReason: {
+    serverBanDuration: {
+        type: String,
+        default: null
+    },
+    serverBanReason: {
         type: String,
         default: null
     }

@@ -148,7 +148,7 @@ body::before {
 .game-logo {
     font-size: 4rem;
     font-weight: 800;
-    margin-bottom: 40px;
+    margin-bottom: 30px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -387,7 +387,7 @@ body::before {
     border: 2px solid var(--warning);
     border-radius: 15px;
     box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8);
-    z-index: 1000;
+    z-index: 100000;
     animation: slideInRight 0.3s ease;
     display: flex;
     flex-direction: column;
@@ -873,10 +873,42 @@ body::before {
 .auth-error {
     color: var(--error);
     text-align: center;
-    margin-top: 15px;
+    margin-bottom: 15px;
     font-size: 0.9rem;
     min-height: 20px;
     animation: shake 0.5s ease;
+    white-space: pre-line;
+    line-height: 1.6;
+    padding: 10px;
+    border-radius: 8px;
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    max-width: 500px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.auth-error.info {
+    color: var(--info);
+    background: rgba(96, 165, 250, 0.1);
+    border: 1px solid rgba(96, 165, 250, 0.3);
+    animation: fadeIn 0.3s ease;
+}
+
+.auth-error.success {
+    color: var(--success);
+    background: rgba(74, 222, 128, 0.1);
+    border: 1px solid rgba(74, 222, 128, 0.3);
+    animation: fadeIn 0.3s ease;
+}
+
+.auth-error:empty {
+    display: none;
+    padding: 0;
+    margin: 0;
+    min-height: 0;
+    background: transparent;
+    border: none;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -3961,6 +3993,11 @@ select:focus {
         min-height: 350px;
     }
 
+    .admin-panel {
+        max-height: calc(80vh - 100px);
+        width: 230px;
+    }
+    
     .dropdown-tab-inline {
         padding: 4px 6px;
         font-size: 0.7rem;
@@ -4259,11 +4296,14 @@ select:focus {
     .username-input-group input {
         font-size: 0.95rem;
         padding: 16px 18px;
+        border-width: 2px;
     }
     
     .btn-large {
         padding: 14px 30px;
         font-size: 0.9rem;
+        min-height: 40px;
+        min-width: 100px;
         gap: 8px;
     }
     
@@ -4471,11 +4511,14 @@ select:focus {
     .btn-large {
         padding: 12px 25px;
         font-size: 0.85rem;
+        min-height: 40px;
+        min-width: 100px;
     }
     
     .username-input-group input {
         font-size: 0.9rem;
         padding: 14px 15px;
+        border-width: 1.5px;
     }
     
     .hangman-svg {

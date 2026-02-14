@@ -213,40 +213,40 @@ function showAdminPanel() {
         </div>
         <div class="admin-panel-content">
             <div class="admin-section">
-                <h4>Room Management</h4>
-                <button onclick="showDeleteRoomModal()" class="admin-btn">
-                    <i class="fas fa-trash"></i> Delete Room
+                <h4>Server Section</h4>
+                <button onclick="showBroadcastModal()" class="admin-btn">
+                    <i class="fas fa-bullhorn"></i> Broadcast Message
                 </button>
+                <button onclick="showServerKickModal()" class="admin-btn">
+                    <i class="fas fa-user-times"></i> Kick Player
+                </button>
+                <button onclick="showServerBanModal()" class="admin-btn">
+                    <i class="fas fa-ban"></i> Ban Player
+                </button>
+                <button onclick="showServerUnbanModal()" class="admin-btn" style="background: rgba(74, 222, 128, 0.2); color: #4ade80;">
+                    <i class="fas fa-unlock"></i> Unban Player
+                </button>
+            </div>
+            <div class="admin-section">
+                <h4>Room Management</h4>
                 <button onclick="showKickPlayerModal()" class="admin-btn">
                     <i class="fas fa-user-times"></i> Kick Player
                 </button>
-                <button onclick="showBanPlayerModal()" class="admin-btn">
-                    <i class="fas fa-ban"></i> Ban Player
-                </button>
-                <button onclick="showUnbanUserModal()" class="admin-btn" style="background: rgba(74, 222, 128, 0.2); color: #4ade80;">
-                    <i class="fas fa-unlock"></i> Unban User
+                <button onclick="showDeleteRoomModal()" class="admin-btn">
+                    <i class="fas fa-trash"></i> Delete Room
                 </button>
                 <button onclick="showClearChatModal()" class="admin-btn">
                     <i class="fas fa-broom"></i> Clear Chat
                 </button>
             </div>
             <div class="admin-section">
-                <h4>Announcements</h4>
-                <button onclick="showBroadcastModal()" class="admin-btn">
-                    <i class="fas fa-bullhorn"></i> Broadcast Message
-                </button>
-            </div>
-            <div class="admin-section">
-                <h4>User Database</h4>
+                <h4>Server Tools</h4>
                 <button onclick="showUserDatabaseModal()" class="admin-btn">
                     <i class="fas fa-database"></i> View User Database
                 </button>
                 <button onclick="showDeleteAllUsersModal()" class="admin-btn" style="background: rgba(239, 68, 68, 0.2); color: #ef4444;">
                     <i class="fas fa-trash-alt"></i> Delete All Users
                 </button>
-            </div>
-            <div class="admin-section">
-                <h4>Server Tools</h4>
                 <button onclick="requestServerInfo()" class="admin-btn">
                     <i class="fas fa-info-circle"></i> Server Info
                 </button>
@@ -749,92 +749,147 @@ function adminKickPlayer() {
     hideModal('adminKickPlayerModal');
 }
 
-function showBanPlayerModal() {
+// ═══════════════════════════════════════════════════════════════════════
+// SERVER SECTION - Kick and Ban Functions
+// ═══════════════════════════════════════════════════════════════════════
+
+function showServerKickModal() {
     if (!isAdmin()) return;
 
     const modal = document.createElement('div');
     modal.className = 'modal admin-modal';
-    modal.id = 'adminBanPlayerModal';
+    modal.id = 'serverKickModal';
     modal.innerHTML = `
         <div class="modal-content">
-            <div class="modal-icon"><i class="fas fa-ban" style="color: var(--error);"></i></div>
-            <h2>Ban Player</h2>
+            <div class="modal-icon"><i class="fas fa-user-times" style="color: var(--warning);"></i></div>
+            <h2>Kick Player (Server)</h2>
+            <p style="color: var(--text-secondary); margin-bottom: 20px;">
+                This will immediately disconnect the player from the server.
+            </p>
             <div class="form-group">
                 <label>Username</label>
-                <input type="text" id="adminBanUsernameInput" placeholder="Enter username to ban">
-            </div>
-            <div class="form-group">
-                <label>Duration (hours)</label>
-                <select id="adminBanDurationInput" style="width: 100%; padding: 12px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-primary);">
-                    <option value="1">1 hour</option>
-                    <option value="24">24 hours</option>
-                    <option value="168">7 days</option>
-                    <option value="720">30 days</option>
-                    <option value="0">Permanent</option>
-                </select>
+                <input type="text" id="serverKickUsernameInput" placeholder="Enter username to kick">
             </div>
             <div class="form-group">
                 <label>Reason (optional)</label>
-                <input type="text" id="adminBanReasonInput" placeholder="Reason for banning">
+                <input type="text" id="serverKickReasonInput" placeholder="Reason for kicking">
             </div>
             <div class="modal-actions">
-                <button type="button" class="btn btn-secondary" onclick="hideModal('adminBanPlayerModal')">Cancel</button>
-                <button type="button" class="btn btn-danger" onclick="adminBanPlayer()">Ban Player</button>
+                <button type="button" class="btn btn-secondary" onclick="hideModal('serverKickModal')">Cancel</button>
+                <button type="button" class="btn btn-warning" onclick="serverKickPlayer()">Kick Player</button>
             </div>
         </div>
     `;
 
     document.body.appendChild(modal);
-    showModal('adminBanPlayerModal');
+    showModal('serverKickModal');
 }
 
-function adminBanPlayer() {
-    const usernameInput = document.getElementById('adminBanUsernameInput');
-    const durationInput = document.getElementById('adminBanDurationInput');
-    const reasonInput = document.getElementById('adminBanReasonInput');
+function serverKickPlayer() {
+    const usernameInput = document.getElementById('serverKickUsernameInput');
+    const reasonInput = document.getElementById('serverKickReasonInput');
     const username = usernameInput.value.trim();
-    const duration = parseInt(durationInput.value);
-    const reason = reasonInput.value.trim() || 'Banned by admin';
+    const reason = reasonInput.value.trim() || 'Kicked by server admin';
 
     if (!username) {
         showNotification('Please enter a username', 'error');
         return;
     }
 
-    socket.emit('adminBanPlayer', { username, duration, reason });
-    hideModal('adminBanPlayerModal');
+    socket.emit('serverKickPlayer', { username, reason });
+    hideModal('serverKickModal');
 }
 
-function showUnbanUserModal() {
+function showServerBanModal() {
     if (!isAdmin()) return;
 
     const modal = document.createElement('div');
     modal.className = 'modal admin-modal';
-    modal.id = 'adminUnbanUserModal';
+    modal.id = 'serverBanModal';
     modal.innerHTML = `
         <div class="modal-content">
-            <div class="modal-icon"><i class="fas fa-unlock" style="color: var(--success);"></i></div>
-            <h2>Unban User</h2>
+            <div class="modal-icon"><i class="fas fa-ban" style="color: var(--error);"></i></div>
+            <h2>Ban Player (Server)</h2>
+            <p style="color: var(--text-secondary); margin-bottom: 20px;">
+                This will ban the player from the server with specified duration.
+            </p>
             <div class="form-group">
                 <label>Username</label>
-                <input type="text" id="adminUnbanUsernameInput" placeholder="Enter username to unban">
+                <input type="text" id="serverBanUsernameInput" placeholder="Enter username to ban">
             </div>
-            <p style="color: var(--text-secondary); font-size: 0.9rem; margin-top: 10px;">
-                This will remove the ban and allow the user to log in and join rooms again.
-            </p>
+            <div class="form-group">
+                <label>Duration</label>
+                <select id="serverBanDurationInput" style="width: 100%; padding: 12px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-primary);">
+                    <option value="1sec">1 Second</option>
+                    <option value="1min">1 Minute</option>
+                    <option value="1hour">1 Hour</option>
+                    <option value="1day">1 Day</option>
+                    <option value="1week">1 Week</option>
+                    <option value="permanent">Permanent</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Reason (optional)</label>
+                <input type="text" id="serverBanReasonInput" placeholder="Reason for banning">
+            </div>
             <div class="modal-actions">
-                <button type="button" class="btn btn-secondary" onclick="hideModal('adminUnbanUserModal')">Cancel</button>
-                <button type="button" class="btn btn-success" onclick="adminUnbanUserFromPanel()">Unban User</button>
+                <button type="button" class="btn btn-secondary" onclick="hideModal('serverBanModal')">Cancel</button>
+                <button type="button" class="btn btn-danger" onclick="serverBanPlayer()">Ban Player</button>
             </div>
         </div>
     `;
 
     document.body.appendChild(modal);
-    showModal('adminUnbanUserModal');
+    showModal('serverBanModal');
 }
 
-function adminUnbanUserFromPanel() {
-    const usernameInput = document.getElementById('adminUnbanUsernameInput');
+function serverBanPlayer() {
+    const usernameInput = document.getElementById('serverBanUsernameInput');
+    const durationInput = document.getElementById('serverBanDurationInput');
+    const reasonInput = document.getElementById('serverBanReasonInput');
+    const username = usernameInput.value.trim();
+    const duration = durationInput.value;
+    const reason = reasonInput.value.trim() || 'Banned by server admin';
+
+    if (!username) {
+        showNotification('Please enter a username', 'error');
+        return;
+    }
+
+    socket.emit('serverBanPlayer', { username, duration, reason });
+    hideModal('serverBanModal');
+}
+
+function showServerUnbanModal() {
+    if (!isAdmin()) return;
+
+    const modal = document.createElement('div');
+    modal.className = 'modal admin-modal';
+    modal.id = 'serverUnbanModal';
+    modal.innerHTML = `
+        <div class="modal-content">
+            <div class="modal-icon"><i class="fas fa-unlock" style="color: var(--success);"></i></div>
+            <h2>Unban Player (Server)</h2>
+            <p style="color: var(--text-secondary); margin-bottom: 20px;">
+                This will remove the server ban and allow the player to join again.
+            </p>
+            <div class="form-group">
+                <label>Username</label>
+                <input type="text" id="serverUnbanUsernameInput" placeholder="Enter username to unban">
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-secondary" onclick="hideModal('serverUnbanModal')">Cancel</button>
+                <button type="button" class="btn btn-success" onclick="serverUnbanPlayer()">Unban Player</button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+    showModal('serverUnbanModal');
+}
+
+function serverUnbanPlayer() {
+    const usernameInput = document.getElementById('serverUnbanUsernameInput');
     const username = usernameInput.value.trim();
 
     if (!username) {
@@ -1149,17 +1204,6 @@ function handleAdminCommand(message) {
             socket.emit('adminBroadcast', { message: broadcastMessage });
             return true;
 
-        case '/ban':
-            if (parts.length < 2) {
-                showNotification('Usage: /ban <username> [duration_hours] [reason]', 'error');
-                return true;
-            }
-            const banUsername = parts[1];
-            const banDuration = parseInt(parts[2]) || 24;
-            const banReason = parts.slice(3).join(' ') || 'Banned by admin';
-            socket.emit('adminBanPlayer', { username: banUsername, duration: banDuration, reason: banReason });
-            return true;
-
         case '/clearchat':
             const clearType = parts[1] || 'lobby';
             socket.emit('adminClearChat', { type: clearType });
@@ -1170,7 +1214,7 @@ function handleAdminCommand(message) {
             return true;
 
         case '/help':
-            showNotification('Admin commands: /kick, /ban, /deleteroom, /broadcast, /clearchat, /serverinfo, /adminpanel, /help', 'info');
+            showNotification('Admin commands: /kick, /deleteroom, /broadcast, /clearchat, /serverinfo, /adminpanel, /help', 'info');
             return true;
 
         default:
@@ -1620,7 +1664,33 @@ function setupSocketListeners(username, connectionTimeout, adminPassword = null)
             showServerDownMessage();
         }
     });
-    
+
+    socket.on('forceLogout', (data) => {
+        showNotification(data.message || 'You have been logged out by an admin', 'error', 5000);
+        // Clear session and reload to login screen
+        clearSession();
+        currentUser = null;
+        currentRoom = null;
+        gameState = null;
+        isHost = false;
+        selectedRoomId = null;
+        mySocketId = null;
+        onlineUsersData = [];
+        globalUsersData = [];
+
+        // Reset UI
+        const authScreen = document.getElementById('authScreen');
+        const gameScreen = document.getElementById('gameScreen');
+        if (authScreen) authScreen.classList.remove('hidden');
+        if (gameScreen) gameScreen.classList.add('hidden');
+
+        // Reset form
+        const usernameInput = document.getElementById('usernameInput');
+        if (usernameInput) usernameInput.value = '';
+
+        socket.disconnect();
+    });
+
     socket.on('reconnect', (attemptNumber) => {
         log('Reconnected after', attemptNumber, 'attempts');
         showNotification('Reconnected to server!', 'success');
@@ -2227,9 +2297,13 @@ function initAuth() {
         if (usernameInput && adminPasswordGroup) {
             usernameInput.addEventListener('input', (e) => {
                 const username = e.target.value.trim();
-                const isAdmin = username.toLowerCase() === 'admin';
+                const lowerUsername = username.toLowerCase();
+                // Show password field for admin account or admin commands (case-insensitive)
+                const needsPassword = lowerUsername === 'admin' || 
+                                      lowerUsername === 'everyonelogout' || 
+                                      lowerUsername === 'adminlogout';
                 
-                if (isAdmin) {
+                if (needsPassword) {
                     adminPasswordGroup.classList.remove('hidden');
                     // Focus on password field after a short delay
                     setTimeout(() => {
@@ -2307,19 +2381,44 @@ function handleJoinGame(e) {
         return;
     }
     
+    // Check for /help command before validation
+    if (username === '/help') {
+        showAuthError('📋 Available Commands:\n• /help - Show this message\n• EveryoneLogout - Logout all users (admin only)\n• AdminLogout - Logout only admins (admin only)', 'info');
+        return;
+    }
+
+    // Allow reserved commands to pass through (they need password validation on server)
+    const isAdminCommand = ['everyonelogout', 'adminlogout'].includes(username.toLowerCase());
+    
+    if (isAdminCommand) {
+        // Admin commands require password - check if provided
+        const adminPasswordInput = document.getElementById('adminPasswordInput');
+        const adminPassword = adminPasswordInput?.value.trim();
+        
+        if (!adminPassword) {
+            showAuthError('🔑 Admin password required for this command');
+            return;
+        }
+        
+        // Send command with password
+        currentUser = { username, isAdmin: true, adminPassword };
+        connectSocket(username, adminPassword);
+        return;
+    }
+
     if (username.includes(' ')) {
-        showAuthError('Username cannot contain spaces');
+        showAuthError('❌ Username cannot contain spaces');
         return;
     }
     
     const validCharsRegex = /^[a-zA-Z0-9._-]+$/;
     if (!validCharsRegex.test(username)) {
-        showAuthError('Username can only contain letters, numbers, dots, hyphens, and underscores');
+        showAuthError('❌ Username can only contain letters, numbers, dots, hyphens, and underscores\n\n💡 Tip: Type "/help" to see available commands');
         return;
     }
     
     if (username.length < 2 || username.length > CONFIG.MAX_USERNAME_LENGTH) {
-        showAuthError(`Username must be between 2 and ${CONFIG.MAX_USERNAME_LENGTH} characters`);
+        showAuthError(`❌ Username must be between 2 and ${CONFIG.MAX_USERNAME_LENGTH} characters`);
         return;
     }
     
@@ -2327,11 +2426,18 @@ function handleJoinGame(e) {
     connectSocket(username);
 }
 
-function showAuthError(message) {
+function showAuthError(message, type = 'error') {
     authError.textContent = message;
+    authError.className = 'auth-error';
+    if (type === 'info') {
+        authError.classList.add('info');
+    } else if (type === 'success') {
+        authError.classList.add('success');
+    }
     setTimeout(() => {
         authError.textContent = '';
-    }, 5000);
+        authError.className = 'auth-error';
+    }, 8000);
 }
 
 function showModalError(elementId, message) {
@@ -3849,7 +3955,24 @@ function initEventListeners() {
                 }
                 return;
             }
-            
+
+            // Check reserved commands
+            const reservedCommands = ['everyonelogout', 'adminlogout', '/help'];
+            if (reservedCommands.includes(usernameLower)) {
+                if (usernameError) {
+                    usernameError.textContent = 'This username is reserved for system commands';
+                    usernameError.style.display = 'block';
+                }
+                return;
+            }
+
+            // Check if /help command
+            if (newUsername === '/help') {
+                showNotification('Available commands: /help, EveryoneLogout (admin only), AdminLogout (admin only)', 'info', 8000);
+                newUsernameInput.value = '';
+                return;
+            }
+
             // Clear error
             if (usernameError) {
                 usernameError.style.display = 'none';

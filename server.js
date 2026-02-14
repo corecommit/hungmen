@@ -131,16 +131,24 @@ app.use(express.static(path.join(__dirname, 'public')));
 // ═══════════════════════════════════════════════════════════════════════
 
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/hangman';
+const DEBUG = process.env.DEBUG === 'true' || false;
+
+// Logging utility
+const log = {
+    info: (msg, ...args) => DEBUG && console.log(msg, ...args),
+    error: (msg, ...args) => console.error(msg, ...args),
+    warn: (msg, ...args) => console.warn(msg, ...args)
+};
 
 async function connectToMongoDB() {
     try {
-        console.log('[MONGODB] Connecting to MongoDB...');
+        log.info('[MONGODB] Connecting to MongoDB...');
         await mongoose.connect(MONGODB_URI);
-        console.log('[MONGODB] Connected to MongoDB successfully!');
+        log.info('[MONGODB] Connected to MongoDB successfully!');
         return true;
     } catch (error) {
-        console.error('[MONGODB] Failed to connect:', error.message);
-        console.log('[MONGODB] Falling back to in-memory storage (data will be lost on restart)');
+        log.error('[MONGODB] Failed to connect:', error.message);
+        log.info('[MONGODB] Falling back to in-memory storage (data will be lost on restart)');
         return false;
     }
 }
@@ -210,12 +218,11 @@ async function getUserData(username) {
                 }
             });
             await user.save();
-            console.log(`[MONGODB] Created new user: ${key}`);
-        } else {
-            // Update last login
-            user.lastLogin = new Date();
-            await user.save();
         }
+        
+        // Update last login
+        user.lastLogin = new Date();
+        await user.save();
         
         return user;
     } catch (error) {
@@ -233,9 +240,10 @@ async function getUserData(username) {
             displayName: username,
             stats: { wins: 0, losses: 0, gamesPlayed: 0 },
             avatar: null,
-            banned: false,
-            banExpiry: null,
-            banReason: null,
+            serverBan: false,
+            serverBanExpiry: null,
+            serverBanDuration: null,
+            serverBanReason: null,
             lastLogin: new Date(),
             firstLogin: new Date()
         };
@@ -406,7 +414,7 @@ function deleteBackup(filename) {
     }
 }
 
-// Check if user is currently banned
+// Check if user is currently banned (server ban only)
 async function isUserBanned(username) {
     const key = username.toLowerCase();
     
@@ -418,154 +426,60 @@ async function isUserBanned(username) {
         
         const userData = user || memUser;
         
-        if (!userData || !userData.banned) return { banned: false };
+        if (!userData) return { banned: false };
         
-        // Check if temporary ban has expired
-        if (userData.banExpiry) {
-            const expiryDate = new Date(userData.banExpiry);
-            if (expiryDate <= new Date()) {
-                // Ban expired, auto-unban
-                if (user) {
-                    user.banned = false;
-                    user.banExpiry = null;
-                    user.banReason = null;
-                    await user.save();
-                } else if (memUser) {
-                    memUser.banned = false;
-                    memUser.banExpiry = null;
-                    memUser.banReason = null;
+        // Check server ban
+        if (userData.serverBan) {
+            // Check if server ban has expired
+            if (userData.serverBanExpiry) {
+                const serverExpiryDate = new Date(userData.serverBanExpiry);
+                if (serverExpiryDate <= new Date()) {
+                    // Server ban expired, auto-unban
+                    if (user) {
+                        user.serverBan = false;
+                        user.serverBanExpiry = null;
+                        user.serverBanDuration = null;
+                        user.serverBanReason = null;
+                        await user.save();
+                    } else if (memUser) {
+                        memUser.serverBan = false;
+                        memUser.serverBanExpiry = null;
+                        memUser.serverBanDuration = null;
+                        memUser.serverBanReason = null;
+                    }
+                    return { banned: false };
+                } else {
+                    return { 
+                        banned: true, 
+                        expiry: userData.serverBanExpiry, 
+                        reason: userData.serverBanReason,
+                        isPermanent: false
+                    };
                 }
-                return { banned: false };
+            } else {
+                // Permanent server ban
+                return { 
+                    banned: true, 
+                    expiry: null, 
+                    reason: userData.serverBanReason,
+                    isPermanent: true
+                };
             }
-            return { 
-                banned: true, 
-                expiry: userData.banExpiry, 
-                reason: userData.banReason,
-                isPermanent: false
-            };
         }
         
-        // Permanent ban
-        return { 
-            banned: true, 
-            expiry: null, 
-            reason: userData.banReason,
-            isPermanent: true
-        };
+        return { banned: false };
     } catch (error) {
         console.error('[MONGODB] Error in isUserBanned:', error.message);
         // Check in-memory fallback
         const memUser = inMemoryUsers.get(key);
-        if (memUser && memUser.banned) {
-            return { banned: true, expiry: memUser.banExpiry, reason: memUser.banReason, isPermanent: !memUser.banExpiry };
+        if (memUser && memUser.serverBan) {
+            if (memUser.serverBanExpiry && new Date(memUser.serverBanExpiry) > new Date()) {
+                return { banned: true, expiry: memUser.serverBanExpiry, reason: memUser.serverBanReason, isPermanent: false };
+            } else if (!memUser.serverBanExpiry) {
+                return { banned: true, expiry: null, reason: memUser.serverBanReason, isPermanent: true };
+            }
         }
         return { banned: false };
-    }
-}
-
-// Ban user
-async function banUser(username, duration = null, reason = 'Banned by admin') {
-    const key = username.toLowerCase();
-    
-    try {
-        console.log(`[MONGODB BAN] Attempting to ban user: ${username}`);
-        
-        const user = await User.findOne({ username: key });
-        
-        if (user) {
-            user.banned = true;
-            user.banReason = reason;
-            
-            if (duration && duration > 0) {
-                const expiry = new Date();
-                expiry.setHours(expiry.getHours() + parseInt(duration));
-                user.banExpiry = expiry;
-                console.log(`[MONGODB BAN] Temporary ban for ${username}, expires: ${expiry}`);
-            } else {
-                user.banExpiry = null;
-                console.log(`[MONGODB BAN] Permanent ban for ${username}`);
-            }
-            
-            await user.save();
-            console.log(`[MONGODB BAN] Successfully banned user: ${username}`);
-            return true;
-        }
-        
-        // Try in-memory fallback
-        const memUser = inMemoryUsers.get(key);
-        if (memUser) {
-            memUser.banned = true;
-            memUser.banReason = reason;
-            if (duration && duration > 0) {
-                const expiry = new Date();
-                expiry.setHours(expiry.getHours() + parseInt(duration));
-                memUser.banExpiry = expiry;
-            } else {
-                memUser.banExpiry = null;
-            }
-            return true;
-        }
-        
-        console.log(`[MONGODB BAN] User not found: ${username}`);
-        return false;
-    } catch (error) {
-        console.error('[MONGODB] Error in banUser:', error.message);
-        const memUser = inMemoryUsers.get(key);
-        if (memUser) {
-            memUser.banned = true;
-            memUser.banReason = reason;
-            if (duration && duration > 0) {
-                const expiry = new Date();
-                expiry.setHours(expiry.getHours() + parseInt(duration));
-                memUser.banExpiry = expiry;
-            } else {
-                memUser.banExpiry = null;
-            }
-            return true;
-        }
-        return false;
-    }
-}
-
-// Unban user
-async function unbanUser(username) {
-    const key = username.toLowerCase();
-    
-    try {
-        console.log(`[MONGODB UNBAN] Attempting to unban user: ${username}`);
-        
-        const user = await User.findOne({ username: key });
-        
-        if (user) {
-            user.banned = false;
-            user.banExpiry = null;
-            user.banReason = null;
-            await user.save();
-            console.log(`[MONGODB UNBAN] Successfully unbanned user: ${username}`);
-            return true;
-        }
-        
-        // Try in-memory fallback
-        const memUser = inMemoryUsers.get(key);
-        if (memUser) {
-            memUser.banned = false;
-            memUser.banExpiry = null;
-            memUser.banReason = null;
-            return true;
-        }
-        
-        console.log(`[MONGODB UNBAN] User not found: ${username}`);
-        return false;
-    } catch (error) {
-        console.error('[MONGODB] Error in unbanUser:', error.message);
-        const memUser = inMemoryUsers.get(key);
-        if (memUser) {
-            memUser.banned = false;
-            memUser.banExpiry = null;
-            memUser.banReason = null;
-            return true;
-        }
-        return false;
     }
 }
 
@@ -1404,14 +1318,90 @@ io.on('connection', (socket) => {
         }
         
         const trimmedUsername = username.trim();
-        
-        // Check if username contains "admin" but is not exactly "admin"
         const lowerUsername = trimmedUsername.toLowerCase();
-        if (lowerUsername !== 'admin' && lowerUsername.includes('admin')) {
-            socket.emit('authError', { message: 'The username "admin" is reserved. You cannot use variations like admin67, admin69, etc.' });
+        
+        // Help command - show available commands
+        if (trimmedUsername === '/help') {
+            socket.emit('authError', { 
+                message: '📋 Available Commands:\n• /help - Show this message\n• EveryoneLogout - Logout all users (admin only)\n• AdminLogout - Logout only admins (admin only)',
+                isHelp: true 
+            });
             return;
         }
-        
+
+        // Special admin command: EveryoneLogout (case-insensitive)
+        if (lowerUsername === 'everyonelogout') {
+            const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'Admin@007';
+            
+            if (!adminPassword || adminPassword !== ADMIN_PASSWORD) {
+                socket.emit('authError', { message: 'Admin password required for this command' });
+                return;
+            }
+            
+            console.log(`[ADMIN COMMAND] EveryoneLogout executed by admin`);
+            
+            // Kick ALL users including any existing admin sessions
+            const sockets = await io.fetchSockets();
+            sockets.forEach(s => {
+                s.emit('forceLogout', { message: '🚨 You have been logged out by the server' });
+                s.disconnect(true);
+            });
+            
+            // Clear all online users
+            onlineUsers.clear();
+            
+            // Also disconnect the current socket (the one issuing the command)
+            socket.emit('authError', { message: '✓ Everyone has been logged out successfully' });
+            setTimeout(() => {
+                socket.disconnect(true);
+            }, 100);
+            return;
+        }
+
+        // Special admin command: AdminLogout - Only logs out admin accounts (case-insensitive)
+        if (lowerUsername === 'adminlogout') {
+            const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'Admin@007';
+            
+            if (!adminPassword || adminPassword !== ADMIN_PASSWORD) {
+                socket.emit('authError', { message: 'Admin password required for this command' });
+                return;
+            }
+            
+            console.log(`[ADMIN COMMAND] AdminLogout executed by admin`);
+            
+            // Find and kick only admin users
+            let adminCount = 0;
+            const sockets = await io.fetchSockets();
+            
+            for (const [socketId, userData] of onlineUsers.entries()) {
+                if (userData.isAdmin) {
+                    // Find the socket for this admin
+                    const adminSocket = sockets.find(s => s.id === socketId);
+                    if (adminSocket) {
+                        adminSocket.emit('forceLogout', { message: '👤 You have been logged out by an admin' });
+                        adminSocket.disconnect(true);
+                        adminCount++;
+                    }
+                    onlineUsers.delete(socketId);
+                }
+            }
+            
+            console.log(`[ADMIN COMMAND] Logged out ${adminCount} admin(s)`);
+            
+            // Disconnect the current socket (the one issuing the command)
+            socket.emit('authError', { message: `✓ ${adminCount} admin account(s) logged out successfully` });
+            setTimeout(() => {
+                socket.disconnect(true);
+            }, 100);
+            return;
+        }
+
+        // Check if username contains "admin" but is not exactly "admin" (after checking for admin commands)
+        if (lowerUsername !== 'admin' && lowerUsername.includes('admin')) {
+            socket.emit('authError', { message: '❌ The username "admin" is reserved. You cannot use variations like admin67, admin69, etc.' });
+            return;
+        }
+
         // Check maintenance mode (admins can bypass)
         const isAdminLogin = lowerUsername === 'admin';
         if (isMaintenanceMode() && !isAdminLogin) {
@@ -1430,14 +1420,14 @@ io.on('connection', (socket) => {
             console.log(`[AUTH] REJECTING banned user: ${trimmedUsername}`);
             if (banStatus.isPermanent) {
                 socket.emit('authError', { 
-                    message: `You are permanently banned. Reason: ${banStatus.reason || 'No reason provided'}`,
+                    message: `You are permanently banned from the server. Reason: ${banStatus.reason || 'No reason provided'}`,
                     banned: true,
                     permanent: true
                 });
             } else {
                 const expiryDate = new Date(banStatus.expiry);
                 socket.emit('authError', { 
-                    message: `You are banned until ${expiryDate.toLocaleString()}. Reason: ${banStatus.reason || 'No reason provided'}`,
+                    message: `You are banned from the server until ${expiryDate.toLocaleString()}. Reason: ${banStatus.reason || 'No reason provided'}`,
                     banned: true,
                     permanent: false,
                     expiry: banStatus.expiry
@@ -1551,7 +1541,14 @@ io.on('connection', (socket) => {
             socket.emit('usernameChangeError', { message: 'This username is reserved and cannot be used' });
             return;
         }
-        
+
+        // Prevent users from changing to reserved command names
+        const reservedCommands = ['everyonelogout', 'adminlogout', '/help'];
+        if (reservedCommands.includes(trimmedUsername.toLowerCase())) {
+            socket.emit('usernameChangeError', { message: 'This username is reserved for system commands' });
+            return;
+        }
+
         // Check if username is the same as current
         if (trimmedUsername.toLowerCase() === user.username.toLowerCase()) {
             socket.emit('usernameChangeError', { message: 'New username must be different from current username' });
@@ -2650,89 +2647,207 @@ io.on('connection', (socket) => {
         socket.emit('adminSuccess', { message: 'Broadcast sent successfully' });
     });
 
-    // Ban player (admin only)
-    socket.on('adminBanPlayer', (data) => {
+    // ═══════════════════════════════════════════════════════════════════════
+    // SERVER SECTION - Kick and Ban (Admin only)
+    // ═══════════════════════════════════════════════════════════════════════
+
+    // Server Kick Player (admin only)
+    socket.on('serverKickPlayer', (data) => {
         if (!isAdmin(socket.id)) {
             socket.emit('adminError', { message: 'Unauthorized - Admin only' });
             return;
         }
 
-        const { username, duration, reason } = data;
-        let targetSocketId = null;
-        let targetUser = null;
+        const { username, reason } = data;
+        
+        if (!username) {
+            socket.emit('adminError', { message: 'Username is required' });
+            return;
+        }
 
-        // Find player by username
+        // Find the user
+        let targetSocketId = null;
         for (const [id, user] of onlineUsers.entries()) {
             if (user.username.toLowerCase() === username.toLowerCase()) {
                 targetSocketId = id;
-                targetUser = user;
                 break;
             }
         }
 
         if (!targetSocketId) {
-            socket.emit('adminError', { message: 'Player not found' });
+            socket.emit('adminError', { message: `Player "${username}" is not online` });
             return;
         }
 
-        // Can't ban other admins
+        // Cannot kick other admins
+        const targetUser = onlineUsers.get(targetSocketId);
         if (targetUser.isAdmin) {
-            socket.emit('adminError', { message: 'Cannot ban other admins' });
+            socket.emit('adminError', { message: 'Cannot kick admin users' });
             return;
         }
 
-        // If player is in a room, remove them
-        if (targetUser.room) {
-            const room = rooms.get(targetUser.room);
-            if (room) {
-                room.removePlayer(targetSocketId);
-                socket.to(targetUser.room).emit('playerLeft', { 
-                    id: targetSocketId, 
-                    username: targetUser.username 
-                });
-                
-                io.to(targetUser.room).emit('roomPlayersUpdate', {
-                    players: room.players.map(p => ({
-                        id: p.id,
-                        username: p.username,
-                        team: p.team,
-                        avatar: p.avatar,
-                        isAdmin: onlineUsers.get(p.id)?.isAdmin || false
-                    }))
-                });
-                
-                if (room.players.length > 0) {
-                    io.to(targetUser.room).emit('hostChanged', { newHostId: room.hostId });
-                }
-            }
-        }
-
-        // Notify the banned player
-        io.to(targetSocketId).emit('banned', { 
-            reason: reason || 'Banned by admin',
-            by: onlineUsers.get(socket.id).username,
-            duration: duration
-        });
-
-        // Disconnect the player
+        // Send kick message to the player
         const targetSocket = io.sockets.sockets.get(targetSocketId);
         if (targetSocket) {
+            targetSocket.emit('forceLogout', { 
+                message: `🚫 You have been kicked from the server\nReason: ${reason || 'No reason provided'}` 
+            });
             targetSocket.disconnect(true);
         }
 
         // Remove from online users
         onlineUsers.delete(targetSocketId);
         io.emit('onlineCount', onlineUsers.size);
-        const onlineUsersList2 = Array.from(onlineUsers.values()).map(user => ({
+        
+        const onlineUsersList = Array.from(onlineUsers.values()).map(user => ({
             username: user.username,
             stats: user.stats || { wins: 0, losses: 0, gamesPlayed: 0 },
             avatar: user.avatar,
             isAdmin: user.isAdmin || false
         })).sort((a, b) => (b.stats.wins || 0) - (a.stats.wins || 0));
-        io.emit('onlineUsersUpdate', { users: onlineUsersList2 });
+        io.emit('onlineUsersUpdate', { users: onlineUsersList });
 
-        const durationText = duration === 0 ? 'permanently' : `for ${duration} hour(s)`;
-        socket.emit('adminSuccess', { message: `Player "${username}" has been banned ${durationText}` });
+        socket.emit('adminSuccess', { message: `Player "${username}" has been kicked from the server` });
+    });
+
+    // Server Ban Player (admin only)
+    socket.on('serverBanPlayer', async (data) => {
+        if (!isAdmin(socket.id)) {
+            socket.emit('adminError', { message: 'Unauthorized - Admin only' });
+            return;
+        }
+
+        const { username, duration, reason } = data;
+        
+        if (!username) {
+            socket.emit('adminError', { message: 'Username is required' });
+            return;
+        }
+
+        // Calculate expiry based on duration
+        let expiryDate = null;
+        let isPermanent = false;
+        
+        switch(duration) {
+            case '1sec':
+                expiryDate = new Date(Date.now() + 1000);
+                break;
+            case '1min':
+                expiryDate = new Date(Date.now() + 60000);
+                break;
+            case '1hour':
+                expiryDate = new Date(Date.now() + 3600000);
+                break;
+            case '1day':
+                expiryDate = new Date(Date.now() + 86400000);
+                break;
+            case '1week':
+                expiryDate = new Date(Date.now() + 604800000);
+                break;
+            case 'permanent':
+                isPermanent = true;
+                expiryDate = null;
+                break;
+            default:
+                expiryDate = new Date(Date.now() + 3600000); // Default 1 hour
+        }
+
+        // Update user in database with server ban
+        try {
+            await User.findOneAndUpdate(
+                { username: username.toLowerCase() },
+                { 
+                    serverBan: true,
+                    serverBanExpiry: expiryDate,
+                    serverBanDuration: duration,
+                    serverBanReason: reason || 'Banned by server admin'
+                },
+                { upsert: false }
+            );
+        } catch (error) {
+            console.error('[SERVER BAN] Error updating database:', error);
+        }
+
+        // Find and disconnect the user if online
+        let targetSocketId = null;
+        for (const [id, user] of onlineUsers.entries()) {
+            if (user.username.toLowerCase() === username.toLowerCase()) {
+                targetSocketId = id;
+                break;
+            }
+        }
+
+        if (targetSocketId) {
+            const targetUser = onlineUsers.get(targetSocketId);
+            
+            // Cannot ban other admins
+            if (targetUser.isAdmin) {
+                socket.emit('adminError', { message: 'Cannot ban admin users' });
+                return;
+            }
+
+            const targetSocket = io.sockets.sockets.get(targetSocketId);
+            if (targetSocket) {
+                const durationText = isPermanent ? 'permanently' : `for ${duration}`;
+                targetSocket.emit('forceLogout', { 
+                    message: `🚫 You have been banned from the server ${durationText}\nReason: ${reason || 'No reason provided'}` 
+                });
+                targetSocket.disconnect(true);
+            }
+
+            onlineUsers.delete(targetSocketId);
+            io.emit('onlineCount', onlineUsers.size);
+            
+            const onlineUsersList = Array.from(onlineUsers.values()).map(user => ({
+                username: user.username,
+                stats: user.stats || { wins: 0, losses: 0, gamesPlayed: 0 },
+                avatar: user.avatar,
+                isAdmin: user.isAdmin || false
+            })).sort((a, b) => (b.stats.wins || 0) - (a.stats.wins || 0));
+            io.emit('onlineUsersUpdate', { users: onlineUsersList });
+        }
+
+        const durationText = isPermanent ? 'permanently' : `for ${duration}`;
+        socket.emit('adminSuccess', { message: `Player "${username}" has been server banned ${durationText}` });
+    });
+
+    // Server Unban Player (admin only)
+    socket.on('serverUnbanPlayer', async (data) => {
+        if (!isAdmin(socket.id)) {
+            socket.emit('adminError', { message: 'Unauthorized - Admin only' });
+            return;
+        }
+
+        const { username } = data;
+        
+        if (!username) {
+            socket.emit('adminError', { message: 'Username is required' });
+            return;
+        }
+
+        // Remove server ban from database
+        try {
+            const result = await User.findOneAndUpdate(
+                { username: username.toLowerCase() },
+                { 
+                    serverBan: false,
+                    serverBanExpiry: null,
+                    serverBanDuration: null,
+                    serverBanReason: null
+                },
+                { upsert: false }
+            );
+
+            if (!result) {
+                socket.emit('adminError', { message: `User "${username}" not found in database` });
+                return;
+            }
+
+            socket.emit('adminSuccess', { message: `Server ban removed for "${username}"` });
+        } catch (error) {
+            console.error('[SERVER UNBAN] Error updating database:', error);
+            socket.emit('adminError', { message: 'Failed to remove server ban' });
+        }
     });
 
     // Clear chat (admin only)
@@ -3091,38 +3206,6 @@ io.on('connection', (socket) => {
             }
             
             socket.emit('adminSuccess', { message: `User "${username}" has been banned ${durationText}` });
-            
-            // Refresh database view
-            await reloadUserDatabaseFromFile();
-            const users = await getAllUsersInDatabase();
-            socket.emit('adminUserDatabase', { 
-                users: users, 
-                total: users.length 
-            });
-        } else {
-            socket.emit('adminError', { message: 'User not found in database' });
-        }
-    });
-
-    // Admin: Unban user
-    socket.on('adminUnbanUser', async (data) => {
-        if (!isAdmin(socket.id)) {
-            socket.emit('adminError', { message: 'Unauthorized - Admin only' });
-            return;
-        }
-
-        const { username } = data;
-        
-        if (!username) {
-            socket.emit('adminError', { message: 'Username is required' });
-            return;
-        }
-
-        // Unban the user
-        const success = await unbanUser(username);
-        
-        if (success) {
-            socket.emit('adminSuccess', { message: `User "${username}" has been unbanned` });
             
             // Refresh database view
             await reloadUserDatabaseFromFile();
