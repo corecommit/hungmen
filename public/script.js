@@ -2859,12 +2859,14 @@ function showCoinFlipModal(data) {
     const winnerDiv = document.getElementById('coinFlipWinner');
     const buttonsDiv = document.getElementById('coinFlipButtons');
     const statusDiv = document.getElementById('coinFlipStatus');
+    const yourChoiceDiv = document.getElementById('coinFlipYourChoice');
     
     // Reset display
     if (selectionDiv) selectionDiv.classList.remove('hidden');
     if (animationDiv) animationDiv.classList.add('hidden');
     if (winnerDiv) winnerDiv.classList.add('hidden');
     if (buttonsDiv) buttonsDiv.classList.remove('hidden');
+    if (yourChoiceDiv) yourChoiceDiv.style.display = 'none';
     
     // Update player names
     const player1Name = document.getElementById('coinFlipPlayer1Name');
@@ -2926,12 +2928,21 @@ function selectCoinSide(side) {
     const buttons = document.querySelectorAll('.coin-btn');
     buttons.forEach(btn => btn.disabled = true);
     
+    // Show "You chose X" message above buttons
+    const yourChoiceDiv = document.getElementById('coinFlipYourChoice');
+    const yourChoiceText = document.getElementById('coinFlipYourChoiceText');
+    if (yourChoiceDiv && yourChoiceText) {
+        const sideCapitalized = side.charAt(0).toUpperCase() + side.slice(1);
+        yourChoiceText.textContent = `You chose ${sideCapitalized}`;
+        yourChoiceDiv.style.display = 'block';
+    }
+    
     const statusDiv = document.getElementById('coinFlipStatus');
     const isTeamMode = coinFlipData.isTeamMode;
     if (statusDiv) {
-        statusDiv.textContent = isTeamMode 
-            ? `You chose ${side}! Opposing team gets the other side automatically...` 
-            : `You chose ${side}! Opponent gets the other side automatically...`;
+        statusDiv.innerHTML = isTeamMode 
+            ? `<strong>Waiting for opposing team...</strong><br>They will automatically get the other side.` 
+            : `<strong>Waiting for opponent...</strong><br>They will automatically get the other side.`;
     }
     
     socket.emit('selectCoinSide', {
