@@ -2946,6 +2946,7 @@ function updateCoinFlipSelection(data) {
     const player1Div = document.getElementById('coinFlipPlayer1');
     const player2Div = document.getElementById('coinFlipPlayer2');
     const statusDiv = document.getElementById('coinFlipStatus');
+    const buttonsDiv = document.getElementById('coinFlipButtons');
     
     // Update both players' choices at once
     if (data.player1Choice && player1Choice) {
@@ -2960,6 +2961,16 @@ function updateCoinFlipSelection(data) {
         if (player2Div) player2Div.classList.add('chosen');
     }
     
+    // Disable buttons for both players once either has chosen
+    if (buttonsDiv && (data.player1Choice || data.player2Choice)) {
+        const buttons = buttonsDiv.querySelectorAll('.coin-btn');
+        buttons.forEach(btn => {
+            btn.disabled = true;
+            btn.style.opacity = '0.5';
+            btn.style.cursor = 'not-allowed';
+        });
+    }
+    
     if (statusDiv && coinFlipData) {
         const p1Chosen = player1Div?.classList.contains('chosen');
         const p2Chosen = player2Div?.classList.contains('chosen');
@@ -2967,6 +2978,18 @@ function updateCoinFlipSelection(data) {
         
         if (p1Chosen && p2Chosen) {
             statusDiv.textContent = isTeamMode ? 'Both Team Leaders chose! Flipping coin...' : 'Both players chose! Flipping coin...';
+        } else if (p1Chosen || p2Chosen) {
+            // Show waiting message when one player has chosen
+            const currentUserId = mySocketId;
+            const isCurrentUserPlayer1 = currentUserId === data.player1Id;
+            const isCurrentUserPlayer2 = currentUserId === data.player2Id;
+            const hasCurrentUserChosen = (isCurrentUserPlayer1 && data.player1Choice) || (isCurrentUserPlayer2 && data.player2Choice);
+            
+            if (hasCurrentUserChosen) {
+                statusDiv.innerHTML = `<strong>You chose ${isCurrentUserPlayer1 ? data.player1Choice : data.player2Choice}!</strong><br>Waiting for opponent to confirm...`;
+            } else {
+                statusDiv.innerHTML = `<strong>Opponent has chosen!</strong><br>Side automatically assigned. Waiting to flip...`;
+            }
         }
     }
 }
