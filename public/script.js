@@ -3017,71 +3017,57 @@ function showCoinFlipResult(data) {
     if (winnerDiv) winnerDiv.classList.add('hidden');
     if (resultDiv) resultDiv.textContent = '';
     
-    // CS:GO Style Roulette Animation
     if (!track) return;
     
-    // Clear previous items
     track.innerHTML = '';
     track.classList.remove('spinning');
+    track.style.transform = 'translateX(0)';
     
-    // Generate roulette items
-    const itemWidth = 130; // width + margin
-    const containerWidth = 600;
-    const centerOffset = containerWidth / 2 - itemWidth / 2;
-    const totalItems = 50; // Number of items to create
-    const winningIndex = Math.floor(totalItems * 0.7) + Math.floor(Math.random() * 5); // Win around 70% through
+    const itemWidth = 140;
+    const gap = 10;
+    const totalItemWidth = itemWidth + gap;
+    const containerWidth = track.parentElement.offsetWidth || 600;
+    const centerOffset = (containerWidth / 2) - (itemWidth / 2);
+    
+    const totalItems = 60;
+    const minWinIndex = 35;
+    const maxWinIndex = 45;
+    const winningIndex = minWinIndex + Math.floor(Math.random() * (maxWinIndex - minWinIndex));
     
     // Create items
     for (let i = 0; i < totalItems; i++) {
         const item = document.createElement('div');
         item.className = 'csgo-roulette-item';
         
-        // The winning item
+        let displayText;
+        let resultClass;
+        
         if (i === winningIndex) {
-            item.classList.add(data.result);
-            item.innerHTML = `
-                <div class="item-icon">${data.result === 'heads' ? '👑' : '💎'}</div>
-                <div class="item-name">${data.result}</div>
-            `;
+            displayText = data.result.toUpperCase();
+            resultClass = data.result;
         } else {
-            // Random heads or tails
             const isHeads = Math.random() > 0.5;
-            item.classList.add(isHeads ? 'heads' : 'tails');
-            item.innerHTML = `
-                <div class="item-icon">${isHeads ? '🟡' : '🔵'}</div>
-                <div class="item-name">${isHeads ? 'Heads' : 'Tails'}</div>
-            `;
+            displayText = isHeads ? 'HEADS' : 'TAILS';
+            resultClass = isHeads ? 'heads' : 'tails';
         }
         
+        item.classList.add(resultClass);
+        item.textContent = displayText;
         track.appendChild(item);
     }
     
-    // Calculate end position to center the winning item
-    const endPosition = -(winningIndex * itemWidth - centerOffset);
+    const endPosition = -(winningIndex * totalItemWidth) + centerOffset;
     track.style.setProperty('--end-position', `${endPosition}px`);
     
-    // Start animation
-    void track.offsetWidth; // Force reflow
+    void track.offsetWidth;
     track.classList.add('spinning');
     
-    // Play tick sound effect (if available)
-    playRouletteTickSound();
-    
-    // Show result after animation completes
     setTimeout(() => {
-        // Highlight the winning item
-        const winningItem = track.children[winningIndex];
-        if (winningItem) {
-            winningItem.classList.add('winner-reveal');
-        }
-        
         if (resultDiv) {
             const resultText = data.result === 'heads' ? 'HEADS!' : 'TAILS!';
             resultDiv.textContent = resultText;
-            resultDiv.style.animation = 'winnerPulse 0.5s ease-out';
         }
         
-        // Show winner after a short delay
         setTimeout(() => {
             if (winnerDiv) {
                 winnerDiv.classList.remove('hidden');
@@ -3097,7 +3083,6 @@ function showCoinFlipResult(data) {
                 }
             }
             
-            // Highlight winner
             const player1Div = document.getElementById('coinFlipPlayer1');
             const player2Div = document.getElementById('coinFlipPlayer2');
             
@@ -3108,45 +3093,8 @@ function showCoinFlipResult(data) {
                     player2Div.classList.add('winner');
                 }
             }
-        }, 1000);
-    }, 6000); // Wait for roulette animation to complete
-}
-
-function playRouletteTickSound() {
-    // Create a simple tick sound using Web Audio API
-    try {
-        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        const tickCount = 20;
-        let currentTick = 0;
-        
-        function playTick() {
-            if (currentTick >= tickCount) return;
-            
-            const oscillator = audioContext.createOscillator();
-            const gainNode = audioContext.createGain();
-            
-            oscillator.connect(gainNode);
-            gainNode.connect(audioContext.destination);
-            
-            oscillator.frequency.value = 800 + Math.random() * 200;
-            oscillator.type = 'square';
-            
-            gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
-            gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.05);
-            
-            oscillator.start(audioContext.currentTime);
-            oscillator.stop(audioContext.currentTime + 0.05);
-            
-            currentTick++;
-            // Decrease interval as it slows down
-            const nextInterval = 100 + (currentTick * 250);
-            setTimeout(playTick, nextInterval);
-        }
-        
-        playTick();
-    } catch (e) {
-        // Silent fail if audio not supported
-    }
+        }, 800);
+    }, 6000);
 }
 
 function submitCustomWord() {

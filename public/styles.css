@@ -4913,11 +4913,11 @@ html {
     min-height: 40px;
 }
 
-/* CS:GO Style Roulette Animation */
+/* CS:GO Style Roulette Animation - Clean Text Version */
 .csgo-roulette-container {
     position: relative;
     width: 100%;
-    max-width: 600px;
+    max-width: 500px;
     margin: 0 auto 30px;
     padding: 20px 0;
 }
@@ -4927,41 +4927,19 @@ html {
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    width: 4px;
-    height: 120%;
-    background: linear-gradient(180deg, 
-        transparent 0%,
-        var(--warning) 20%,
-        var(--warning) 80%,
-        transparent 100%
-    );
+    width: 3px;
+    height: 100%;
+    background: var(--warning);
     z-index: 10;
-    box-shadow: 0 0 20px var(--warning), 0 0 40px var(--warning);
-    animation: markerPulse 1s ease-in-out infinite;
-}
-
-@keyframes markerPulse {
-    0%, 100% {
-        opacity: 1;
-        box-shadow: 0 0 20px var(--warning), 0 0 40px var(--warning);
-    }
-    50% {
-        opacity: 0.7;
-        box-shadow: 0 0 10px var(--warning), 0 0 20px var(--warning);
-    }
+    box-shadow: 0 0 15px var(--warning);
 }
 
 .csgo-roulette-window {
     width: 100%;
-    height: 140px;
-    background: linear-gradient(180deg, #0a0a0a 0%, #1a1a1a 50%, #0a0a0a 100%);
-    border: 3px solid var(--border-color);
-    border-radius: 10px;
+    height: 80px;
+    background: transparent;
     overflow: hidden;
     position: relative;
-    box-shadow: 
-        inset 0 0 30px rgba(0, 0, 0, 0.8),
-        0 0 20px rgba(0, 0, 0, 0.5);
 }
 
 .csgo-roulette-window::before,
@@ -4970,19 +4948,19 @@ html {
     position: absolute;
     top: 0;
     bottom: 0;
-    width: 80px;
+    width: 60px;
     z-index: 5;
     pointer-events: none;
 }
 
 .csgo-roulette-window::before {
     left: 0;
-    background: linear-gradient(90deg, rgba(0,0,0,0.9) 0%, transparent 100%);
+    background: linear-gradient(90deg, var(--bg-card) 0%, transparent 100%);
 }
 
 .csgo-roulette-window::after {
     right: 0;
-    background: linear-gradient(270deg, rgba(0,0,0,0.9) 0%, transparent 100%);
+    background: linear-gradient(270deg, var(--bg-card) 0%, transparent 100%);
 }
 
 .csgo-roulette-track {
@@ -4994,11 +4972,18 @@ html {
 
 .csgo-roulette-item {
     flex-shrink: 0;
-    width: 120px;
-    height: 100px;
+    width: 140px;
     margin: 0 5px;
-    background: linear-gradient(135deg, #2a2a2a 0%, #1a1a1a 100%);
-    border: 2px solid var(--border-color);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 1.4rem;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    opacity: 0.4;
+    transition: opacity 0.2s;
+}
     border-radius: 8px;
     display: flex;
     flex-direction: column;
@@ -5013,70 +4998,25 @@ html {
 
 .csgo-roulette-item::before {
     content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 50%;
-    background: linear-gradient(180deg, rgba(255,255,255,0.1) 0%, transparent 100%);
-    border-radius: 6px 6px 0 0;
-}
-
 .csgo-roulette-item.heads {
-    background: linear-gradient(135deg, #fbbf24 0%, #d97706 100%);
-    border-color: #f59e0b;
-    color: #000;
-    box-shadow: 0 0 20px rgba(251, 191, 36, 0.3);
+    color: #fbbf24;
 }
 
 .csgo-roulette-item.tails {
-    background: linear-gradient(135deg, #60a5fa 0%, #2563eb 100%);
-    border-color: #3b82f6;
-    color: #fff;
-    box-shadow: 0 0 20px rgba(96, 165, 250, 0.3);
-}
-
-.csgo-roulette-item .item-icon {
-    font-size: 2.5rem;
-    margin-bottom: 5px;
-}
-
-.csgo-roulette-item .item-name {
-    font-size: 0.9rem;
-    letter-spacing: 1px;
+    color: #60a5fa;
 }
 
 @keyframes rouletteSpin {
     0% {
         transform: translateX(0);
-        animation-timing-function: cubic-bezier(0.25, 0.1, 0.25, 1);
     }
     100% {
         transform: translateX(var(--end-position));
-        animation-timing-function: cubic-bezier(0.1, 0.8, 0.2, 1);
     }
 }
 
 .csgo-roulette-track.spinning {
-    animation: rouletteSpin 6s forwards;
-}
-
-/* Winner reveal animation */
-.winner-reveal {
-    animation: winnerPulse 1s ease-out;
-}
-
-@keyframes winnerPulse {
-    0% {
-        transform: scale(1);
-    }
-    50% {
-        transform: scale(1.1);
-        box-shadow: 0 0 40px currentColor;
-    }
-    100% {
-        transform: scale(1);
-    }
+    animation: rouletteSpin 6s cubic-bezier(0.1, 0.8, 0.2, 1) forwards;
 }
 
 .coin-flip-winner {
