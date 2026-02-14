@@ -177,9 +177,9 @@ function setMaintenanceMode(enabled, message = null) {
     if (message) {
         maintenanceMessage = message;
     }
-    console.log(`[MAINTENANCE] Maintenance mode ${enabled ? 'ENABLED' : 'DISABLED'}`);
+    log.info(`[MAINTENANCE] Maintenance mode ${enabled ? 'ENABLED' : 'DISABLED'}`);
     if (enabled) {
-        console.log(`[MAINTENANCE] Message: ${maintenanceMessage}`);
+        log.info(`[MAINTENANCE] Message: ${maintenanceMessage}`);
     }
     return maintenanceMode;
 }
@@ -295,7 +295,7 @@ async function getAllUsersInDatabase() {
 
 // Reload user database (for admin refresh)
 async function reloadUserDatabaseFromFile() {
-    console.log('[MONGODB] Reload not needed with MongoDB - data is always current');
+    log.info('[MONGODB] Reload not needed with MongoDB - data is always current');
     return true;
 }
 
@@ -310,7 +310,7 @@ const BACKUP_DIR = path.join(__dirname, 'backups');
 function ensureBackupDir() {
     if (!fs.existsSync(BACKUP_DIR)) {
         fs.mkdirSync(BACKUP_DIR, { recursive: true });
-        console.log('[BACKUP] Created backup directory');
+        log.info('[BACKUP] Created backup directory');
     }
 }
 
@@ -336,7 +336,7 @@ async function createDatabaseBackup() {
         }));
         
         fs.writeFileSync(backupFile, JSON.stringify(backupData, null, 2));
-        console.log(`[BACKUP] Database backup created: ${backupFile}`);
+        log.info(`[BACKUP] Database backup created: ${backupFile}`);
         return { success: true, file: backupFile, timestamp: timestamp };
     } catch (error) {
         console.error('[BACKUP] Error creating backup:', error);
@@ -389,7 +389,7 @@ async function restoreFromBackup(filename) {
             await user.save();
         }
         
-        console.log(`[BACKUP] Database restored from: ${filename}`);
+        log.info(`[BACKUP] Database restored from: ${filename}`);
         return { success: true, message: `Database restored from ${filename}`, userCount: backupData.length };
     } catch (error) {
         console.error('[BACKUP] Error restoring backup:', error);
@@ -406,7 +406,7 @@ function deleteBackup(filename) {
         }
         
         fs.unlinkSync(backupPath);
-        console.log(`[BACKUP] Deleted backup: ${filename}`);
+        log.info(`[BACKUP] Deleted backup: ${filename}`);
         return { success: true, message: `Backup ${filename} deleted` };
     } catch (error) {
         console.error('[BACKUP] Error deleting backup:', error);
@@ -710,7 +710,7 @@ async function deleteAllUsers() {
     try {
         await User.deleteMany({});
         inMemoryUsers.clear();
-        console.log('[MONGODB] All users deleted');
+        log.info('[MONGODB] All users deleted');
         return true;
     } catch (error) {
         console.error('[MONGODB] Error in deleteAllUsers:', error.message);
@@ -725,7 +725,7 @@ async function transferUserData(oldUsername, newUsername) {
     const newKey = newUsername.toLowerCase();
     
     try {
-        console.log(`[TRANSFER] Transferring data from ${oldUsername} to ${newUsername}`);
+        log.info(`[TRANSFER] Transferring data from ${oldUsername} to ${newUsername}`);
         
         // Try MongoDB first
         let oldUser = await User.findOne({ username: oldKey });
@@ -736,7 +736,7 @@ async function transferUserData(oldUsername, newUsername) {
         }
         
         if (!oldUser) {
-            console.log(`[TRANSFER] No data to transfer - old user ${oldUsername} not found`);
+            log.info(`[TRANSFER] No data to transfer - old user ${oldUsername} not found`);
             return { success: true, message: 'No existing data to transfer' };
         }
         
@@ -778,7 +778,7 @@ async function transferUserData(oldUsername, newUsername) {
                 inMemoryUsers.delete(oldKey);
             }
             
-            console.log(`[TRANSFER] Data transferred and old user ${oldUsername} deleted`);
+            log.info(`[TRANSFER] Data transferred and old user ${oldUsername} deleted`);
             return { success: true, message: 'Data transferred successfully' };
         } else {
             // Rename old user to new username
@@ -795,7 +795,7 @@ async function transferUserData(oldUsername, newUsername) {
                 inMemoryUsers.set(newKey, oldUser);
             }
             
-            console.log(`[TRANSFER] User renamed successfully`);
+            log.info(`[TRANSFER] User renamed successfully`);
             return { success: true, message: 'User renamed successfully' };
         }
     } catch (error) {
@@ -1307,7 +1307,7 @@ class Room {
 }
 
 io.on('connection', (socket) => {
-    console.log('New connection:', socket.id);
+    log.info('New connection:', socket.id);
 
     socket.on('authenticate', async (data) => {
         const { username, adminPassword } = data;
@@ -1338,7 +1338,7 @@ io.on('connection', (socket) => {
                 return;
             }
             
-            console.log(`[ADMIN COMMAND] EveryoneLogout executed by admin`);
+            log.info(`[ADMIN COMMAND] EveryoneLogout executed by admin`);
             
             // Kick ALL users including any existing admin sessions
             const sockets = await io.fetchSockets();
@@ -1367,7 +1367,7 @@ io.on('connection', (socket) => {
                 return;
             }
             
-            console.log(`[ADMIN COMMAND] AdminLogout executed by admin`);
+            log.info(`[ADMIN COMMAND] AdminLogout executed by admin`);
             
             // Find and kick only admin users
             let adminCount = 0;
@@ -1386,7 +1386,7 @@ io.on('connection', (socket) => {
                 }
             }
             
-            console.log(`[ADMIN COMMAND] Logged out ${adminCount} admin(s)`);
+            log.info(`[ADMIN COMMAND] Logged out ${adminCount} admin(s)`);
             
             // Disconnect the current socket (the one issuing the command)
             socket.emit('authError', { message: `✓ ${adminCount} admin account(s) logged out successfully` });
@@ -1413,11 +1413,11 @@ io.on('connection', (socket) => {
         }
         
         // Check if user is banned
-        console.log(`[AUTH] Checking ban status for: ${trimmedUsername}`);
+        log.info(`[AUTH] Checking ban status for: ${trimmedUsername}`);
         const banStatus = await isUserBanned(trimmedUsername);
-        console.log(`[AUTH] Ban status for ${trimmedUsername}:`, banStatus);
+        log.info(`[AUTH] Ban status for ${trimmedUsername}:`, banStatus);
         if (banStatus.banned) {
-            console.log(`[AUTH] REJECTING banned user: ${trimmedUsername}`);
+            log.info(`[AUTH] REJECTING banned user: ${trimmedUsername}`);
             if (banStatus.isPermanent) {
                 socket.emit('authError', { 
                     message: `You are permanently banned from the server. Reason: ${banStatus.reason || 'No reason provided'}`,
@@ -1435,7 +1435,7 @@ io.on('connection', (socket) => {
             }
             return;
         }
-        console.log(`[AUTH] User ${trimmedUsername} is not banned, proceeding with authentication`);
+        log.info(`[AUTH] User ${trimmedUsername} is not banned, proceeding with authentication`);
         
         // Admin account authentication
         if (trimmedUsername.toLowerCase() === 'admin') {
@@ -1567,7 +1567,7 @@ io.on('connection', (socket) => {
         
         // Transfer user data from old username to new username
         const transferResult = await transferUserData(oldUsername, trimmedUsername);
-        console.log(`[USERNAME CHANGE] ${oldUsername} -> ${trimmedUsername}:`, transferResult.message);
+        log.info(`[USERNAME CHANGE] ${oldUsername} -> ${trimmedUsername}:`, transferResult.message);
         
         // Reload user data to get transferred stats
         const newUserData = await getUserData(trimmedUsername);
@@ -1685,11 +1685,11 @@ io.on('connection', (socket) => {
         const room = rooms.get(roomId);
         
         // Check if user is banned
-        console.log(`[JOIN ROOM] Checking ban status for: ${username}`);
+        log.info(`[JOIN ROOM] Checking ban status for: ${username}`);
         const banStatus = isUserBanned(username);
-        console.log(`[JOIN ROOM] Ban status for ${username}:`, banStatus);
+        log.info(`[JOIN ROOM] Ban status for ${username}:`, banStatus);
         if (banStatus.banned) {
-            console.log(`[JOIN ROOM] REJECTING banned user from joining room: ${username}`);
+            log.info(`[JOIN ROOM] REJECTING banned user from joining room: ${username}`);
             if (banStatus.isPermanent) {
                 socket.emit('joinError', { 
                     message: `You are permanently banned from joining rooms. Reason: ${banStatus.reason || 'No reason provided'}` 
@@ -2394,7 +2394,7 @@ io.on('connection', (socket) => {
     });
 
     socket.on('disconnect', () => {
-        console.log('Disconnection:', socket.id);
+        log.info('Disconnection:', socket.id);
         const user = onlineUsers.get(socket.id);
         if (user && user.room) {
             const room = rooms.get(user.room);
