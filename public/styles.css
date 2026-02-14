@@ -4753,7 +4753,7 @@ html {
 }
 
 .coin-flip-player .player-choice.tails {
-    color: var(--secondary);
+    color: white;
 }
 
 .coin-flip-vs {
@@ -4984,20 +4984,7 @@ html {
     opacity: 0.4;
     transition: opacity 0.2s;
 }
-    border-radius: 8px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    font-weight: 700;
-    font-size: 1.2rem;
-    text-transform: uppercase;
-    position: relative;
-    overflow: hidden;
-}
 
-.csgo-roulette-item::before {
-    content: '';
 .csgo-roulette-item.heads {
     color: #fbbf24;
 }
