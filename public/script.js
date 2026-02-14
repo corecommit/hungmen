@@ -3034,7 +3034,8 @@ function showCoinFlipResult(data) {
     const maxWinIndex = 45;
     const winningIndex = minWinIndex + Math.floor(Math.random() * (maxWinIndex - minWinIndex));
     
-    // Create items
+    // Create items with better randomization
+    let lastWasHeads = null;
     for (let i = 0; i < totalItems; i++) {
         const item = document.createElement('div');
         item.className = 'csgo-roulette-item';
@@ -3046,7 +3047,15 @@ function showCoinFlipResult(data) {
             displayText = data.result.toUpperCase();
             resultClass = data.result;
         } else {
-            const isHeads = Math.random() > 0.5;
+            // Ensure better randomization - prevent long streaks
+            let isHeads;
+            if (lastWasHeads === null) {
+                isHeads = Math.random() > 0.5;
+            } else {
+                // 70% chance to switch from last value for more alternation
+                isHeads = Math.random() > 0.3 ? !lastWasHeads : lastWasHeads;
+            }
+            lastWasHeads = isHeads;
             displayText = isHeads ? 'HEADS' : 'TAILS';
             resultClass = isHeads ? 'heads' : 'tails';
         }
