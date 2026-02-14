@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
@@ -1448,8 +1449,7 @@ io.on('connection', (socket) => {
         
         // Admin account authentication
         if (trimmedUsername.toLowerCase() === 'admin') {
-            // Set your admin password here - you can change this to any secure password
-            const ADMIN_PASSWORD = 'Admin@007';
+            const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'Admin@007';
             
             if (!adminPassword || adminPassword !== ADMIN_PASSWORD) {
                 socket.emit('authError', { message: 'Password needed to login in the admin account' });
@@ -1533,12 +1533,24 @@ io.on('connection', (socket) => {
             return;
         }
         
+        // Prevent admin users from changing their username
+        if (user.isAdmin || user.username.toLowerCase() === 'admin') {
+            socket.emit('usernameChangeError', { message: 'Admin users cannot change their username' });
+            return;
+        }
+        
         if (!newUsername || newUsername.trim().length === 0) {
             socket.emit('usernameChangeError', { message: 'Username is required' });
             return;
         }
         
         const trimmedUsername = newUsername.trim();
+        
+        // Prevent users from changing to "admin"
+        if (trimmedUsername.toLowerCase() === 'admin') {
+            socket.emit('usernameChangeError', { message: 'This username is reserved and cannot be used' });
+            return;
+        }
         
         // Check if username is the same as current
         if (trimmedUsername.toLowerCase() === user.username.toLowerCase()) {
