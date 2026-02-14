@@ -3006,70 +3006,48 @@ function showCoinFlipResult(data) {
     if (winnerDiv) winnerDiv.classList.add('hidden');
     if (resultDiv) resultDiv.textContent = '';
     
-    // Countdown sequence: 3, 2, 1, then HEADS/TAILS
-    const countdownNumbers = ['3', '2', '1'];
-    let currentIndex = 0;
-    
-    function showNextCount() {
-        if (currentIndex < countdownNumbers.length) {
-            // Show countdown number with animation
-            if (counterDisplay) {
-                counterDisplay.classList.remove('counting', 'result');
-                counterDisplay.textContent = countdownNumbers[currentIndex];
-                // Force reflow to restart animation
-                void counterDisplay.offsetWidth;
-                counterDisplay.classList.add('counting');
-            }
-            currentIndex++;
-            setTimeout(showNextCount, 1500); // 1.5 seconds between each number (slower)
-        } else {
-            // Show HEADS or TAILS result with slow reveal animation
-            if (counterDisplay) {
-                counterDisplay.classList.remove('counting');
-                const resultText = data.result === 'heads' ? 'HEADS' : 'TAILS';
-                counterDisplay.textContent = resultText;
-                // Force reflow to restart animation
-                void counterDisplay.offsetWidth;
-                counterDisplay.classList.add('result');
-            }
-            
-            if (resultDiv) {
-                const resultText = data.result === 'heads' ? 'HEADS!' : 'TAILS!';
-                resultDiv.textContent = resultText;
-            }
-            
-            // Show winner after a delay
-            setTimeout(() => {
-                if (winnerDiv) {
-                    winnerDiv.classList.remove('hidden');
-                    const winnerText = document.getElementById('coinFlipWinnerText');
-                    if (winnerText) {
-                        const isTeamMode = coinFlipData?.isTeamMode;
-                        if (isTeamMode) {
-                            const winnerTeam = data.winner.team === 'team1' ? 'Team 1' : 'Team 2';
-                            winnerText.textContent = `${winnerTeam} wins!`;
-                        } else {
-                            winnerText.textContent = `${data.winner.username} wins!`;
-                        }
-                    }
-                }
-                
-                // Highlight winner
-                const player1Div = document.getElementById('coinFlipPlayer1');
-                const player2Div = document.getElementById('coinFlipPlayer2');
-                
-                if (player1Div && player2Div) {
-                    if (data.winner.id === coinFlipData?.player1?.id) {
-                        player1Div.classList.add('winner');
-                    } else {
-                        player2Div.classList.add('winner');
-                    }
-                }
-            }, 2000);
-        }
+    // Show coin flip result immediately
+    if (counterDisplay) {
+        counterDisplay.classList.remove('counting');
+        const resultText = data.result === 'heads' ? 'HEADS' : 'TAILS';
+        counterDisplay.textContent = resultText;
+        void counterDisplay.offsetWidth;
+        counterDisplay.classList.add('result');
     }
-
-    showNextCount();
+    
+    if (resultDiv) {
+        const resultText = data.result === 'heads' ? 'HEADS!' : 'TAILS!';
+        resultDiv.textContent = resultText;
+    }
+    
+    // Show winner after a short delay
+    setTimeout(() => {
+        if (winnerDiv) {
+            winnerDiv.classList.remove('hidden');
+            const winnerText = document.getElementById('coinFlipWinnerText');
+            if (winnerText) {
+                const isTeamMode = coinFlipData?.isTeamMode;
+                if (isTeamMode) {
+                    const winnerTeam = data.winner.team === 'team1' ? 'Team 1' : 'Team 2';
+                    winnerText.textContent = `${winnerTeam} wins!`;
+                } else {
+                    winnerText.textContent = `${data.winner.username} wins!`;
+                }
+            }
+        }
+        
+        // Highlight winner
+        const player1Div = document.getElementById('coinFlipPlayer1');
+        const player2Div = document.getElementById('coinFlipPlayer2');
+        
+        if (player1Div && player2Div) {
+            if (data.winner.id === coinFlipData?.player1?.id) {
+                player1Div.classList.add('winner');
+            } else {
+                player2Div.classList.add('winner');
+            }
+        }
+    }, 1500);
 }
 
 function submitCustomWord() {
