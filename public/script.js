@@ -1,9 +1,3 @@
-// ═══════════════════════════════════════════════════════════════════════
-// HANGMAN MULTIPLAYER GAME - CLIENT (CUSTOM WORD MODE) - BUG FIXES
-// Fixed: Turn management, hint count initialization, word display updates
-// ═══════════════════════════════════════════════════════════════════════
-
-// ── Configuration ──
 const CONFIG = {
     SERVER_URL: window.location.hostname === 'localhost' ? 'http://localhost:3000' : window.location.protocol + '//' + window.location.host,
     MAX_WRONG_GUESSES: 6,
@@ -14,8 +8,6 @@ const CONFIG = {
     RECONNECTION_ATTEMPTS: 5,
     DEBUG: false // Set to false in production to hide console logs
 };
-
-// ── Global State ──
 let socket = null;
 let currentUser = null;
 let currentRoom = null;
@@ -43,32 +35,22 @@ let unreadCounts = {
         team: 0
     }
 };
-
-// NEW: Track player indices for turn management
 let myPlayerIndex = -1;
 let activePlayers = []; // Players who can guess (excluding word setter's team)
 let currentRoomFilter = 'all'; // Current room filter value
-
-// ── User Stats (Cookie-based) ──
 let userStats = {
     wins: 0,
     losses: 0,
     totalGames: 0
 };
-
-// ─� User Avatar (LocalStorage) ──
 let userAvatar = null;
-
-// ── Leaderboard Functions (Global) ──
 function renderOnlineUsers(users) {
     const dropdownList = document.getElementById('onlineUsersList');
     if (!dropdownList) return;
-    
     if (users.length === 0) {
         dropdownList.innerHTML = '<div class="no-users-message">No users found</div>';
         return;
     }
-    
     let html = `
         <div class="dropdown-header-names">
             <span></span>
@@ -79,7 +61,6 @@ function renderOnlineUsers(users) {
             <span>Win%</span>
         </div>
     `;
-    
     users.forEach(user => {
         const stats = user.stats || { wins: 0, losses: 0, gamesPlayed: 0 };
         const gamesPlayed = (parseInt(stats.wins) || 0) + (parseInt(stats.losses) || 0);
@@ -96,9 +77,7 @@ function renderOnlineUsers(users) {
             </div>
         `;
     });
-    
     dropdownList.innerHTML = html;
-    
     dropdownList.querySelectorAll('.user-name').forEach(el => {
         el.addEventListener('click', (e) => {
             const username = e.target.dataset.username;
@@ -108,14 +87,11 @@ function renderOnlineUsers(users) {
         });
     });
 }
-
 function switchLeaderboardTab(tabName) {
     currentLeaderboardTab = tabName;
-    
     document.querySelectorAll('.dropdown-tab-inline').forEach(t => {
         t.classList.toggle('active', t.dataset.tab === tabName);
     });
-    
     if (typeof renderOnlineUsers === 'function') {
         if (tabName === 'server') {
             renderOnlineUsers(onlineUsersData);
@@ -127,82 +103,56 @@ function switchLeaderboardTab(tabName) {
         }
     }
 }
-
-// ── DOM Elements ──
 let authScreen, gameScreen, authError;
 let lobbyView, roomView, gameView;
-
-// ═══════════════════════════════════════════════════════════════════════
-// UTILITY FUNCTIONS
-// ═══════════════════════════════════════════════════════════════════════
-
 function log(...args) {
     if (CONFIG.DEBUG) {
         console.log('[HANGMAN]', new Date().toISOString(), ...args);
     }
 }
-
 function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
 }
-
 function showNotification(message, type = 'info', duration = 3000) {
     const toast = document.getElementById('notificationToast');
     const messageEl = document.getElementById('notificationMessage');
-
     toast.className = `notification-toast ${type}`;
     messageEl.textContent = message;
     toast.classList.remove('hidden');
-
     setTimeout(() => {
         toast.classList.add('hidden');
     }, duration);
 }
-
-// ═══════════════════════════════════════════════════════════════════════
-// ADMIN FUNCTIONS
-// ═══════════════════════════════════════════════════════════════════════
-
 function showAdminIndicator() {
-    // Add admin badge to header
     const header = document.querySelector('.header-content');
     if (header) {
         const adminBadge = document.createElement('div');
         adminBadge.className = 'admin-badge';
         adminBadge.innerHTML = '<i class="fas fa-shield-alt"></i> ADMIN';
         adminBadge.style.cssText = 'background: linear-gradient(135deg, #f59e0b, #d97706); color: #000; padding: 6px 12px; border-radius: 20px; font-size: 0.75rem; font-weight: 700; display: flex; align-items: center; gap: 6px; margin-left: 10px;';
-
         const usernameElement = header.querySelector('.current-user');
         if (usernameElement) {
             usernameElement.appendChild(adminBadge);
         }
     }
-
-    // Show admin panel button for mobile/desktop
     const adminPanelBtn = document.getElementById('adminPanelBtn');
     if (adminPanelBtn) {
         adminPanelBtn.classList.remove('hidden');
     }
-
     showNotification('Logged in as Admin - Special permissions enabled', 'info');
 }
-
 function isAdmin() {
     return currentUser && currentUser.isAdmin;
 }
-
 function showAdminPanel() {
     if (!isAdmin()) return;
-
-    // Close existing panel if open
     const existingPanel = document.getElementById('adminPanel');
     if (existingPanel) {
         existingPanel.remove();
         return;
     }
-
     const panel = document.createElement('div');
     panel.id = 'adminPanel';
     panel.className = 'admin-panel';
@@ -262,21 +212,16 @@ function showAdminPanel() {
             </div>
         </div>
     `;
-
     document.body.appendChild(panel);
 }
-
 function closeAdminPanel() {
     const panel = document.getElementById('adminPanel');
     if (panel) {
         panel.remove();
     }
 }
-
-// Maintenance Mode Modal
 function showMaintenanceModal() {
     if (!isAdmin()) return;
-    
     const modal = document.createElement('div');
     modal.className = 'modal admin-modal';
     modal.id = 'maintenanceModal';
@@ -287,14 +232,12 @@ function showMaintenanceModal() {
             <p style="color: var(--text-secondary); margin-bottom: 20px;">
                 When enabled, only admins can login. All other users will see a maintenance message.
             </p>
-            
             <div class="form-group">
                 <label>Maintenance Message</label>
                 <input type="text" id="maintenanceMessageInput" 
                     placeholder="Website is under maintenance. Please try again later."
                     style="width: 100%; padding: 12px; border: 2px solid var(--border-color); border-radius: 8px; background: var(--bg-input); color: var(--text-primary);">
             </div>
-            
             <div class="modal-actions">
                 <button type="button" class="btn btn-secondary" onclick="hideModal('maintenanceModal')">Cancel</button>
                 <button type="button" class="btn btn-warning" onclick="toggleMaintenanceMode(true)">
@@ -306,24 +249,17 @@ function showMaintenanceModal() {
             </div>
         </div>
     `;
-    
     document.body.appendChild(modal);
     showModal('maintenanceModal');
-    
-    // Get current status
     socket.emit('adminGetMaintenanceStatus');
 }
-
 function toggleMaintenanceMode(enabled) {
     const message = document.getElementById('maintenanceMessageInput')?.value || '';
     socket.emit('adminToggleMaintenance', { enabled, message });
     hideModal('maintenanceModal');
 }
-
-// Backup Management Modal
 function showBackupModal() {
     if (!isAdmin()) return;
-    
     const modal = document.createElement('div');
     modal.className = 'modal admin-modal';
     modal.id = 'backupModal';
@@ -334,7 +270,6 @@ function showBackupModal() {
             <p style="color: var(--text-secondary); margin-bottom: 20px;">
                 Create backups of user data before updates. Backups are stored locally.
             </p>
-            
             <div class="modal-actions" style="margin-bottom: 20px;">
                 <button type="button" class="btn btn-primary" onclick="createBackup()">
                     <i class="fas fa-save"></i> Create New Backup
@@ -343,39 +278,31 @@ function showBackupModal() {
                     <i class="fas fa-list"></i> Refresh List
                 </button>
             </div>
-            
             <div id="backupList" style="max-height: 300px; overflow-y: auto;">
                 <p style="color: var(--text-secondary); text-align: center;">Loading backups...</p>
             </div>
-            
             <div class="modal-actions">
                 <button type="button" class="btn btn-secondary" onclick="hideModal('backupModal')">Close</button>
             </div>
         </div>
     `;
-    
     document.body.appendChild(modal);
     showModal('backupModal');
     loadBackupList();
 }
-
 function createBackup() {
     socket.emit('adminCreateBackup');
 }
-
 function loadBackupList() {
     socket.emit('adminListBackups');
 }
-
 function displayBackupList(backups) {
     const listDiv = document.getElementById('backupList');
     if (!listDiv) return;
-    
     if (backups.length === 0) {
         listDiv.innerHTML = '<p style="color: var(--text-secondary); text-align: center;">No backups found</p>';
         return;
     }
-    
     let html = '<div style="display: flex; flex-direction: column; gap: 10px;">';
     backups.forEach(backup => {
         const date = new Date(backup.created).toLocaleString();
@@ -400,43 +327,35 @@ function displayBackupList(backups) {
     html += '</div>';
     listDiv.innerHTML = html;
 }
-
 function restoreBackup(filename) {
     if (!confirm(`Are you sure you want to restore from ${filename}? Current data will be backed up first.`)) {
         return;
     }
     socket.emit('adminRestoreBackup', { filename });
 }
-
 function deleteBackup(filename) {
     if (!confirm(`Are you sure you want to delete ${filename}?`)) {
         return;
     }
     socket.emit('adminDeleteBackup', { filename });
 }
-
 function showUserDatabaseModal() {
     if (!isAdmin()) return;
     socket.emit('adminGetUserDatabase');
 }
-
 function displayUserDatabase(users, total) {
-    // Remove existing modal if it exists to prevent duplicates
     const existingModal = document.getElementById('adminUserDatabaseModal');
     if (existingModal) {
         existingModal.remove();
     }
-
     const modal = document.createElement('div');
     modal.className = 'modal admin-modal';
     modal.id = 'adminUserDatabaseModal';
-
     let usersHtml = users.map(user => {
         const isBanned = user.banned;
         const banStatus = isBanned ? (user.isPermanent ? 'PERMANENT' : 'BANNED') : 'Active';
         const banColor = isBanned ? 'var(--error)' : 'var(--success)';
         const borderColor = isBanned ? 'var(--error)' : 'var(--primary)';
-        
         return `
         <div class="user-db-item" style="background: var(--bg-secondary); padding: 15px; margin: 10px 0; border-radius: 8px; border-left: 4px solid ${borderColor};">
             <div style="display: flex; justify-content: space-between; align-items: start;">
@@ -463,16 +382,13 @@ function displayUserDatabase(users, total) {
             </div>
         </div>
     `}).join('');
-
     modal.innerHTML = `
         <div class="modal-content" style="max-width: 700px; max-height: 80vh; overflow-y: auto;">
             <div class="modal-icon"><i class="fas fa-database"></i></div>
             <h2>User Database (${total} users)</h2>
-            
             <div style="max-height: 500px; overflow-y: auto; margin: 20px 0;">
                 ${usersHtml || '<p style="color: var(--text-secondary); text-align: center;">No users in database</p>'}
             </div>
-            
             <div class="modal-actions">
                 <button type="button" class="btn btn-secondary" onclick="hideModal('adminUserDatabaseModal')">Close</button>
                 <button type="button" class="btn btn-info" onclick="socket.emit('adminReloadUserDatabase')">
@@ -484,21 +400,17 @@ function displayUserDatabase(users, total) {
             </div>
         </div>
     `;
-
     document.body.appendChild(modal);
     showModal('adminUserDatabaseModal');
 }
-
 function deleteUserFromDatabase(username) {
     if (!confirm(`Delete user "${username}"? This will erase all their stats and profile picture!`)) {
         return;
     }
     socket.emit('adminDeleteUser', { username });
 }
-
 function showBanUserModal(username) {
     if (!isAdmin()) return;
-
     const modal = document.createElement('div');
     modal.className = 'modal admin-modal';
     modal.id = 'adminBanUserModal';
@@ -529,34 +441,26 @@ function showBanUserModal(username) {
             </div>
         </div>
     `;
-
     document.body.appendChild(modal);
     showModal('adminBanUserModal');
 }
-
 function banUser(username) {
     const durationInput = document.getElementById('banDurationInput');
     const reasonInput = document.getElementById('banReasonInput');
     const duration = parseInt(durationInput.value);
     const reason = reasonInput.value.trim() || 'Banned by admin';
-
     socket.emit('adminBanUser', { username, duration, reason });
     hideModal('adminBanUserModal');
 }
-
 function unbanUserFromDB(username) {
     if (!isAdmin()) return;
-    
     if (!confirm(`Are you sure you want to unban "${username}"?`)) {
         return;
     }
-    
     socket.emit('adminUnbanUser', { username });
 }
-
 function showEditUserStatsModal(username, currentWins, currentLosses, currentGames) {
     if (!isAdmin()) return;
-
     const modal = document.createElement('div');
     modal.className = 'modal admin-modal';
     modal.id = 'adminEditUserStatsModal';
@@ -591,40 +495,31 @@ function showEditUserStatsModal(username, currentWins, currentLosses, currentGam
             </div>
         </div>
     `;
-
     document.body.appendChild(modal);
     showModal('adminEditUserStatsModal');
-    
-    // Add event listeners to recalculate games when wins or losses change
     const winsInput = document.getElementById('editStatsWins');
     const lossesInput = document.getElementById('editStatsLosses');
     const gamesInput = document.getElementById('editStatsGames');
-    
     const updateGames = () => {
         const wins = parseInt(winsInput.value) || 0;
         const losses = parseInt(lossesInput.value) || 0;
         gamesInput.value = wins + losses;
     };
-    
     winsInput.addEventListener('input', updateGames);
     lossesInput.addEventListener('input', updateGames);
 }
-
 function saveUserStatsEdit(username) {
     const wins = parseInt(document.getElementById('editStatsWins').value) || 0;
     const losses = parseInt(document.getElementById('editStatsLosses').value) || 0;
     const gamesPlayed = parseInt(document.getElementById('editStatsGames').value) || 0;
-
     socket.emit('adminEditUserStats', { 
         username, 
         stats: { wins, losses, gamesPlayed } 
     });
     hideModal('adminEditUserStatsModal');
 }
-
 function showDeleteAllUsersModal() {
     if (!isAdmin()) return;
-
     const modal = document.createElement('div');
     modal.className = 'modal admin-modal';
     modal.id = 'adminDeleteAllUsersModal';
@@ -652,11 +547,9 @@ function showDeleteAllUsersModal() {
             </div>
         </div>
     `;
-
     document.body.appendChild(modal);
     showModal('adminDeleteAllUsersModal');
 }
-
 function confirmDeleteAllUsers() {
     const confirmation = prompt('Type "DELETE ALL USERS" to confirm:');
     if (confirmation === 'DELETE ALL USERS') {
@@ -666,10 +559,8 @@ function confirmDeleteAllUsers() {
         showNotification('Deletion cancelled', 'info');
     }
 }
-
 function showDeleteRoomModal() {
     if (!isAdmin()) return;
-
     const modal = document.createElement('div');
     modal.className = 'modal admin-modal';
     modal.id = 'adminDeleteRoomModal';
@@ -687,27 +578,21 @@ function showDeleteRoomModal() {
             </div>
         </div>
     `;
-
     document.body.appendChild(modal);
     showModal('adminDeleteRoomModal');
 }
-
 function adminDeleteRoom() {
     const roomInput = document.getElementById('adminDeleteRoomInput');
     const roomIdOrName = roomInput.value.trim();
-
     if (!roomIdOrName) {
         showNotification('Please enter a room ID or name', 'error');
         return;
     }
-
     socket.emit('adminDeleteRoom', { roomIdOrName });
     hideModal('adminDeleteRoomModal');
 }
-
 function showKickPlayerModal() {
     if (!isAdmin()) return;
-
     const modal = document.createElement('div');
     modal.className = 'modal admin-modal';
     modal.id = 'adminKickPlayerModal';
@@ -729,33 +614,23 @@ function showKickPlayerModal() {
             </div>
         </div>
     `;
-
     document.body.appendChild(modal);
     showModal('adminKickPlayerModal');
 }
-
 function adminKickPlayer() {
     const usernameInput = document.getElementById('adminKickUsernameInput');
     const reasonInput = document.getElementById('adminKickReasonInput');
     const username = usernameInput.value.trim();
     const reason = reasonInput.value.trim() || 'Kicked by admin';
-
     if (!username) {
         showNotification('Please enter a username', 'error');
         return;
     }
-
     socket.emit('adminKickPlayer', { username, reason });
     hideModal('adminKickPlayerModal');
 }
-
-// ═══════════════════════════════════════════════════════════════════════
-// SERVER SECTION - Kick and Ban Functions
-// ═══════════════════════════════════════════════════════════════════════
-
 function showServerKickModal() {
     if (!isAdmin()) return;
-
     const modal = document.createElement('div');
     modal.className = 'modal admin-modal';
     modal.id = 'serverKickModal';
@@ -780,29 +655,23 @@ function showServerKickModal() {
             </div>
         </div>
     `;
-
     document.body.appendChild(modal);
     showModal('serverKickModal');
 }
-
 function serverKickPlayer() {
     const usernameInput = document.getElementById('serverKickUsernameInput');
     const reasonInput = document.getElementById('serverKickReasonInput');
     const username = usernameInput.value.trim();
     const reason = reasonInput.value.trim() || 'Kicked by server admin';
-
     if (!username) {
         showNotification('Please enter a username', 'error');
         return;
     }
-
     socket.emit('serverKickPlayer', { username, reason });
     hideModal('serverKickModal');
 }
-
 function showServerBanModal() {
     if (!isAdmin()) return;
-
     const modal = document.createElement('div');
     modal.className = 'modal admin-modal';
     modal.id = 'serverBanModal';
@@ -838,11 +707,9 @@ function showServerBanModal() {
             </div>
         </div>
     `;
-
     document.body.appendChild(modal);
     showModal('serverBanModal');
 }
-
 function serverBanPlayer() {
     const usernameInput = document.getElementById('serverBanUsernameInput');
     const durationInput = document.getElementById('serverBanDurationInput');
@@ -850,19 +717,15 @@ function serverBanPlayer() {
     const username = usernameInput.value.trim();
     const duration = durationInput.value;
     const reason = reasonInput.value.trim() || 'Banned by server admin';
-
     if (!username) {
         showNotification('Please enter a username', 'error');
         return;
     }
-
     socket.emit('serverBanPlayer', { username, duration, reason });
     hideModal('serverBanModal');
 }
-
 function showServerUnbanModal() {
     if (!isAdmin()) return;
-
     const modal = document.createElement('div');
     modal.className = 'modal admin-modal';
     modal.id = 'serverUnbanModal';
@@ -883,50 +746,33 @@ function showServerUnbanModal() {
             </div>
         </div>
     `;
-
     document.body.appendChild(modal);
     showModal('serverUnbanModal');
 }
-
 function serverUnbanPlayer() {
     const usernameInput = document.getElementById('serverUnbanUsernameInput');
     const username = usernameInput.value.trim();
-
     if (!username) {
         showNotification('Please enter a username', 'error');
         return;
     }
-
     socket.emit('adminUnbanUser', { username });
     hideModal('adminUnbanUserModal');
 }
-
-// ═══════════════════════════════════════════════════════════════════════
-// USER PROFILE INSPECTION
-// ═══════════════════════════════════════════════════════════════════════
-
 function displayUserProfileModal(data) {
-    // Close existing modal if open
     const existingModal = document.getElementById('userProfileInspectModal');
     if (existingModal) {
         existingModal.remove();
     }
-
     const modal = document.createElement('div');
     modal.className = 'modal';
     modal.id = 'userProfileInspectModal';
-    
-    // Format dates
     const firstLogin = data.firstLogin !== 'Hidden' ? new Date(data.firstLogin).toLocaleDateString() : 'Hidden';
     const lastLogin = data.lastLogin !== 'Hidden' ? new Date(data.lastLogin).toLocaleDateString() : 'Hidden';
-    
-    // Calculate win rate
     const wins = parseInt(data.stats.wins) || 0;
     const losses = parseInt(data.stats.losses) || 0;
     const gamesPlayed = parseInt(data.stats.gamesPlayed) || 0;
     const winRate = gamesPlayed > 0 ? Math.round((wins / gamesPlayed) * 100) : 0;
-    
-    // Build admin buttons if inspector is admin
     let adminButtons = '';
     if (data.isInspectorAdmin && !data.isAdmin) {
         adminButtons = `
@@ -943,17 +789,13 @@ function displayUserProfileModal(data) {
             </div>
         `;
     }
-    
-    // Show admin stats to everyone (removed restriction)
     const hiddenMessage = '';
     const winRateDisplay = `<div style="font-size: 1.8rem; font-weight: bold; color: var(--warning);">${winRate}%</div>`;
-    
     modal.innerHTML = `
         <div class="modal-content user-profile-modal" style="max-width: 400px;">
             <button class="profile-close-btn" onclick="hideModal('userProfileInspectModal')" style="position: absolute; top: 15px; right: 15px; background: none; border: none; color: var(--text-secondary); font-size: 1.5rem; cursor: pointer;">
                 <i class="fas fa-times"></i>
             </button>
-            
             <div class="profile-header" style="text-align: center; margin-bottom: 20px;">
                 <div class="profile-avatar-large" style="width: 100px; height: 100px; margin: 0 auto 15px; border-radius: 50%; overflow: hidden; border: 3px solid var(--primary);">
                     ${data.avatar 
@@ -964,7 +806,6 @@ function displayUserProfileModal(data) {
                 <h2 style="margin: 0; font-size: 1.5rem;">${escapeHtml(data.username)} ${data.isAdmin ? '<span style="color: var(--warning); font-size: 0.8rem;">[ADMIN]</span>' : ''}</h2>
                 ${hiddenMessage}
             </div>
-            
             <div class="profile-stats" style="background: var(--bg-input); padding: 20px; border-radius: 10px; margin-bottom: 15px;">
                 <div class="stats-grid" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; text-align: center;">
                     <div class="stat-item">
@@ -985,7 +826,6 @@ function displayUserProfileModal(data) {
                     </div>
                 </div>
             </div>
-            
             <div class="profile-info" style="background: var(--bg-input); padding: 15px; border-radius: 10px; font-size: 0.9rem; color: var(--text-secondary);">
                 <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
                     <span>First Login:</span>
@@ -996,41 +836,30 @@ function displayUserProfileModal(data) {
                     <span style="color: var(--text-primary);">${lastLogin}</span>
                 </div>
             </div>
-            
             ${adminButtons}
         </div>
     `;
-    
     document.body.appendChild(modal);
     showModal('userProfileInspectModal');
 }
-
-// Admin: Clear all stats for a user
 function adminClearUserStats(username) {
     if (!isAdmin()) return;
-    
     if (!confirm(`Are you sure you want to CLEAR ALL STATS for "${username}"?\n\nThis will reset:\n- Wins to 0\n- Losses to 0\n- Games Played to 0\n\nThis action cannot be undone!`)) {
         return;
     }
-    
     socket.emit('adminEditUserStats', { 
         username, 
         stats: { wins: 0, losses: 0, gamesPlayed: 0 } 
     });
-    
     hideModal('userProfileInspectModal');
     showNotification(`All stats cleared for ${username}`, 'success');
 }
-
-// Admin: Edit stats for inspected user
 function adminEditInspectedUser(username, currentWins, currentLosses, currentGames) {
     hideModal('userProfileInspectModal');
     showEditUserStatsModal(username, currentWins, currentLosses, currentGames);
 }
-
 function showClearChatModal() {
     if (!isAdmin()) return;
-
     const modal = document.createElement('div');
     modal.className = 'modal admin-modal';
     modal.id = 'adminClearChatModal';
@@ -1050,19 +879,15 @@ function showClearChatModal() {
             </div>
         </div>
     `;
-
     document.body.appendChild(modal);
     showModal('adminClearChatModal');
 }
-
 function adminClearChat(type) {
     socket.emit('adminClearChat', { type });
     hideModal('adminClearChatModal');
 }
-
 function showBroadcastModal() {
     if (!isAdmin()) return;
-
     const modal = document.createElement('div');
     modal.className = 'modal admin-modal';
     modal.id = 'adminBroadcastModal';
@@ -1082,60 +907,49 @@ function showBroadcastModal() {
             </div>
         </div>
     `;
-
     document.body.appendChild(modal);
     showModal('adminBroadcastModal');
 }
-
 function adminBroadcastMessage() {
     const messageInput = document.getElementById('adminBroadcastMessageInput');
     const message = messageInput.value.trim();
-
     if (!message) {
         showNotification('Please enter a message', 'error');
         return;
     }
-
     socket.emit('adminBroadcast', { message });
     hideModal('adminBroadcastModal');
 }
-
 function refreshAllRooms() {
     if (!isAdmin()) return;
     socket.emit('getRooms');
     showNotification('Refreshing rooms list...', 'info');
     closeAdminPanel();
 }
-
 function requestServerInfo() {
     if (!isAdmin()) return;
     socket.emit('adminGetServerInfo');
 }
-
 function displayAdminServerInfo(data) {
     const modal = document.createElement('div');
     modal.className = 'modal admin-modal';
     modal.id = 'adminServerInfoModal';
-
     let roomsHtml = data.rooms.map(room => `
         <div class="admin-info-item">
             <strong>${escapeHtml(room.name)}</strong> (${room.mode})<br>
             <small>Players: ${room.players}/${room.maxPlayers} | Status: ${room.status} | Host: ${escapeHtml(room.host)}</small>
         </div>
     `).join('');
-
     let usersHtml = data.users.map(user => `
         <div class="admin-info-item">
             <strong>${escapeHtml(user.username)}</strong> ${user.isAdmin ? '<span style="color: var(--warning);">[ADMIN]</span>' : ''}<br>
             <small>Room: ${user.room ? 'In room' : 'Lobby'}</small>
         </div>
     `).join('');
-
     modal.innerHTML = `
         <div class="modal-content" style="max-width: 600px; max-height: 80vh; overflow-y: auto;">
             <div class="modal-icon"><i class="fas fa-server"></i></div>
             <h2>Server Information</h2>
-
             <div class="admin-info-section">
                 <h4>Overview</h4>
                 <div class="admin-info-item">
@@ -1145,32 +959,25 @@ function displayAdminServerInfo(data) {
                     <strong>Total Rooms:</strong> ${data.totalRooms}
                 </div>
             </div>
-
             <div class="admin-info-section">
                 <h4>Rooms (${data.rooms.length})</h4>
                 ${roomsHtml || '<p style="color: var(--text-secondary);">No active rooms</p>'}
             </div>
-
             <div class="admin-info-section">
                 <h4>Users (${data.users.length})</h4>
                 ${usersHtml || '<p style="color: var(--text-secondary);">No online users</p>'}
             </div>
-
             <div class="modal-actions">
                 <button type="button" class="btn btn-primary" onclick="hideModal('adminServerInfoModal')">Close</button>
             </div>
         </div>
     `;
-
     document.body.appendChild(modal);
     showModal('adminServerInfoModal');
 }
-
-// Admin chat command handler
 function handleAdminCommand(message) {
     const parts = message.split(' ');
     const command = parts[0].toLowerCase();
-
     switch(command) {
         case '/kick':
             if (parts.length < 2) {
@@ -1181,7 +988,6 @@ function handleAdminCommand(message) {
             const kickReason = parts.slice(2).join(' ') || 'Kicked by admin';
             socket.emit('adminKickPlayer', { username: kickUsername, reason: kickReason });
             return true;
-
         case '/deleteroom':
             if (parts.length < 2) {
                 showNotification('Usage: /deleteroom <roomId or room name>', 'error');
@@ -1190,11 +996,9 @@ function handleAdminCommand(message) {
             const roomIdOrName = parts[1];
             socket.emit('adminDeleteRoom', { roomIdOrName });
             return true;
-
         case '/adminpanel':
             showAdminPanel();
             return true;
-
         case '/broadcast':
             if (parts.length < 2) {
                 showNotification('Usage: /broadcast <message>', 'error');
@@ -1203,45 +1007,29 @@ function handleAdminCommand(message) {
             const broadcastMessage = parts.slice(1).join(' ');
             socket.emit('adminBroadcast', { message: broadcastMessage });
             return true;
-
         case '/clearchat':
             const clearType = parts[1] || 'lobby';
             socket.emit('adminClearChat', { type: clearType });
             return true;
-
         case '/serverinfo':
             requestServerInfo();
             return true;
-
         case '/help':
             showNotification('Admin commands: /kick, /deleteroom, /broadcast, /clearchat, /serverinfo, /adminpanel, /help', 'info');
             return true;
-
         default:
             return false;
     }
 }
-
-// ═══════════════════════════════════════════════════════════════════════
-// SESSION STORAGE FUNCTIONS
-// ═══════════════════════════════════════════════════════════════════════
-
 function saveSession(username) {
     sessionStorage.setItem('hangman_username', username);
 }
-
 function getSession() {
     return sessionStorage.getItem('hangman_username');
 }
-
 function clearSession() {
     sessionStorage.removeItem('hangman_username');
 }
-
-// ═══════════════════════════════════════════════════════════════════════
-// COOKIE HELPER FUNCTIONS
-// ═══════════════════════════════════════════════════════════════════════
-
 function setCookie(name, value, days) {
     let expires = '';
     if (days) {
@@ -1251,7 +1039,6 @@ function setCookie(name, value, days) {
     }
     document.cookie = name + '=' + encodeURIComponent(value) + expires + '; path=/; SameSite=Strict';
 }
-
 function getCookie(name) {
     const nameEQ = name + '=';
     const ca = document.cookie.split(';');
@@ -1264,15 +1051,9 @@ function getCookie(name) {
     }
     return null;
 }
-
 function deleteCookie(name) {
     document.cookie = name + '=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
 }
-
-// ═══════════════════════════════════════════════════════════════════════
-// DEVICE ID MANAGEMENT
-// ═══════════════════════════════════════════════════════════════════════
-
 function getDeviceId() {
     let deviceId = getCookie('hangman_device_id');
     if (!deviceId) {
@@ -1281,14 +1062,6 @@ function getDeviceId() {
     }
     return deviceId;
 }
-
-// ═══════════════════════════════════════════════════════════════════════
-// STATS MANAGEMENT FUNCTIONS - SERVER DATABASE ONLY
-// ═══════════════════════════════════════════════════════════════════════
-
-// Stats are now loaded ONLY from server database
-// No local cookie storage for stats
-
 function setUserStats(stats) {
     userStats = {
         wins: stats.wins || 0,
@@ -1297,21 +1070,15 @@ function setUserStats(stats) {
     };
     displayUserStats();
 }
-
 function updateStats(result) {
-    // Stats are updated on server automatically when games end
-    // Just refresh the display
     displayUserStats();
 }
-
 function displayUserStats() {
     let statsContainer = document.getElementById('userStatsContainer');
-    
     if (statsContainer) {
         const winRate = userStats.totalGames > 0 
             ? Math.round((userStats.wins / userStats.totalGames) * 100) 
             : 0;
-        
         statsContainer.innerHTML = `
             <div class="user-stats-card">
                 <h3>Your Stats</h3>
@@ -1337,42 +1104,30 @@ function displayUserStats() {
         `;
     }
 }
-
-// ═══════════════════════════════════════════════════════════════════════
-// AVATAR MANAGEMENT FUNCTIONS
-// ═══════════════════════════════════════════════════════════════════════
-
 function getAvatarStorageKey() {
-    // Use username instead of device ID for cross-device sync
     if (currentUser && currentUser.username) {
         return 'hangman_avatar_' + currentUser.username.toLowerCase();
     }
-    // Fallback to device ID if no user logged in yet
     const deviceId = getDeviceId();
     return 'hangman_avatar_' + deviceId;
 }
-
 function loadUserAvatar() {
     const storageKey = getAvatarStorageKey();
     const savedAvatar = localStorage.getItem(storageKey);
-    
     if (savedAvatar && savedAvatar !== 'null' && savedAvatar !== '') {
         userAvatar = savedAvatar;
     } else {
         userAvatar = null;
     }
 }
-
 function saveUserAvatar(avatar) {
     const storageKey = getAvatarStorageKey();
     localStorage.setItem(storageKey, avatar);
     userAvatar = avatar;
 }
-
 function displayUserAvatar() {
     const avatarDisplay = document.getElementById('userAvatarDisplay');
     if (!avatarDisplay) return;
-    
     if (userAvatar) {
         avatarDisplay.innerHTML = `
             <img src="${userAvatar}" alt="User Avatar" class="avatar-image" style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover;">
@@ -1383,13 +1138,10 @@ function displayUserAvatar() {
         `;
     }
 }
-
 function updateAvatarPreview() {
     const avatarPreviewImg = document.getElementById('avatarPreviewImg');
     const avatarPlaceholder = document.getElementById('avatarPlaceholder');
-    
     if (!avatarPreviewImg || !avatarPlaceholder) return;
-    
     if (userAvatar) {
         avatarPreviewImg.src = userAvatar;
         avatarPreviewImg.style.display = 'block';
@@ -1399,21 +1151,16 @@ function updateAvatarPreview() {
         avatarPlaceholder.style.display = 'block';
     }
 }
-
 function compressImage(file, maxSizeKB, callback) {
     const reader = new FileReader();
-    
     reader.onload = function(e) {
         const img = new Image();
-        
         img.onload = function() {
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
-            
             let width = img.width;
             let height = img.height;
             const maxDim = 200;
-            
             if (width > height) {
                 if (width > maxDim) {
                     height = (height * maxDim) / width;
@@ -1425,97 +1172,64 @@ function compressImage(file, maxSizeKB, callback) {
                     height = maxDim;
                 }
             }
-            
             canvas.width = width;
             canvas.height = height;
             ctx.drawImage(img, 0, 0, width, height);
-            
             let quality = 0.8;
             let base64 = canvas.toDataURL('image/jpeg', quality);
-            
             while (base64.length > maxSizeKB * 1024 && quality > 0.1) {
                 quality -= 0.1;
                 base64 = canvas.toDataURL('image/jpeg', quality);
             }
-            
             callback(base64);
         };
-        
         img.onerror = function() {
             showNotification('Error loading image', 'error');
         };
-        
         img.src = e.target.result;
     };
-    
     reader.onerror = function() {
         showNotification('Error reading file', 'error');
     };
-    
     reader.readAsDataURL(file);
 }
-
 function handleAvatarUpload(file) {
     if (!file) return;
-    
-    // Only allow JPG, JPEG, and PNG - explicitly block GIF
     const validTypes = ['image/jpeg', 'image/jpg', 'image/png'];
     if (!validTypes.includes(file.type)) {
         showNotification('Please select a valid image file (JPG, PNG only)', 'error');
         return;
     }
-    
     const maxSize = CONFIG.MAX_AVATAR_SIZE;
-    
     if (file.size > CONFIG.MAX_AVATAR_SIZE) {
         showNotification('Image file is too large. Maximum size is 5MB.', 'error');
         return;
     }
-    
     compressImage(file, 100, (base64Image) => {
         saveUserAvatar(base64Image);
         displayUserAvatar();
         updateAvatarPreview();
-        
-        // Also save to server database
         if (socket && socket.connected) {
             socket.emit('updateAvatar', { avatar: base64Image });
         }
-        
         showNotification('Avatar updated successfully!', 'success');
     });
 }
-
-// ═══════════════════════════════════════════════════════════════════════
-// SHARED AVATAR HELPER
-// ═══════════════════════════════════════════════════════════════════════
-
 function buildAvatarHTML(avatar, username, size = 28, clickable = true) {
     const avatarId = `avatar-${Math.random().toString(36).substr(2, 9)}`;
     const clickHandler = clickable ? `onclick="inspectUserProfile('${escapeHtml(username)}')"` : '';
-    
     if (avatar) {
         return `<img id="${avatarId}" src="${avatar}" alt="${escapeHtml(username)}" ${clickHandler} class="message-avatar" style="width:${size}px;height:${size}px;border-radius:50%;object-fit:cover;flex-shrink:0;${clickable ? 'cursor:pointer;' : ''}">`;
     }
     const initial = username.charAt(0).toUpperCase();
     return `<div id="${avatarId}" class="player-avatar message-avatar" ${clickHandler} style="width:${size}px;height:${size}px;font-size:${size * 0.4}px;margin:0;flex-shrink:0;${clickable ? 'cursor:pointer;' : ''}">${initial}</div>`;
 }
-
-// Inspect user profile when clicking on avatar
 function inspectUserProfile(username) {
     if (!socket || !socket.connected) return;
     if (!currentUser) return;
-    
-    // Don't inspect yourself
     if (username === currentUser.username) return;
-    
     socket.emit('inspectUserProfile', { username });
 }
-
-// ═══════════════════════════════════════════════════════════════════════
-// INITIALIZATION
-// ═══════════════════════════════════════════════════════════════════════
-
 document.addEventListener('DOMContentLoaded', () => {
     authScreen = document.getElementById('authScreen');
     gameScreen = document.getElementById('gameScreen');
@@ -1523,20 +1237,12 @@ document.addEventListener('DOMContentLoaded', () => {
     lobbyView = document.getElementById('lobbyView');
     roomView = document.getElementById('roomView');
     gameView = document.getElementById('gameView');
-
-    // Avatar will be loaded from server after authentication
-    // This ensures cross-device sync of profile pictures
-    
-    // FIX: Set default active state on hint count button
     document.querySelectorAll('.hint-count-btn').forEach(btn => {
         if (parseInt(btn.dataset.hintCount) === currentHintCount) {
             btn.classList.add('active');
         }
     });
-
-    // Load build number and version from server
     loadBuildNumber();
-
     const savedUsername = getSession();
     if (savedUsername) {
         currentUser = { username: savedUsername };
@@ -1544,14 +1250,8 @@ document.addEventListener('DOMContentLoaded', () => {
     } else {
         initAuth();
     }
-    
     initEventListeners();
 });
-
-// ═══════════════════════════════════════════════════════════════════════
-// BUILD NUMBER & VERSION
-// ═══════════════════════════════════════════════════════════════════════
-
 async function loadBuildNumber() {
     try {
         const response = await fetch('/api/build');
@@ -1570,19 +1270,12 @@ async function loadBuildNumber() {
         }
     }
 }
-
-// ═══════════════════════════════════════════════════════════════════════
-// SERVER CONNECTION
-// ═══════════════════════════════════════════════════════════════════════
-
 function isServerConnected() {
     return socket && socket.connected;
 }
-
 function showServerDownMessage() {
     const existingModal = document.getElementById('serverDownModal');
     if (existingModal) return;
-    
     const modal = document.createElement('div');
     modal.id = 'serverDownModal';
     modal.className = 'modal show';
@@ -1600,7 +1293,6 @@ function showServerDownMessage() {
     `;
     document.body.appendChild(modal);
 }
-
 function checkServerAndShowError() {
     if (!isServerConnected()) {
         showServerDownMessage();
@@ -1608,15 +1300,12 @@ function checkServerAndShowError() {
     }
     return true;
 }
-
 function connectSocket(username, adminPassword = null) {
     let connectionTimeout;
-    
     if (socket) {
         socket.off();
         socket.disconnect();
     }
-    
     socket = io(CONFIG.SERVER_URL, {
         timeout: 5000,
         reconnection: true,
@@ -1624,7 +1313,6 @@ function connectSocket(username, adminPassword = null) {
         reconnectionDelay: 1000,
         transports: ['websocket', 'polling']
     });
-    
     connectionTimeout = setTimeout(() => {
         if (!socket || !socket.connected) {
             showNotification('Server is down. Please try again later.', 'error');
@@ -1635,10 +1323,8 @@ function connectSocket(username, adminPassword = null) {
             clearSession();
         }
     }, 5000);
-    
     setupSocketListeners(username, connectionTimeout, adminPassword);
 }
-
 function setupSocketListeners(username, connectionTimeout, adminPassword = null) {
     socket.on('connect', () => {
         clearTimeout(connectionTimeout);
@@ -1646,7 +1332,6 @@ function setupSocketListeners(username, connectionTimeout, adminPassword = null)
         log('Connected to server:', socket.id);
         socket.emit('authenticate', { username, adminPassword });
     });
-    
     socket.on('connect_error', (error) => {
         clearTimeout(connectionTimeout);
         log('Connection error:', error);
@@ -1657,17 +1342,14 @@ function setupSocketListeners(username, connectionTimeout, adminPassword = null)
         }
         clearSession();
     });
-    
     socket.on('disconnect', (reason) => {
         log('Disconnected:', reason);
         if (reason === 'io server disconnect' || reason === 'transport close') {
             showServerDownMessage();
         }
     });
-
     socket.on('forceLogout', (data) => {
         showNotification(data.message || 'You have been logged out by an admin', 'error', 5000);
-        // Clear session and reload to login screen
         clearSession();
         currentUser = null;
         currentRoom = null;
@@ -1677,63 +1359,45 @@ function setupSocketListeners(username, connectionTimeout, adminPassword = null)
         mySocketId = null;
         onlineUsersData = [];
         globalUsersData = [];
-
-        // Reset UI
         const authScreen = document.getElementById('authScreen');
         const gameScreen = document.getElementById('gameScreen');
         if (authScreen) authScreen.classList.remove('hidden');
         if (gameScreen) gameScreen.classList.add('hidden');
-
-        // Reset form
         const usernameInput = document.getElementById('usernameInput');
         if (usernameInput) usernameInput.value = '';
-
         socket.disconnect();
     });
-
     socket.on('reconnect', (attemptNumber) => {
         log('Reconnected after', attemptNumber, 'attempts');
         showNotification('Reconnected to server!', 'success');
     });
-
-    // Admin response handlers
     socket.on('adminSuccess', (data) => {
         showNotification(data.message, 'success');
     });
-
     socket.on('adminError', (data) => {
         showNotification(data.message, 'error');
     });
-
     socket.on('adminServerInfo', (data) => {
         displayAdminServerInfo(data);
     });
-
     socket.on('adminBroadcast', (data) => {
         showNotification(`[ADMIN] ${data.from}: ${data.message}`, 'info', 5000);
     });
-
     socket.on('adminUserDatabase', (data) => {
         displayUserDatabase(data.users, data.total);
     });
-
-    // Kicked handler
     socket.on('kicked', (data) => {
         showNotification(`You have been kicked by ${data.by}. Reason: ${data.reason}`, 'error', 5000);
         socket.disconnect();
         clearSession();
         setTimeout(() => location.reload(), 2000);
     });
-
-    // Room deleted handler
     socket.on('roomDeleted', (data) => {
         showNotification(`Room "${data.roomName}" has been deleted by an admin`, 'error', 5000);
         if (currentRoom) {
             leaveRoom();
         }
     });
-
-    // Banned handler
     socket.on('banned', (data) => {
         const durationText = data.duration === 0 ? 'permanently' : `for ${data.duration} hour(s)`;
         showNotification(`You have been banned ${durationText} by ${data.by}. Reason: ${data.reason}`, 'error', 8000);
@@ -1741,68 +1405,40 @@ function setupSocketListeners(username, connectionTimeout, adminPassword = null)
         clearSession();
         setTimeout(() => location.reload(), 3000);
     });
-
-    // User data deleted handler (when admin deletes specific user)
     socket.on('userDataDeleted', (data) => {
         showNotification(`${data.message} by ${data.by}. Your stats and avatar have been reset.`, 'error', 5000);
-        
-        // Clear local stats (server database deleted)
         userStats = { wins: 0, losses: 0, totalGames: 0 };
-        
-        // Clear local avatar
         userAvatar = null;
         saveUserAvatar(null);
-        
-        // Update UI
         displayUserStats();
         displayUserAvatar();
-        
-        // Disconnect and reload
         socket.disconnect();
         clearSession();
         setTimeout(() => location.reload(), 3000);
     });
-
-    // All user data deleted handler (when admin deletes all users)
     socket.on('allUserDataDeleted', (data) => {
         showNotification(`${data.message} by ${data.by}. All user data has been reset.`, 'error', 5000);
-        
-        // Clear local stats (server database deleted)
         userStats = { wins: 0, losses: 0, totalGames: 0 };
-        
-        // Clear local avatar
         userAvatar = null;
         saveUserAvatar(null);
-        
-        // Update UI
         displayUserStats();
         displayUserAvatar();
-        
-        // Disconnect and reload
         socket.disconnect();
         clearSession();
         setTimeout(() => location.reload(), 3000);
     });
-
-    // Stats updated handler (when admin edits user stats)
     socket.on('statsUpdated', (data) => {
         showNotification(`Your stats have been updated by ${data.by}`, 'info', 3000);
-        
-        // Update local stats from server
         if (data.stats) {
             setUserStats(data.stats);
         }
     });
-
-    // Stats reloaded handler (when refreshing from database)
     socket.on('statsReloaded', (data) => {
         if (data.success && data.stats) {
             setUserStats(data.stats);
             log('Stats reloaded from database');
         }
     });
-
-    // Maintenance mode status
     socket.on('maintenanceStatus', (data) => {
         const input = document.getElementById('maintenanceMessageInput');
         if (input && data.message) {
@@ -1810,27 +1446,18 @@ function setupSocketListeners(username, connectionTimeout, adminPassword = null)
         }
         log('Maintenance mode:', data.enabled ? 'ENABLED' : 'disabled');
     });
-
-    // Maintenance mode enabled notification
     socket.on('maintenanceModeEnabled', (data) => {
         showNotification(data.message, 'warning', 5000);
     });
-
-    // Backup list
     socket.on('adminBackupList', (data) => {
         displayBackupList(data.backups);
     });
-
-    // User profile inspection handler
     socket.on('userProfileData', (data) => {
         displayUserProfileModal(data);
     });
-
     socket.on('userProfileError', (data) => {
         showNotification(data.message, 'error');
     });
-
-    // Chat cleared handler
     socket.on('lobbyChatCleared', (data) => {
         const lobbyChatMessages = document.getElementById('lobbyChatMessages');
         if (lobbyChatMessages) {
@@ -1838,7 +1465,6 @@ function setupSocketListeners(username, connectionTimeout, adminPassword = null)
         }
         showNotification(`Lobby chat has been cleared by ${data.by}`, 'info', 3000);
     });
-
     socket.on('roomChatCleared', (data) => {
         const chatMessages = document.getElementById('chatMessages');
         const miniChatMessages = document.getElementById('miniChatMessages');
@@ -1846,20 +1472,15 @@ function setupSocketListeners(username, connectionTimeout, adminPassword = null)
         if (miniChatMessages) miniChatMessages.innerHTML = '';
         showNotification(`Room chat has been cleared by ${data.by}`, 'info', 3000);
     });
-
     socket.on('authenticated', (data) => {
         log('Authenticated successfully');
         if (data && data.user) {
             currentUser = data.user;
-            
-            // Load avatar from server if available
             if (currentUser.avatar) {
                 userAvatar = currentUser.avatar;
                 saveUserAvatar(userAvatar);
                 displayUserAvatar();
             }
-            
-            // Load stats from server ONLY (no local cookie storage)
             if (currentUser.stats) {
                 setUserStats(currentUser.stats);
             }
@@ -1868,20 +1489,15 @@ function setupSocketListeners(username, connectionTimeout, adminPassword = null)
         showGameScreen();
         loadLobby();
         socket.emit('getLobbyChat');
-
-        // Show admin indicator if user is admin
         if (currentUser && currentUser.isAdmin) {
             showAdminIndicator();
         }
     });
-    
-    // Handle avatar update confirmation
     socket.on('avatarUpdated', (data) => {
         if (data.success) {
             log('Avatar saved to server database');
         }
     });
-    
     socket.on('authError', (data) => {
         log('Auth error:', data.message);
         showAuthError(data.message);
@@ -1891,13 +1507,9 @@ function setupSocketListeners(username, connectionTimeout, adminPassword = null)
         }
         clearSession();
     });
-    
-    // Handle username change responses
     socket.on('usernameChanged', (data) => {
         log('Username changed to:', data.username);
         currentUser.username = data.username;
-        
-        // Update transferred stats and avatar
         if (data.stats) {
             currentUser.stats = data.stats;
             setUserStats(data.stats);
@@ -1909,17 +1521,11 @@ function setupSocketListeners(username, connectionTimeout, adminPassword = null)
             saveUserAvatar(data.avatar);
             displayUserAvatar();
         }
-        
-        // Update UI
         const currentUsernameEl = document.getElementById('currentUsername');
         if (currentUsernameEl) {
             currentUsernameEl.textContent = data.username;
         }
-        
-        // Update session
         saveSession(data.username);
-        
-        // Clear input and show success
         const newUsernameInput = document.getElementById('newUsernameInput');
         const usernameError = document.getElementById('usernameError');
         if (newUsernameInput) {
@@ -1928,10 +1534,8 @@ function setupSocketListeners(username, connectionTimeout, adminPassword = null)
         if (usernameError) {
             usernameError.style.display = 'none';
         }
-        
         showNotification('Username changed successfully! Your stats have been transferred.', 'success');
     });
-    
     socket.on('usernameChangeError', (data) => {
         log('Username change error:', data.message);
         const usernameError = document.getElementById('usernameError');
@@ -1940,37 +1544,29 @@ function setupSocketListeners(username, connectionTimeout, adminPassword = null)
             usernameError.style.display = 'block';
         }
     });
-    
     socket.on('onlineCount', (count) => {
         document.getElementById('onlineCount').textContent = count;
-        
         const onlineLabel = document.getElementById('onlineLabel');
         if (onlineLabel) {
             onlineLabel.textContent = count === 1 ? 'Player' : 'Players';
         }
-        
         const globalChatOnline = document.getElementById('globalChatOnline');
         if (globalChatOnline) {
             globalChatOnline.textContent = count;
         }
     });
-    
     socket.on('onlineUsersUpdate', (data) => {
         onlineUsersData = data.users;
-        
         if (typeof renderOnlineUsers === 'function' && currentLeaderboardTab === 'server') {
             renderOnlineUsers(onlineUsersData);
         }
     });
-    
     socket.on('globalUsersUpdate', (data) => {
         globalUsersData = data.users;
-        
         if (typeof renderOnlineUsers === 'function' && currentLeaderboardTab === 'global') {
             renderOnlineUsers(globalUsersData);
         }
     });
-    
     socket.on('lobbyChatUpdate', (data) => {
         if (data.messages && Array.isArray(data.messages)) {
             const lobbyChatMessages = document.getElementById('lobbyChatMessages');
@@ -1982,40 +1578,32 @@ function setupSocketListeners(username, connectionTimeout, adminPassword = null)
             addLobbyChatMessage(data);
         }
     });
-    
     socket.on('roomList', (rooms) => {
         updateRoomsList(rooms);
     });
-    
     socket.on('roomCreated', (data) => {
         hideModal('createRoomModal');
         joinRoom(data.roomId, '');
     });
-    
     socket.on('joinedRoom', (data) => {
         log('Joined room:', data.roomId);
         currentRoom = data;
         isHost = data.isHost;
         showRoomView(data);
     });
-    
     socket.on('joinError', (data) => {
         showNotification(data.message, 'error');
     });
-    
     socket.on('createRoomError', (data) => {
         showModalError('createRoomError', data.message);
     });
-    
     socket.on('playerJoined', (player) => {
         log('Player joined:', player.username);
         addPlayerToRoom(player);
     });
-    
     socket.on('playerLeft', (data) => {
         removePlayerFromRoom(data.id);
     });
-    
     socket.on('hostChanged', (data) => {
         if (data.newHostId === mySocketId) {
             isHost = true;
@@ -2023,55 +1611,36 @@ function setupSocketListeners(username, connectionTimeout, adminPassword = null)
             updateRoomControls();
             showNotification('You are now the host!', 'info');
         } else {
-            // Update the hostId in currentRoom
             currentRoom.hostId = data.newHostId;
         }
-
-        // Update all player cards to show new host
         document.querySelectorAll('.player-card').forEach(card => {
             card.classList.remove('host');
         });
-
         const newHostCard = document.getElementById(`player-${data.newHostId}`);
         if (newHostCard) {
             newHostCard.classList.add('host');
         }
     });
-    
-    // Coin flip phase for custom word mode
     socket.on('coinFlipPhase', (data) => {
         showCoinFlipModal(data);
     });
-    
-    // Coin side selected
     socket.on('coinSideSelected', (data) => {
-        // Store isTeamMode in coinFlipData if provided
         if (data.isTeamMode !== undefined && coinFlipData) {
             coinFlipData.isTeamMode = data.isTeamMode;
         }
         updateCoinFlipSelection(data);
     });
-    
-    // Coin flip result
     socket.on('coinFlipResult', (data) => {
         showCoinFlipResult(data);
     });
-    
-    // Coin flip error
     socket.on('coinFlipError', (data) => {
         showNotification(data.message, 'error');
     });
-    
-    // Word selection phase for custom word mode
     socket.on('wordSelectionPhase', (data) => {
-        // Hide coin flip modal if it's still showing
         hideModal('coinFlipModal');
-        
         isWordSetter = (data.wordSetter.id === mySocketId);
         hintsRemaining = data.hintCount || 5;
-        
         if (isWordSetter) {
-            // Reset the word input and submit button for a fresh modal
             const wordInput = document.getElementById('customWord');
             const submitBtn = document.getElementById('submitWordBtn');
             if (wordInput) wordInput.value = '';
@@ -2081,20 +1650,15 @@ function setupSocketListeners(username, connectionTimeout, adminPassword = null)
             }
             const wordError = document.getElementById('wordSelectionError');
             if (wordError) { wordError.textContent = ''; wordError.style.display = 'none'; }
-            
             showModal('wordSelectionModal');
         } else {
             showWaitingForWordModal(data.wordSetter.username);
         }
     });
-    
-    // Word was accepted
     socket.on('wordAccepted', () => {
         hideModal('wordSelectionModal');
         showNotification('Word submitted successfully!', 'success');
     });
-    
-    // Word submission error
     socket.on('wordSubmitError', (data) => {
         showModalError('wordSelectionError', data.message);
         const submitBtn = document.getElementById('submitWordBtn');
@@ -2103,96 +1667,61 @@ function setupSocketListeners(username, connectionTimeout, adminPassword = null)
             submitBtn.innerHTML = '<i class="fas fa-check"></i> Submit Word';
         }
     });
-    
     socket.on('gameStarted', (data) => {
         hideModal('waitingForWordModal');
-
-        // Store game data for after countdown
         const gameData = data;
-
-        // Show countdown before starting game
         showCountdown(() => {
             startGameAfterCountdown(gameData);
         });
     });
-
     function startGameAfterCountdown(data) {
         gameState = data.gameState;
-
-        // Store players array for turn lookups
-        // IMPORTANT: Must use the full players array from server, not filtered activePlayers
         gameState.players = data.players;
-
-        // Initialize word for tracking
         if (!gameState.word && gameState.wordLength) {
             gameState.word = '';
         }
-
         isWordSetter = (data.gameState.wordSetter === mySocketId);
         hintsRemaining = (data.gameState.hintsRemaining != null) ? data.gameState.hintsRemaining : 0;
-
-        // Build player team map
         playerTeamMap = {};
         isOnWordSetterTeam = false;
-        
         if (data.players) {
             data.players.forEach(p => {
                 playerTeamMap[p.id] = p.team;
             });
         }
-        
-        // FIX: Determine if on word setter's team
-        // Only check team membership in actual team modes (2v2, 3v3, 4v4)
-        // In 1v1 mode, both players have team: null, so we must NOT check team equality
         const myTeam = playerTeamMap[mySocketId];
         const isTeamMode = data.mode === '2v2' || data.mode === '3v3' || data.mode === '4v4';
-        
         if (isTeamMode && gameState.wordSetterTeam) {
             isOnWordSetterTeam = (myTeam === gameState.wordSetterTeam);
         } else {
-            // In 1v1 or when there's no wordSetterTeam, only the word setter is blocked
             isOnWordSetterTeam = false;
         }
-        
-        // Build active players list (excluding word setter's team in custom mode)
-        // This is for display purposes only - server manages turns using full players array
         activePlayers = [];
         if (gameState.isCustomWord && gameState.wordSetterTeam) {
-            // Only include players NOT on word setter's team
             data.players.forEach((p) => {
                 if (p.team !== gameState.wordSetterTeam) {
                     activePlayers.push(p);
                 }
             });
         } else {
-            // All players can play
             activePlayers = [...data.players];
         }
-
         showGameView(data);
     }
-
     socket.on('guessResult', (data) => {
         updateGameState(data);
     });
-    
-    // Hint request received (for word setter)
     socket.on('hintRequested', (data) => {
         showHintRequestModal(data.requesterName, data.question);
     });
-
-    // Hint provided (for all players)
     socket.on('hintProvided', (data) => {
         displayReceivedHint(data.hint, data.hintNumber, data.question);
         hintsRemaining = data.hintsRemaining;
         updateHintsDisplay();
-
         if (data.requesterId !== mySocketId) {
             showNotification('A hint has been revealed!', 'info');
         }
     });
-
-    // Hint dismissed by word setter
     socket.on('hintDismissed', (data) => {
         const askHintBtn = document.getElementById('askHintBtn');
         if (askHintBtn && hintsRemaining > 0) {
@@ -2203,7 +1732,6 @@ function setupSocketListeners(username, connectionTimeout, adminPassword = null)
             showNotification('Your hint request was ignored.', 'info');
         }
     });
-    
     socket.on('hintError', (data) => {
         showNotification(data.message, 'error');
         const askHintBtn = document.getElementById('askHintBtn');
@@ -2212,19 +1740,15 @@ function setupSocketListeners(username, connectionTimeout, adminPassword = null)
             askHintBtn.innerHTML = '<i class="fas fa-question-circle"></i> Ask for Hint';
         }
     });
-
     socket.on('guessError', (data) => {
         showNotification(data.message, 'error');
     });
-
     socket.on('gameEnded', (data) => {
         showGameOverModal(data);
     });
-    
     socket.on('newMessage', (message) => {
         addChatMessage(message);
     });
-    
     socket.on('roomPlayersUpdate', (data) => {
         if (data.players) {
             updatePlayersList(data.players);
@@ -2233,52 +1757,36 @@ function setupSocketListeners(username, connectionTimeout, adminPassword = null)
             }
         }
     });
-
     socket.on('playerTeamChanged', (data) => {
         updatePlayerTeams(data.players);
     });
-    
     socket.on('teamChanged', (data) => {
         updateTeamSelectionButtons(data.team);
     });
-    
     socket.on('teamChangeError', (data) => {
         showNotification(data.message, 'error');
     });
 }
-
-// ═══════════════════════════════════════════════════════════════════════
-// AUTHENTICATION
-// ═══════════════════════════════════════════════════════════════════════
-
 function initAuth() {
     const usernameForm = document.getElementById('usernameForm');
     const usernameInput = document.getElementById('usernameInput');
     const adminPasswordGroup = document.getElementById('adminPasswordGroup');
     const adminPasswordInput = document.getElementById('adminPasswordInput');
     const joinButton = usernameForm?.querySelector('button[type="submit"]');
-    
     if (usernameForm) {
-        // Handle form submission
         usernameForm.addEventListener('submit', handleJoinGame);
-        
-        // Also handle button click directly for mobile
         if (joinButton) {
             joinButton.addEventListener('click', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
                 handleJoinGame(e);
             });
-            
-            // Handle touch events for mobile
             joinButton.addEventListener('touchend', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
                 handleJoinGame(e);
             }, { passive: false });
         }
-        
-        // Handle Enter key on input
         if (usernameInput) {
             usernameInput.addEventListener('keypress', (e) => {
                 if (e.key === 'Enter') {
@@ -2286,26 +1794,19 @@ function initAuth() {
                     handleJoinGame(e);
                 }
             });
-            
-            // Auto-focus on mobile after a short delay
             setTimeout(() => {
                 usernameInput.focus();
             }, 500);
         }
-        
-        // Handle Admin password field visibility
         if (usernameInput && adminPasswordGroup) {
             usernameInput.addEventListener('input', (e) => {
                 const username = e.target.value.trim();
                 const lowerUsername = username.toLowerCase();
-                // Show password field for admin account or admin commands (case-insensitive)
                 const needsPassword = lowerUsername === 'admin' || 
                                       lowerUsername === 'everyonelogout' || 
                                       lowerUsername === 'adminlogout';
-                
                 if (needsPassword) {
                     adminPasswordGroup.classList.remove('hidden');
-                    // Focus on password field after a short delay
                     setTimeout(() => {
                         adminPasswordInput?.focus();
                     }, 100);
@@ -2317,8 +1818,6 @@ function initAuth() {
                 }
             });
         }
-        
-        // Handle Enter key on password input
         if (adminPasswordInput) {
             adminPasswordInput.addEventListener('keypress', (e) => {
                 if (e.key === 'Enter') {
@@ -2327,8 +1826,6 @@ function initAuth() {
                 }
             });
         }
-        
-        // Handle password visibility toggle
         const adminPasswordToggle = document.getElementById('adminPasswordToggle');
         if (adminPasswordToggle && adminPasswordInput) {
             adminPasswordToggle.addEventListener('click', () => {
@@ -2343,18 +1840,14 @@ function initAuth() {
         }
     }
 }
-
 function handleJoinGame(e) {
     e.preventDefault();
     const usernameInput = document.getElementById('usernameInput');
     const adminPasswordInput = document.getElementById('adminPasswordInput');
     const username = usernameInput.value.trim();
     const adminPassword = adminPasswordInput?.value.trim() || '';
-    
-    // Check for banned usernames (excluding 'admin' which is handled separately)
     if (username.toLowerCase() !== 'admin') {
         const bannedVariations = ['shreyan', 'shreyn', 'shryn', 'shyn', 'sreyan', 'sreyn', 'sryan', 'sryn', 'shrayan', 'shrayn', 'shriyan', 'shriyn', 'shrian', 'shrien', 'shryen', 'shryan', 'shryon', 'shryun','samarth', 'samart', 'samarthh', 'samarath','samerth', 'samirth', 'somarth', 'sumarth', 'samurth','samrth', 'smarth', 'samarh', 'samath','samarat', 'samrat', 'samraat', 'samrath','samaryh', 'samaryth', 'samarht', 'samarthy','samrath', 'samarht', 'smaarth', 'saamarth','samrt', 'samr', 'samar','samarath', 'samarrth', 'samartht'];
-        
         const usernameLower = username.toLowerCase();
         for (const variation of bannedVariations) {
             if (usernameLower.includes(variation)) {
@@ -2363,69 +1856,51 @@ function handleJoinGame(e) {
             }
         }
     }
-    
     if (!username) {
         showAuthError('Please enter a username');
         return;
     }
-    
-    // Admin account validation
     if (username.toLowerCase() === 'admin') {
         if (!adminPassword) {
             showAuthError('Password needed to login in the admin account');
             return;
         }
-        // Store admin info for authentication
         currentUser = { username, isAdmin: true, adminPassword };
         connectSocket(username, adminPassword);
         return;
     }
-    
-    // Check for /help command before validation
     if (username === '/help') {
         showAuthError('📋 Available Commands:\n• /help - Show this message\n• EveryoneLogout - Logout all users (admin only)\n• AdminLogout - Logout only admins (admin only)', 'info');
         return;
     }
-
-    // Allow reserved commands to pass through (they need password validation on server)
     const isAdminCommand = ['everyonelogout', 'adminlogout'].includes(username.toLowerCase());
-    
     if (isAdminCommand) {
-        // Admin commands require password - check if provided
         const adminPasswordInput = document.getElementById('adminPasswordInput');
         const adminPassword = adminPasswordInput?.value.trim();
-        
         if (!adminPassword) {
             showAuthError('🔑 Admin password required for this command');
             return;
         }
-        
-        // Send command with password
         currentUser = { username, isAdmin: true, adminPassword };
         connectSocket(username, adminPassword);
         return;
     }
-
     if (username.includes(' ')) {
         showAuthError('❌ Username cannot contain spaces');
         return;
     }
-    
     const validCharsRegex = /^[a-zA-Z0-9._-]+$/;
     if (!validCharsRegex.test(username)) {
         showAuthError('❌ Username can only contain letters, numbers, dots, hyphens, and underscores\n\n💡 Tip: Type "/help" to see available commands');
         return;
     }
-    
     if (username.length < 2 || username.length > CONFIG.MAX_USERNAME_LENGTH) {
         showAuthError(`❌ Username must be between 2 and ${CONFIG.MAX_USERNAME_LENGTH} characters`);
         return;
     }
-    
     currentUser = { username };
     connectSocket(username);
 }
-
 function showAuthError(message, type = 'error') {
     authError.textContent = message;
     authError.className = 'auth-error';
@@ -2439,7 +1914,6 @@ function showAuthError(message, type = 'error') {
         authError.className = 'auth-error';
     }, 8000);
 }
-
 function showModalError(elementId, message) {
     const errorElement = document.getElementById(elementId);
     if (errorElement) {
@@ -2451,21 +1925,13 @@ function showModalError(elementId, message) {
         }, 5000);
     }
 }
-
-// ═══════════════════════════════════════════════════════════════════════
-// UI FUNCTIONS
-// ═══════════════════════════════════════════════════════════════════════
-
 function showGameScreen() {
     authScreen.classList.add('hidden');
     gameScreen.classList.remove('hidden');
     document.getElementById('currentUsername').textContent = currentUser.username;
-    
-    // Stats are loaded from server on authentication, not from cookies
     displayUserStats();
     displayUserAvatar();
 }
-
 function loadLobby(skipConnectionCheck = false) {
     showView('lobbyView');
     if (!skipConnectionCheck && !checkServerAndShowError()) return;
@@ -2473,69 +1939,49 @@ function loadLobby(skipConnectionCheck = false) {
         socket.emit('getRooms');
     }
 }
-
 function showView(viewId) {
     document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
     document.getElementById(viewId).classList.add('active');
 }
-
 function showModal(modalId) { 
     const modal = document.getElementById(modalId);
     if (modal) modal.classList.add('show');
 }
-
 function hideModal(modalId) { 
     const modal = document.getElementById(modalId);
     if (modal) modal.classList.remove('show');
 }
-
-// ═══════════════════════════════════════════════════════════════════════
-// ROOM MANAGEMENT
-// ═══════════════════════════════════════════════════════════════════════
-
 function updateRoomsList(rooms) {
     const roomsList = document.getElementById('roomsList');
     const filter = currentRoomFilter;
-    
     roomsList.innerHTML = '';
-    
     const filteredRooms = rooms.filter(room => {
         if (filter === 'all') return true;
         if (filter === 'waiting') return room.status === 'waiting';
         return room.mode === filter;
     });
-    
     if (filteredRooms.length === 0) {
         roomsList.innerHTML = '<div class="no-rooms">No rooms available. Create one!</div>';
         return;
     }
-    
     filteredRooms.forEach(room => {
         const roomCard = createRoomCard(room);
         roomsList.appendChild(roomCard);
     });
 }
-
 function createRoomCard(room) {
     const card = document.createElement('div');
     card.className = `room-card ${room.players >= room.maxPlayers ? 'full' : ''} ${room.status === 'playing' ? 'playing' : ''}`;
-    
     const lockIcon = room.hasPassword ? '<i class="fas fa-lock room-lock"></i>' : '';
-    
-    // Show selected game mode in waiting rooms with color coding
     let gameModeDisplay = '';
     if (room.status === 'waiting' && room.selectedGameMode) {
         const modeClass = `mode-${room.selectedGameMode.toLowerCase()}`;
         let modeText = room.selectedGameMode;
-        
-        // Show hint count for custom mode
         if (room.selectedGameMode === 'custom' && room.selectedHintCount) {
             modeText += ` • ${room.selectedHintCount} hints`;
         }
-        
         gameModeDisplay = `<span class="room-game-mode ${modeClass}">${modeText}</span>`;
     }
-    
     card.innerHTML = `
         <div class="room-header-info">
             <span class="room-name">${escapeHtml(room.name)}</span>
@@ -2551,7 +1997,6 @@ function createRoomCard(room) {
             ${room.status === 'waiting' ? `⏳ Waiting ${gameModeDisplay}` : '🎮 Playing'}
         </div>
     `;
-    
     if (room.players < room.maxPlayers && room.status === 'waiting') {
         card.addEventListener('click', () => {
             if (room.hasPassword) {
@@ -2561,26 +2006,21 @@ function createRoomCard(room) {
             }
         });
     }
-    
     return card;
 }
-
 function showJoinRoomModal(roomId) {
     selectedRoomId = roomId;
     showModal('joinRoomModal');
 }
-
 function createRoom(name, mode, password, difficulty, hintCount) {
     if (!checkServerAndShowError()) return;
     socket.emit('createRoom', { name, mode, password, username: currentUser.username, difficulty, hintCount });
 }
-
 function joinRoom(roomId, password) {
     if (!checkServerAndShowError()) return;
     log('Joining room with avatar:', userAvatar ? 'present' : 'null');
     socket.emit('joinRoom', { roomId, password, username: currentUser.username, avatar: userAvatar || null });
 }
-
 function leaveRoom() {
     if (socket && socket.connected) socket.emit('leaveRoom');
     currentRoom = null;
@@ -2588,21 +2028,17 @@ function leaveRoom() {
     isWordSetter = false;
     loadLobby(true);
 }
-
 function startGame() {
     if (!isHost || !currentRoom) return;
     if (!checkServerAndShowError()) return;
-    
     const mode = currentRoom.mode;
     const isSoloMode = mode === 'solo';
     const isTeamMode = mode === '2v2' || mode === '3v3' || mode === '4v4';
     const playerCount = parseInt(document.getElementById('playerCount').textContent) || 0;
-    
     if (!isSoloMode && playerCount < 2) { 
         showNotification('Need at least 2 players to start the game', 'error');
         return;
     }
-    
     if (isTeamMode) {
         const team1Count = parseInt(document.getElementById('team1Count').textContent) || 0;
         const team2Count = parseInt(document.getElementById('team2Count').textContent) || 0;
@@ -2615,20 +2051,12 @@ function startGame() {
             return;
         }
     }
-    
-    // Server will use stored difficulty and hint count from room creation
     socket.emit('startGame', { 
         roomId: currentRoom.roomId
     });
 }
-
-// ═══════════════════════════════════════════════════════════════════════
-// ROOM VIEW
-// ═══════════════════════════════════════════════════════════════════════
-
 function showRoomView(data) {
     showView('roomView');
-    
     document.getElementById('roomName').textContent = data.roomName;
     document.getElementById('roomMode').textContent = data.mode;
     document.getElementById('playerCount').textContent = data.players.length;
@@ -2637,11 +2065,9 @@ function showRoomView(data) {
         data.mode === '1v1' ? 2 : 
         data.mode === '2v2' ? 4 :
         data.mode === '3v3' ? 6 : 8;
-    
     const teamsSection = document.getElementById('teamsSection');
     const teamSelection = document.getElementById('teamSelection');
     const chatTabs = document.getElementById('chatTabs');
-    
     if (data.mode === 'solo' || data.mode === '1v1') {
         teamsSection.classList.add('hidden');
         if (chatTabs) {
@@ -2664,27 +2090,21 @@ function showRoomView(data) {
             if (teamTab) teamTab.style.display = 'inline-block';
         }
     }
-    
     updatePlayersList(data.players);
     updateRoomControls();
-    
     document.getElementById('chatMessages').innerHTML = '';
     filterChatMessages('chatMessages', currentChatType);
     resetChatNotifications('room', 'global');
     resetChatNotifications('room', 'team');
 }
-
 function updatePlayersList(players) {
     const playersList = document.getElementById('playersList');
     playersList.innerHTML = '';
-    
     players.forEach(player => {
         const playerCard = document.createElement('div');
         playerCard.className = `player-card ${player.id === mySocketId ? 'me' : ''} ${currentRoom && player.id === currentRoom.hostId ? 'host' : ''} ${player.isAdmin ? 'admin' : ''}`;
         playerCard.id = `player-${player.id}`;
-
         const avatarSrc = (player.id === mySocketId) ? userAvatar : (player.avatar || null);
-
         playerCard.innerHTML = `
             <div class="player-avatar-wrap" style="display:flex;justify-content:center;margin-bottom:10px;">
                 ${buildAvatarHTML(avatarSrc, player.username, 50)}
@@ -2692,46 +2112,35 @@ function updatePlayersList(players) {
             <div class="player-name">${escapeHtml(player.username)}</div>
             ${player.team ? '<small>' + (player.team === 'team1' ? 'Team 1' : 'Team 2') + '</small>' : ''}
         `;
-
         playersList.appendChild(playerCard);
     });
-    
     document.getElementById('playerCount').textContent = players.length;
 }
-
 function updateTeams(players) {
     const team1Container = document.getElementById('team1Players');
     const team2Container = document.getElementById('team2Players');
-    
     team1Container.innerHTML = '';
     team2Container.innerHTML = '';
-    
     players.forEach(player => {
         const playerDiv = document.createElement('div');
         playerDiv.className = `player-card ${player.id === mySocketId ? 'me' : ''}`;
         playerDiv.id = `team-player-${player.id}`;
-        
         const avatarSrc = (player.id === mySocketId) ? userAvatar : (player.avatar || null);
-        
         playerDiv.innerHTML = `
             <div style="display:flex;align-items:center;gap:10px;">
                 ${buildAvatarHTML(avatarSrc, player.username, 30)}
                 <div class="player-name">${escapeHtml(player.username)}</div>
             </div>
         `;
-        
         if (player.team === 'team1') team1Container.appendChild(playerDiv);
         else if (player.team === 'team2') team2Container.appendChild(playerDiv);
     });
-    
     document.getElementById('team1Count').textContent = players.filter(p => p.team === 'team1').length;
     document.getElementById('team2Count').textContent = players.filter(p => p.team === 'team2').length;
 }
-
 function updatePlayerTeams(players) {
     updateTeams(players);
     updatePlayersList(players);
-    
     const myPlayer = players.find(p => p.id === mySocketId);
     if (myPlayer) {
         updateTeamSelectionButtons(myPlayer.team);
@@ -2739,11 +2148,9 @@ function updatePlayerTeams(players) {
         updateTeamSelectionButtons(null);
     }
 }
-
 function updateTeamSelectionButtons(myTeam) {
     const joinTeam1Btn = document.getElementById('joinTeam1');
     const joinTeam2Btn = document.getElementById('joinTeam2');
-    
     if (joinTeam1Btn && joinTeam2Btn) {
         if (myTeam === 'team1') {
             joinTeam1Btn.classList.add('active');    joinTeam1Btn.disabled = true;
@@ -2757,16 +2164,12 @@ function updateTeamSelectionButtons(myTeam) {
         }
     }
 }
-
 function addPlayerToRoom(player) {
     const playersList = document.getElementById('playersList');
-
     const playerCard = document.createElement('div');
     playerCard.className = `player-card ${player.isAdmin ? 'admin' : ''}`;
     playerCard.id = `player-${player.id}`;
-
     const avatarSrc = player.avatar || null;
-
     playerCard.innerHTML = `
         <div class="player-avatar-wrap" style="display:flex;justify-content:center;margin-bottom:10px;">
             ${buildAvatarHTML(avatarSrc, player.username, 50)}
@@ -2774,54 +2177,40 @@ function addPlayerToRoom(player) {
         <div class="player-name">${escapeHtml(player.username)}</div>
         ${player.team ? '<small>' + (player.team === 'team1' ? 'Team 1' : 'Team 2') + '</small>' : ''}
     `;
-
     playersList.appendChild(playerCard);
-    
     const currentCount = parseInt(document.getElementById('playerCount').textContent);
     document.getElementById('playerCount').textContent = currentCount + 1;
-
     if (currentRoom && currentRoom.mode !== 'solo' && currentRoom.mode !== '1v1') {
         socket.emit('getRoomPlayers', { roomId: currentRoom.roomId });
     }
-    
     addChatMessage({ type: 'system', message: `${player.username} joined the room` });
 }
-
 function removePlayerFromRoom(playerId) {
     const playerCard = document.getElementById(`player-${playerId}`);
     if (playerCard) {
         const playerName = playerCard.querySelector('.player-name').textContent;
         playerCard.remove();
-        
         const currentCount = parseInt(document.getElementById('playerCount').textContent);
         document.getElementById('playerCount').textContent = Math.max(0, currentCount - 1);
-        
         addChatMessage({ type: 'system', message: `${playerName} left the room` });
     }
-    
     const teamPlayerCard = document.getElementById(`team-player-${playerId}`);
     if (teamPlayerCard) {
         teamPlayerCard.remove();
     }
-    
     updateTeamCounts();
 }
-
 function updateTeamCounts() {
     const team1Count = document.querySelectorAll('#team1Players .player-card').length;
     const team2Count = document.querySelectorAll('#team2Players .player-card').length;
-    
     const team1CountEl = document.getElementById('team1Count');
     const team2CountEl = document.getElementById('team2Count');
-    
     if (team1CountEl) team1CountEl.textContent = team1Count;
     if (team2CountEl) team2CountEl.textContent = team2Count;
 }
-
 function updateRoomControls() {
     const roomActions = document.getElementById('roomActions');
     const waitingMessage = document.getElementById('waitingMessage');
-    
     if (isHost) {
         roomActions.classList.remove('hidden');
         waitingMessage.classList.add('hidden');
@@ -2830,48 +2219,33 @@ function updateRoomControls() {
         waitingMessage.classList.remove('hidden');
     }
 }
-
-// ═══════════════════════════════════════════════════════════════════════
-// WORD SELECTION MODAL (CUSTOM WORD MODE)
-// ═══════════════════════════════════════════════════════════════════════
-
 function showWaitingForWordModal(wordSetterName) {
     const modal = document.getElementById('waitingForWordModal');
     const message = document.getElementById('waitingForWordMessage');
-    
     if (message) {
         message.textContent = `Waiting for ${wordSetterName} to choose a word...`;
     }
-    
     showModal('waitingForWordModal');
 }
-
 let coinFlipData = null;
 let hasSelectedCoinSide = false;
-
 function showCoinFlipModal(data) {
     coinFlipData = data;
     hasSelectedCoinSide = false;
-    
     const modal = document.getElementById('coinFlipModal');
     const selectionDiv = document.getElementById('coinFlipSelection');
     const animationDiv = document.getElementById('coinFlipAnimation');
     const winnerDiv = document.getElementById('coinFlipWinner');
     const buttonsDiv = document.getElementById('coinFlipButtons');
     const statusDiv = document.getElementById('coinFlipStatus');
-    
-    // Reset display
     if (selectionDiv) selectionDiv.classList.remove('hidden');
     if (animationDiv) animationDiv.classList.add('hidden');
     if (winnerDiv) winnerDiv.classList.add('hidden');
     if (buttonsDiv) buttonsDiv.classList.remove('hidden');
-    
-    // Update player names
     const player1Name = document.getElementById('coinFlipPlayer1Name');
     const player2Name = document.getElementById('coinFlipPlayer2Name');
     const player1Choice = document.getElementById('coinFlipPlayer1Choice');
     const player2Choice = document.getElementById('coinFlipPlayer2Choice');
-    
     if (data.isTeamMode) {
         if (player1Name) player1Name.innerHTML = 'Team 1 <small style="display: block; font-size: 0.7rem; color: var(--text-secondary);">(Team Leader)</small>';
         if (player2Name) player2Name.innerHTML = 'Team 2 <small style="display: block; font-size: 0.7rem; color: var(--text-secondary);">(Team Leader)</small>';
@@ -2879,7 +2253,6 @@ function showCoinFlipModal(data) {
         if (player1Name) player1Name.textContent = data.player1?.username || 'Player 1';
         if (player2Name) player2Name.textContent = data.player2?.username || 'Player 2';
     }
-    
     if (player1Choice) {
         player1Choice.textContent = 'Waiting...';
         player1Choice.className = 'player-choice';
@@ -2888,12 +2261,9 @@ function showCoinFlipModal(data) {
         player2Choice.textContent = 'Waiting...';
         player2Choice.className = 'player-choice';
     }
-    
-    // Check if current user is a participant (only team leaders can choose)
     const isPlayer1 = data.player1?.id === mySocketId;
     const isPlayer2 = data.player2?.id === mySocketId;
     const isParticipant = isPlayer1 || isPlayer2;
-    
     if (buttonsDiv) {
         if (isParticipant) {
             buttonsDiv.style.display = 'flex';
@@ -2901,7 +2271,6 @@ function showCoinFlipModal(data) {
             buttonsDiv.style.display = 'none';
         }
     }
-    
     if (statusDiv) {
         if (isParticipant) {
             statusDiv.innerHTML = data.isTeamMode 
@@ -2911,21 +2280,15 @@ function showCoinFlipModal(data) {
             statusDiv.textContent = data.isTeamMode ? 'Waiting for Team Leaders to choose...' : 'Waiting for players to choose...';
         }
     }
-    
     showModal('coinFlipModal');
 }
-
 function selectCoinSide(side) {
     if (hasSelectedCoinSide) return;
     if (!coinFlipData) return;
     if (!currentRoom) return;
-    
     hasSelectedCoinSide = true;
-    
-    // Disable buttons immediately
     const buttons = document.querySelectorAll('.coin-btn');
     buttons.forEach(btn => btn.disabled = true);
-    
     const statusDiv = document.getElementById('coinFlipStatus');
     const isTeamMode = coinFlipData.isTeamMode;
     if (statusDiv) {
@@ -2933,89 +2296,70 @@ function selectCoinSide(side) {
             ? `You chose ${side}! Opposing team gets the other side automatically...` 
             : `You chose ${side}! Opponent gets the other side automatically...`;
     }
-    
     socket.emit('selectCoinSide', {
         roomId: currentRoom.roomId,
         side: side
     });
 }
-
 function updateCoinFlipSelection(data) {
     const player1Choice = document.getElementById('coinFlipPlayer1Choice');
     const player2Choice = document.getElementById('coinFlipPlayer2Choice');
     const player1Div = document.getElementById('coinFlipPlayer1');
     const player2Div = document.getElementById('coinFlipPlayer2');
     const statusDiv = document.getElementById('coinFlipStatus');
-    
-    // Update both players' choices at once
     if (data.player1Choice && player1Choice) {
         player1Choice.textContent = data.player1Choice === 'heads' ? 'Heads' : 'Tails';
         player1Choice.className = `player-choice ${data.player1Choice}`;
         if (player1Div) player1Div.classList.add('chosen');
     }
-    
     if (data.player2Choice && player2Choice) {
         player2Choice.textContent = data.player2Choice === 'heads' ? 'Heads' : 'Tails';
         player2Choice.className = `player-choice ${data.player2Choice}`;
         if (player2Div) player2Div.classList.add('chosen');
     }
-    
     if (statusDiv && coinFlipData) {
         const p1Chosen = player1Div?.classList.contains('chosen');
         const p2Chosen = player2Div?.classList.contains('chosen');
         const isTeamMode = coinFlipData.isTeamMode;
-        
         if (p1Chosen && p2Chosen) {
             statusDiv.textContent = isTeamMode ? 'Both Team Leaders chose! Flipping coin...' : 'Both players chose! Flipping coin...';
         }
     }
 }
-
 function showCoinFlipResult(data) {
     const selectionDiv = document.getElementById('coinFlipSelection');
     const animationDiv = document.getElementById('coinFlipAnimation');
     const winnerDiv = document.getElementById('coinFlipWinner');
     const resultDiv = document.getElementById('coinFlipResult');
     const counterDisplay = document.getElementById('coinCounterDisplay');
-    
     if (selectionDiv) selectionDiv.classList.add('hidden');
     if (animationDiv) animationDiv.classList.remove('hidden');
     if (winnerDiv) winnerDiv.classList.add('hidden');
     if (resultDiv) resultDiv.textContent = '';
-    
-    // Countdown sequence: 3, 2, 1, then HEADS/TAILS
     const countdownNumbers = ['3', '2', '1'];
     let currentIndex = 0;
-    
     function showNextCount() {
         if (currentIndex < countdownNumbers.length) {
-            // Show countdown number with animation
             if (counterDisplay) {
                 counterDisplay.classList.remove('counting', 'result');
                 counterDisplay.textContent = countdownNumbers[currentIndex];
-                // Force reflow to restart animation
                 void counterDisplay.offsetWidth;
                 counterDisplay.classList.add('counting');
             }
             currentIndex++;
             setTimeout(showNextCount, 1500); // 1.5 seconds between each number (slower)
         } else {
-            // Show HEADS or TAILS result with slow reveal animation
             if (counterDisplay) {
                 counterDisplay.classList.remove('counting');
                 const resultText = data.result === 'heads' ? 'HEADS' : 'TAILS';
                 counterDisplay.textContent = resultText;
-                // Force reflow to restart animation
                 void counterDisplay.offsetWidth;
                 counterDisplay.classList.add('result');
             }
-            
             if (resultDiv) {
                 const resultText = data.result === 'heads' ? 'HEADS!' : 'TAILS!';
                 resultDiv.textContent = resultText;
             }
-            
-            // Show winner after a delay
             setTimeout(() => {
                 if (winnerDiv) {
                     winnerDiv.classList.remove('hidden');
@@ -3030,11 +2374,8 @@ function showCoinFlipResult(data) {
                         }
                     }
                 }
-                
-                // Highlight winner
                 const player1Div = document.getElementById('coinFlipPlayer1');
                 const player2Div = document.getElementById('coinFlipPlayer2');
-                
                 if (player1Div && player2Div) {
                     if (data.winner.id === coinFlipData?.player1?.id) {
                         player1Div.classList.add('winner');
@@ -3045,57 +2386,41 @@ function showCoinFlipResult(data) {
             }, 2000);
         }
     }
-
     showNextCount();
 }
-
 function submitCustomWord() {
     const wordInput = document.getElementById('customWord');
     const submitBtn = document.getElementById('submitWordBtn');
-    
     submitBtn.disabled = false;
     submitBtn.innerHTML = '<i class="fas fa-check"></i> Submit Word';
-    
     const word = wordInput.value.trim();
-    
     if (!word) {
         showModalError('wordSelectionError', 'Please enter a word');
         return;
     }
-    
     if (word.length < 3) {
         showModalError('wordSelectionError', 'Word must be at least 3 characters long');
         return;
     }
-    
     if (word.length > 25) {
         showModalError('wordSelectionError', 'Word is too long (maximum 25 characters)');
         return;
     }
-    
     const wordRegex = /^[A-Za-z\s]+$/;
     if (!wordRegex.test(word)) {
         showModalError('wordSelectionError', 'Word can only contain letters and spaces (no numbers)');
         return;
     }
-    
     submitBtn.disabled = true;
     submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Submitting...';
-    
     socket.emit('submitCustomWord', {
         roomId: currentRoom.roomId,
         word: word
     });
 }
-
-// ═══════════════════════════════════════════════════════════════════════
-// HINT SYSTEM
-// ═══════════════════════════════════════════════════════════════════════
-
 function requestHint() {
     if (!currentRoom || !socket) return;
     if (!checkServerAndShowError()) return;
-
     if (isOnWordSetterTeam) {
         showNotification('Your team is setting the word — you cannot request hints!', 'warning');
         return;
@@ -3103,97 +2428,73 @@ function requestHint() {
         showNotification('You are the word setter — you cannot request hints!', 'warning');
         return;
     }
-
     if (hintsRemaining <= 0) {
         showNotification('No hints remaining!', 'error');
         return;
     }
-
-    // Show the question modal instead of directly requesting
     const questionInput = document.getElementById('questionInput');
     if (questionInput) {
         questionInput.value = '';
     }
     showModal('askQuestionModal');
 }
-
 function submitQuestion() {
     const questionInput = document.getElementById('questionInput');
     const question = questionInput.value.trim();
-
     if (!question) {
         showNotification('Please enter a question', 'error');
         return;
     }
-
     if (!checkServerAndShowError()) return;
-
-    // Disable the ask hint button while waiting for response
     const askHintBtn = document.getElementById('askHintBtn');
     if (askHintBtn) {
         askHintBtn.disabled = true;
         askHintBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Waiting for host...';
     }
-
     hideModal('askQuestionModal');
-
     socket.emit('requestHint', {
         roomId: currentRoom.roomId,
         question: question
     });
 }
-
 function showHintRequestModal(requesterName, question) {
     const modal = document.getElementById('hintRequestModal');
     const message = document.getElementById('hintRequestPlayer');
     const questionLabel = document.getElementById('playerQuestionLabel');
     const questionText = document.getElementById('playerQuestionText');
     const hintInput = document.getElementById('hintInput');
-
     if (message) {
         message.textContent = `${requesterName} has requested a hint!`;
     }
-
     if (questionLabel) {
         questionLabel.textContent = `${requesterName}'s Question:`;
     }
-
     if (questionText) {
         questionText.textContent = question || 'No question provided';
     }
-
     if (hintInput) {
         hintInput.value = '';
     }
-
     showModal('hintRequestModal');
 }
-
 function provideHint() {
     const hintInput = document.getElementById('hintInput');
     const hint = hintInput.value.trim();
-    
     if (!hint) {
         showNotification('Please enter a hint', 'error');
         return;
     }
-    
     if (!checkServerAndShowError()) return;
-    
     socket.emit('provideHint', {
         roomId: currentRoom.roomId,
         hint: hint
     });
-    
     hideModal('hintRequestModal');
 }
-
 function displayReceivedHint(hint, hintNumber, question) {
     const receivedHints = document.getElementById('receivedHints');
     const hintsList = document.getElementById('hintsList');
-
     receivedHints.classList.remove('hidden');
-
     const hintItem = document.createElement('div');
     hintItem.className = 'hint-item';
     hintItem.innerHTML = `
@@ -3203,19 +2504,14 @@ function displayReceivedHint(hint, hintNumber, question) {
         ${question ? `<div class="hint-question"><strong>Q:</strong> ${escapeHtml(question)}</div>` : ''}
         <div class="hint-answer"><strong>A:</strong> ${escapeHtml(hint)}</div>
     `;
-
     hintsList.appendChild(hintItem);
-
-    // Scroll to the new hint
     hintsList.scrollTop = hintsList.scrollHeight;
 }
-
 function updateHintsDisplay() {
     const hintsRemainingEl = document.getElementById('hintsRemaining');
     if (hintsRemainingEl) {
         hintsRemainingEl.textContent = hintsRemaining;
     }
-    
     const askHintBtn = document.getElementById('askHintBtn');
     if (askHintBtn) {
         if (hintsRemaining <= 0) {
@@ -3227,13 +2523,7 @@ function updateHintsDisplay() {
         }
     }
 }
-
-// ═══════════════════════════════════════════════════════════════════════
-// COUNTDOWN
-// ═══════════════════════════════════════════════════════════════════════
-
 function showCountdown(callback) {
-    // Create countdown overlay
     const overlay = document.createElement('div');
     overlay.id = 'countdownOverlay';
     overlay.className = 'countdown-overlay';
@@ -3242,15 +2532,11 @@ function showCountdown(callback) {
             <div class="countdown-number" id="countdownNumber">3</div>
         </div>
     `;
-
     document.body.appendChild(overlay);
-
     const numberEl = document.getElementById('countdownNumber');
     let count = 3;
-
     const countdownInterval = setInterval(() => {
         count--;
-
         if (count > 0) {
             numberEl.textContent = count;
             numberEl.classList.remove('animate');
@@ -3268,21 +2554,13 @@ function showCountdown(callback) {
             }, 300);
         }
     }, 1000);
-
-    // Initial animation
     setTimeout(() => {
         numberEl.classList.add('animate');
     }, 100);
 }
-
-// ═══════════════════════════════════════════════════════════════════════
-// GAME VIEW
-// ═══════════════════════════════════════════════════════════════════════
-
 function showGameView(data) {
     showView('gameView');
     setupGameUI(data);
-    
     const miniChatTabs = document.getElementById('miniChatTabs');
     if (miniChatTabs && data.mode) {
         const teamTab = miniChatTabs.querySelector('[data-chat-type="team"]');
@@ -3300,32 +2578,24 @@ function showGameView(data) {
             }
         }
     }
-    
     document.getElementById('miniChatMessages').innerHTML = '';
     filterChatMessages('miniChatMessages', currentChatType);
-
     resetChatNotifications('game', 'global');
     resetChatNotifications('game', 'team');
 }
-
 function setupGameUI(data) {
     document.querySelectorAll('.man-part').forEach(part => part.classList.remove('show'));
-    
     const wordDisplay = document.getElementById('wordDisplay');
     wordDisplay.innerHTML = '';
-    
     for (let i = 0; i < data.gameState.wordLength; i++) {
         const box = document.createElement('div');
         box.className = 'letter-box';
         box.dataset.index = i;
-        
         if (data.gameState.spaceIndices && data.gameState.spaceIndices.includes(i)) {
             box.classList.add('space');
         }
-        
         wordDisplay.appendChild(box);
     }
-    
     const wordHint = document.getElementById('wordHint');
     if (data.gameState.hint) {
         wordHint.textContent = `Hint: ${data.gameState.hint}`;
@@ -3340,17 +2610,14 @@ function setupGameUI(data) {
     } else {
         wordHint.textContent = 'Hint: Loading...';
     }
-    
     const askHintSection = document.getElementById('askHintSection');
     const hintsContainer = document.getElementById('hintsContainer');
     const receivedHints = document.getElementById('receivedHints');
-    
     if (data.gameState.isCustomWord) {
         if (isOnWordSetterTeam || data.gameState.wordSetter === mySocketId) {
             askHintSection.classList.add('hidden');
             hintsContainer.classList.add('hidden');
             receivedHints.classList.add('hidden');
-
             const keyboard = document.getElementById('keyboard');
             if (keyboard) {
                 keyboard.style.opacity = '0.3';
@@ -3361,7 +2628,6 @@ function setupGameUI(data) {
             hintsContainer.classList.remove('hidden');
             receivedHints.classList.remove('hidden');
             updateHintsDisplay();
-
             const keyboard = document.getElementById('keyboard');
             if (keyboard) {
                 keyboard.style.opacity = '';
@@ -3372,18 +2638,14 @@ function setupGameUI(data) {
         askHintSection.classList.add('hidden');
         hintsContainer.classList.add('hidden');
         receivedHints.classList.add('hidden');
-
         const keyboard = document.getElementById('keyboard');
         if (keyboard) {
             keyboard.style.opacity = '';
             keyboard.style.pointerEvents = '';
         }
     }
-    
     createKeyboard();
-    
     const scoreboard = document.getElementById('scoreboard');
-
     if (scoreboard) {
         if (data.gameState.isCustomWord) {
             scoreboard.classList.add('hidden');
@@ -3392,26 +2654,19 @@ function setupGameUI(data) {
             updateScores(data.players);
         }
     }
-    
-    // FIX: Use player lookup for initial turn indicator
     const initialPlayers = data.players || activePlayers;
     const currentPlayer = initialPlayers[data.gameState.currentTurn];
     updateTurnIndicator(currentPlayer || data.players[0]);
-    
     document.getElementById('wrongLetters').innerHTML = '';
-    
     const hintsList = document.getElementById('hintsList');
     if (hintsList) {
         hintsList.innerHTML = '';
     }
 }
-
 function createKeyboard() {
     const keyboard = document.getElementById('keyboard');
     keyboard.innerHTML = '';
-
     const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-
     letters.split('').forEach(letter => {
         const key = document.createElement('button');
         key.className = 'key';
@@ -3421,60 +2676,40 @@ function createKeyboard() {
         keyboard.appendChild(key);
     });
 }
-
-// FIX: Improved turn validation for custom word mode
 function makeGuess(letter) {
     if (!gameState || !socket || !currentRoom) return;
     if (!checkServerAndShowError()) return;
-    
-    // Block word setter and word setter's team from guessing
     if (isWordSetter) {
         showNotification('You are the word setter — you cannot guess!', 'warning');
         return;
     }
-    
     if (isOnWordSetterTeam) {
         showNotification('Your team is setting the word — you cannot guess!', 'warning');
         return;
     }
-
-    // FIX: Check turn by looking up current player ID instead of using indices
-    // The server sends currentTurn as an index into the full players array
     const allPlayers = gameState.players;
-    
-    // Safety check - ensure players array exists
     if (!allPlayers || !Array.isArray(allPlayers) || allPlayers.length === 0) {
         showNotification('Game error - please refresh', 'error');
         return;
     }
-    
     const currentPlayer = allPlayers[gameState.currentTurn];
     const currentPlayerId = currentPlayer?.id;
-    
     if (currentPlayerId !== mySocketId) {
         showNotification('Wait for your turn!', 'warning');
         return;
     }
-    
     socket.emit('makeGuess', { roomId: currentRoom.roomId, letter: letter });
 }
-
 function updateGameState(data) {
-    // FIX: Always update word from server (word is not logged to console for security)
     if (data.word) {
         gameState.word = data.word;
     }
-    
     gameState.guessedLetters = data.guessedLetters;
     gameState.currentTurn = data.currentTurn;
-    
-    // Update players array if sent from server
     if (data.players) {
         gameState.players = data.players;
         log('Updated players array from guessResult, count:', data.players.length);
     }
-    
-    // Update letter boxes
     if (gameState.word) {
         document.querySelectorAll('.letter-box').forEach((box, index) => {
             const letter = gameState.word[index];
@@ -3484,58 +2719,45 @@ function updateGameState(data) {
             }
         });
     }
-    
     const wrongLettersContainer = document.getElementById('wrongLetters');
     wrongLettersContainer.innerHTML = '';
-    
     data.wrongLetters.forEach((letter, index) => {
         const wrongLetter = document.createElement('div');
         wrongLetter.className = 'wrong-letter';
         wrongLetter.textContent = letter;
         wrongLetter.style.animationDelay = `${index * 0.1}s`;
         wrongLettersContainer.appendChild(wrongLetter);
-        
         const part = document.querySelector(`.part-${index + 1}`);
         if (part) part.classList.add('show');
     });
-    
     data.guessedLetters.forEach(letter => {
         const key = document.querySelector(`.key[data-letter="${letter}"]`);
         if (key) { key.classList.add('correct'); key.disabled = true; }
     });
-    
     data.wrongLetters.forEach(letter => {
         const key = document.querySelector(`.key[data-letter="${letter}"]`);
         if (key) { key.classList.add('wrong'); key.disabled = true; }
     });
-    
-    // Only update scores if not in custom word mode
     if (!gameState.isCustomWord) {
         updateScoresList(data.scores);
     }
-    
-    // FIX: Update turn indicator using player ID lookup
     const allPlayers = gameState.players || activePlayers;
     const currentPlayer = allPlayers[data.currentTurn];
     if (currentPlayer) {
         updateTurnIndicator(currentPlayer);
     }
 }
-
 function updateScores(players) {
     const scoresList = document.getElementById('scoresList');
     scoresList.innerHTML = '';
-
     players.forEach((player, index) => {
         const isWordSetterPlayer = (gameState && gameState.wordSetter === player.id);
         const scoreItem = document.createElement('div');
         scoreItem.className = `score-item ${index === gameState.currentTurn ? 'active' : ''} ${isWordSetterPlayer ? 'word-setter' : ''}`;
         scoreItem.dataset.playerId = player.id;
         if (player.id === mySocketId) scoreItem.dataset.isMe = 'true';
-
         const avatarSrc = (player.id === mySocketId) ? userAvatar : (player.avatar || null);
         const adminBadge = player.isAdmin ? ' <span style="color: var(--warning); font-size: 0.7rem;">[ADMIN]</span>' : '';
-
         scoreItem.innerHTML = `
             <div class="score-player">
                 ${buildAvatarHTML(avatarSrc, player.username, 30)}
@@ -3543,22 +2765,18 @@ function updateScores(players) {
             </div>
             <span class="score-value">0</span>
         `;
-
         scoresList.appendChild(scoreItem);
     });
 }
-
 function updateScoresList(scores) {
     document.querySelectorAll('.score-item').forEach(item => {
         const playerId = item.dataset.playerId;
         item.querySelector('.score-value').textContent = scores[playerId] || 0;
     });
 }
-
 function updateTurnIndicator(player) {
     const turnIndicator = document.getElementById('turnIndicator');
     const currentPlayerDiv = document.getElementById('currentPlayer');
-    
     if (isOnWordSetterTeam) {
         turnIndicator.textContent = isWordSetter ? '📝 You are the Word Setter' : '📝 Your team is setting the word';
         turnIndicator.classList.remove('your-turn');
@@ -3572,22 +2790,15 @@ function updateTurnIndicator(player) {
         turnIndicator.classList.remove('your-turn');
         turnIndicator.classList.remove('word-setter');
     }
-    
     const avatarSrc = (player.id === mySocketId) ? userAvatar : (player.avatar || null);
     currentPlayerDiv.innerHTML = `
         ${buildAvatarHTML(avatarSrc, player.username, 40)}
         <span class="current-player-name">${escapeHtml(player.username)}</span>
     `;
 }
-
-// ═══════════════════════════════════════════════════════════════════════
-// CHAT FUNCTIONS
-// ═══════════════════════════════════════════════════════════════════════
-
 function filterChatMessages(containerId, chatType) {
     const container = document.getElementById(containerId);
     if (!container) return;
-
     container.querySelectorAll('.chat-message').forEach(msg => {
         if (msg.classList.contains('system')) {
             msg.style.display = '';
@@ -3596,14 +2807,11 @@ function filterChatMessages(containerId, chatType) {
         const msgType = msg.dataset.chatType || 'global';
         msg.style.display = (msgType === chatType) ? '' : 'none';
     });
-
     container.scrollTop = container.scrollHeight;
 }
-
 function updateChatNotifications(view, chatType) {
     const count = unreadCounts[view][chatType];
     const displayCount = count > 99 ? '99+' : count.toString();
-    
     if (view === 'room') {
         const badge = document.getElementById(chatType === 'global' ? 'globalChatBadge' : 'teamChatBadge');
         if (badge) {
@@ -3626,34 +2834,28 @@ function updateChatNotifications(view, chatType) {
         }
     }
 }
-
 function incrementChatNotification(view, chatType) {
     if (unreadCounts[view] && unreadCounts[view][chatType] !== undefined) {
         unreadCounts[view][chatType]++;
         updateChatNotifications(view, chatType);
     }
 }
-
 function resetChatNotifications(view, chatType) {
     if (unreadCounts[view] && unreadCounts[view][chatType] !== undefined) {
         unreadCounts[view][chatType] = 0;
         updateChatNotifications(view, chatType);
     }
 }
-
 function addLobbyChatMessage(message) {
     const lobbyChatMessages = document.getElementById('lobbyChatMessages');
     if (!lobbyChatMessages) return;
-    
     const messageDiv = document.createElement('div');
-    
     if (message.type === 'system') {
         messageDiv.className = 'chat-message system';
         messageDiv.innerHTML = `<div class="message-content">${escapeHtml(message.message)}</div>`;
     } else {
         const isOwn = message.username === currentUser.username;
         const avatarSrc = isOwn ? userAvatar : (message.avatar || null);
-        
         messageDiv.className = `chat-message ${isOwn ? 'own' : ''}`;
         messageDiv.innerHTML = `
             <div class="message-row" style="display:flex;align-items:flex-end;gap:8px;${isOwn ? 'flex-direction:row-reverse;' : ''}">
@@ -3665,19 +2867,15 @@ function addLobbyChatMessage(message) {
             </div>
         `;
     }
-    
     lobbyChatMessages.appendChild(messageDiv);
     lobbyChatMessages.scrollTop = lobbyChatMessages.scrollHeight;
 }
-
 function sendLobbyChatMessage() {
     const input = document.getElementById('lobbyChatInput');
     if (!input) return;
     const message = input.value.trim();
     if (!message) return;
     if (!checkServerAndShowError()) return;
-
-    // Check for admin commands
     if (isAdmin() && message.startsWith('/')) {
         const handled = handleAdminCommand(message);
         if (handled) {
@@ -3685,28 +2883,22 @@ function sendLobbyChatMessage() {
             return;
         }
     }
-
     socket.emit('lobbyChatMessage', { message, username: currentUser.username, avatar: userAvatar || null });
     input.value = '';
 }
-
 function addChatMessage(message) {
     const chatMessages = document.getElementById('chatMessages');
     const miniChatMessages = document.getElementById('miniChatMessages');
-    
     const messageDiv = document.createElement('div');
     const isTeamMessage = message.type === 'team';
     const messageChatType = isTeamMessage ? 'team' : 'global';
-    
     if (message.type === 'system') {
         messageDiv.className = 'chat-message system';
         messageDiv.innerHTML = `<div class="message-content">${escapeHtml(message.message)}</div>`;
     } else {
         const isOwn = message.username === currentUser.username;
         const avatarSrc = isOwn ? userAvatar : (message.avatar || null);
-        
         messageDiv.className = `chat-message ${isOwn ? 'own' : ''} ${isTeamMessage ? 'team' : ''}`;
-        
         messageDiv.innerHTML = `
             <div class="message-row" style="display:flex;align-items:flex-end;gap:8px;${isOwn ? 'flex-direction:row-reverse;' : ''}">
                 ${buildAvatarHTML(avatarSrc, message.username, 28)}
@@ -3717,15 +2909,12 @@ function addChatMessage(message) {
             </div>
         `;
     }
-
     if (chatMessages) {
         const clone = messageDiv.cloneNode(true);
         clone.dataset.chatType = messageChatType;
         chatMessages.appendChild(clone);
-        
         const activeRoomTab = document.querySelector('#chatTabs .chat-tab.active');
         const activeRoomType = activeRoomTab ? activeRoomTab.dataset.chatType : 'global';
-        
         if (message.type !== 'system' && clone.dataset.chatType !== activeRoomType) {
             clone.style.display = 'none';
             incrementChatNotification('room', messageChatType);
@@ -3734,15 +2923,12 @@ function addChatMessage(message) {
             chatMessages.scrollTop = chatMessages.scrollHeight;
         }
     }
-
     if (miniChatMessages) {
         const clone = messageDiv.cloneNode(true);
         clone.dataset.chatType = messageChatType;
         miniChatMessages.appendChild(clone);
-        
         const activeGameTab = document.querySelector('#miniChatTabs .chat-tab.active');
         const activeGameType = activeGameTab ? activeGameTab.dataset.chatType : 'global';
-        
         if (message.type !== 'system' && clone.dataset.chatType !== activeGameType) {
             clone.style.display = 'none';
             incrementChatNotification('game', messageChatType);
@@ -3752,14 +2938,11 @@ function addChatMessage(message) {
         }
     }
 }
-
 function sendChatMessage() {
     const input = document.getElementById('chatInput');
     const message = input.value.trim();
     if (!message || !currentRoom) return;
     if (!checkServerAndShowError()) return;
-
-    // Check for admin commands
     if (isAdmin() && message.startsWith('/')) {
         const handled = handleAdminCommand(message);
         if (handled) {
@@ -3767,25 +2950,17 @@ function sendChatMessage() {
             return;
         }
     }
-
     socket.emit('chatMessage', { roomId: currentRoom.roomId, message, username: currentUser.username, chatType: currentChatType, avatar: userAvatar || null });
     input.value = '';
 }
-
 function sendMiniChatMessage() {
     const input = document.getElementById('miniChatInput');
     const message = input.value.trim();
     if (!message || !currentRoom) return;
     if (!checkServerAndShowError()) return;
-    
     socket.emit('chatMessage', { roomId: currentRoom.roomId, message, username: currentUser.username, chatType: currentChatType, avatar: userAvatar || null });
     input.value = '';
 }
-
-// ═══════════════════════════════════════════════════════════════════════
-// GAME OVER
-// ═══════════════════════════════════════════════════════════════════════
-
 function showGameOverModal(data) {
     const modal = document.getElementById('gameOverModal');
     const modalTitle = document.getElementById('modalTitle');
@@ -3793,13 +2968,9 @@ function showGameOverModal(data) {
     const modalWord = document.getElementById('modalWord');
     const modalIcon = document.getElementById('modalIcon');
     const finalScores = document.getElementById('finalScores');
-    
-    // Reset word setter states for next game
     isWordSetter = false;
     isOnWordSetterTeam = false;
-    
     modalWord.textContent = data.word;
-    
     if (data.isWin) {
         modalTitle.textContent = '🎉 Word Guessed!';
         modalMessage.textContent = 'Congratulations! The word was guessed!';
@@ -3812,7 +2983,6 @@ function showGameOverModal(data) {
         modalIcon.textContent = '💀';
         updateStats('loss');
     }
-    
     if (gameState && gameState.isCustomWord) {
         finalScores.style.display = 'none';
     } else {
@@ -3825,10 +2995,8 @@ function showGameOverModal(data) {
             finalScores.appendChild(scoreDiv);
         });
     }
-    
     modal.classList.add('show');
 }
-
 function createConfetti() {
     const colors = ['#4ade80', '#60a5fa', '#f472b6', '#fbbf24', '#f87171'];
     for (let i = 0; i < 50; i++) {
@@ -3844,11 +3012,6 @@ function createConfetti() {
         }, i * 50);
     }
 }
-
-// ═══════════════════════════════════════════════════════════════════════
-// EVENT LISTENERS
-// ═══════════════════════════════════════════════════════════════════════
-
 function initEventListeners() {
     const logoutBtn = document.getElementById('logoutBtn');
     if (logoutBtn) {
@@ -3858,29 +3021,23 @@ function initEventListeners() {
             location.reload(); 
         });
     }
-    
     const settingsBtn = document.getElementById('settingsBtn');
     if (settingsBtn) settingsBtn.addEventListener('click', () => { 
         updateAvatarPreview();
-        // Hide username change section for admin users
         const usernameSettingsSection = document.getElementById('usernameSettingsSection');
         if (usernameSettingsSection) {
             usernameSettingsSection.style.display = isAdmin() ? 'none' : 'block';
         }
         showModal('settingsModal'); 
     });
-
-    // Admin Panel Button
     const adminPanelBtn = document.getElementById('adminPanelBtn');
     if (adminPanelBtn) {
         adminPanelBtn.addEventListener('click', () => {
             showAdminPanel();
         });
     }
-
     const closeSettings = document.getElementById('closeSettings');
     if (closeSettings) closeSettings.addEventListener('click', () => hideModal('settingsModal'));
-    
     const uploadAvatarBtn = document.getElementById('uploadAvatarBtn');
     const avatarInput = document.getElementById('avatarInput');
     if (uploadAvatarBtn && avatarInput) {
@@ -3890,16 +3047,12 @@ function initEventListeners() {
             e.target.value = ''; 
         });
     }
-    
-    // Username change handler
     const changeUsernameBtn = document.getElementById('changeUsernameBtn');
     const newUsernameInput = document.getElementById('newUsernameInput');
     const usernameError = document.getElementById('usernameError');
-    
     if (changeUsernameBtn && newUsernameInput) {
         changeUsernameBtn.addEventListener('click', () => {
             const newUsername = newUsernameInput.value.trim();
-            
             if (!newUsername) {
                 if (usernameError) {
                     usernameError.textContent = 'Please enter a username';
@@ -3907,8 +3060,6 @@ function initEventListeners() {
                 }
                 return;
             }
-            
-            // Validate username format
             if (newUsername.includes(' ')) {
                 if (usernameError) {
                     usernameError.textContent = 'Username cannot contain spaces';
@@ -3916,7 +3067,6 @@ function initEventListeners() {
                 }
                 return;
             }
-            
             const validCharsRegex = /^[a-zA-Z0-9._-]+$/;
             if (!validCharsRegex.test(newUsername)) {
                 if (usernameError) {
@@ -3925,7 +3075,6 @@ function initEventListeners() {
                 }
                 return;
             }
-            
             if (newUsername.length < 2 || newUsername.length > 20) {
                 if (usernameError) {
                     usernameError.textContent = 'Username must be between 2 and 20 characters';
@@ -3933,8 +3082,6 @@ function initEventListeners() {
                 }
                 return;
             }
-            
-            // Check banned variations
             const bannedVariations = ['shreyan', 'shreyn', 'shryn', 'shyn', 'sreyan', 'sreyn', 'sryan', 'sryn', 'shrayan', 'shrayn', 'shriyan', 'shriyn', 'shrian', 'shrien', 'shryen', 'shryan', 'shryon', 'shryun','samarth', 'samart', 'samarthh', 'samarath','samerth', 'samirth', 'somarth', 'sumarth', 'samurth','samrth', 'smarth', 'samarh', 'samath','samarat', 'samrat', 'samraat', 'samrath','samaryh', 'samaryth', 'samarht', 'samarthy','samrath', 'samarht', 'smaarth', 'saamarth','samrt', 'samr', 'samar','samarath', 'samarrth', 'samartht'];
             const usernameLower = newUsername.toLowerCase();
             for (const variation of bannedVariations) {
@@ -3946,8 +3093,6 @@ function initEventListeners() {
                     return;
                 }
             }
-            
-            // Check if trying to change to "admin"
             if (usernameLower === 'admin') {
                 if (usernameError) {
                     usernameError.textContent = 'This username is reserved and cannot be used';
@@ -3955,8 +3100,6 @@ function initEventListeners() {
                 }
                 return;
             }
-
-            // Check reserved commands
             const reservedCommands = ['everyonelogout', 'adminlogout', '/help'];
             if (reservedCommands.includes(usernameLower)) {
                 if (usernameError) {
@@ -3965,33 +3108,24 @@ function initEventListeners() {
                 }
                 return;
             }
-
-            // Check if /help command
             if (newUsername === '/help') {
                 showNotification('Available commands: /help, EveryoneLogout (admin only), AdminLogout (admin only)', 'info', 8000);
                 newUsernameInput.value = '';
                 return;
             }
-
-            // Clear error
             if (usernameError) {
                 usernameError.style.display = 'none';
             }
-            
-            // Send request to server
             if (socket) {
                 socket.emit('changeUsername', { newUsername });
             }
         });
-        
-        // Clear error when typing
         newUsernameInput.addEventListener('input', () => {
             if (usernameError) {
                 usernameError.style.display = 'none';
             }
         });
     }
-    
     document.querySelectorAll('#chatTabs .chat-tab').forEach(tab => {
         tab.addEventListener('click', () => {
             document.querySelectorAll('#chatTabs .chat-tab').forEach(t => t.classList.remove('active'));
@@ -4002,7 +3136,6 @@ function initEventListeners() {
             resetChatNotifications('room', newChatType);
         });
     });
-    
     document.querySelectorAll('#miniChatTabs .chat-tab').forEach(tab => {
         tab.addEventListener('click', () => {
             document.querySelectorAll('#miniChatTabs .chat-tab').forEach(t => t.classList.remove('active'));
@@ -4013,33 +3146,24 @@ function initEventListeners() {
             resetChatNotifications('game', newChatType);
         });
     });
-    
     document.getElementById('createRoomBtn').addEventListener('click', () => showModal('createRoomModal'));
-    
     const onlineStatusBtn = document.getElementById('onlineStatusBtn');
     const onlineUsersDropdown = document.getElementById('onlineUsersDropdown');
-    
     if (onlineStatusBtn && onlineUsersDropdown) {
         onlineStatusBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             onlineStatusBtn.classList.toggle('active');
             onlineUsersDropdown.classList.toggle('hidden');
-            
-            // Reset to server tab when opening dropdown
             if (!onlineUsersDropdown.classList.contains('hidden')) {
                 switchLeaderboardTab('server');
             }
         });
-        
-        // Close dropdown when clicking outside
         document.addEventListener('click', (e) => {
             if (!onlineStatusBtn.contains(e.target) && !onlineUsersDropdown.contains(e.target)) {
                 onlineStatusBtn.classList.remove('active');
                 onlineUsersDropdown.classList.add('hidden');
             }
         });
-        
-        // Tab click handlers
         document.querySelectorAll('.dropdown-tab-inline').forEach(tab => {
             tab.addEventListener('click', (e) => {
                 e.stopPropagation();
@@ -4048,39 +3172,27 @@ function initEventListeners() {
             });
         });
     }
-    
-    // Create room form with difficulty and hint count
     let selectedDifficulty = 'easy';
     let selectedHintCount = 5;
-    
     document.getElementById('createRoomForm').addEventListener('submit', (e) => {
         e.preventDefault();
         const name = document.getElementById('newRoomName').value.trim();
         const errorElement = document.getElementById('roomNameError');
         if (!name) { errorElement.style.display = 'block'; return; }
         errorElement.style.display = 'none';
-        
         const gameMode = document.querySelector('.mode-btn.active').dataset.mode;
         const difficulty = document.querySelector('.difficulty-btn.active').dataset.difficulty;
         const hintCount = difficulty === 'custom' ? selectedHintCount : 5;
-        
         createRoom(name, gameMode, document.getElementById('newRoomPassword').value, difficulty, hintCount);
     });
-    
-    // Game mode selection (solo, 1v1, 2v2, etc.)
     document.querySelectorAll('.mode-btn').forEach(btn => {
         btn.addEventListener('click', () => { 
             document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active')); 
             btn.classList.add('active');
-            
-            // Show/hide custom difficulty option based on game mode
             const customBtn = document.getElementById('customDifficultyBtn');
             const hintSection = document.getElementById('hintCountSection');
-            
             if (btn.dataset.mode === 'solo') {
-                // Hide custom option for solo mode
                 customBtn.classList.add('hidden');
-                // If custom was selected, switch to easy
                 if (customBtn.classList.contains('active')) {
                     customBtn.classList.remove('active');
                     document.querySelector('[data-difficulty="easy"]').classList.add('active');
@@ -4088,20 +3200,15 @@ function initEventListeners() {
                     hintSection.classList.add('hidden');
                 }
             } else {
-                // Show custom option for other modes
                 customBtn.classList.remove('hidden');
             }
         });
     });
-    
-    // Difficulty mode selection (easy, medium, hard, custom)
     document.querySelectorAll('.difficulty-btn').forEach(btn => {
         btn.addEventListener('click', () => { 
             document.querySelectorAll('.difficulty-btn').forEach(b => b.classList.remove('active')); 
             btn.classList.add('active');
             selectedDifficulty = btn.dataset.difficulty;
-            
-            // Show/hide hint count section
             const hintSection = document.getElementById('hintCountSection');
             if (btn.dataset.difficulty === 'custom') {
                 hintSection.classList.remove('hidden');
@@ -4110,8 +3217,6 @@ function initEventListeners() {
             }
         });
     });
-    
-    // Hint count selection (5 or 7)
     document.querySelectorAll('.hint-btn').forEach(btn => {
         btn.addEventListener('click', () => { 
             document.querySelectorAll('.hint-btn').forEach(b => b.classList.remove('active')); 
@@ -4119,96 +3224,67 @@ function initEventListeners() {
             selectedHintCount = parseInt(btn.dataset.hints);
         });
     });
-    
     document.getElementById('cancelCreateRoom').addEventListener('click', () => hideModal('createRoomModal'));
-    
     document.getElementById('joinRoomForm').addEventListener('submit', (e) => {
         e.preventDefault();
         joinRoom(selectedRoomId, document.getElementById('joinRoomPassword').value);
         hideModal('joinRoomModal');
     });
-    
     document.getElementById('cancelJoinRoom').addEventListener('click', () => hideModal('joinRoomModal'));
-    
     document.getElementById('leaveRoomBtn').addEventListener('click', leaveRoom);
     document.getElementById('startGameBtn').addEventListener('click', startGame);
-    
     document.getElementById('joinTeam1').addEventListener('click', () => { 
         if (currentRoom && checkServerAndShowError()) {
             socket.emit('changeTeam', { roomId: currentRoom.roomId, team: 'team1' });
         }
     });
-    
     document.getElementById('joinTeam2').addEventListener('click', () => { 
         if (currentRoom && checkServerAndShowError()) {
             socket.emit('changeTeam', { roomId: currentRoom.roomId, team: 'team2' });
         }
     });
-    
     document.getElementById('refreshRooms').addEventListener('click', () => { 
         if (checkServerAndShowError()) socket.emit('getRooms'); 
     });
-    
-    // Custom Dropdown functionality for room filter
     const roomFilterDropdown = document.getElementById('roomFilterDropdown');
     const roomFilterTrigger = document.getElementById('roomFilterTrigger');
     const roomFilterMenu = document.getElementById('roomFilterMenu');
-    
     if (roomFilterDropdown && roomFilterTrigger && roomFilterMenu) {
-        // Toggle dropdown on trigger click
         roomFilterTrigger.addEventListener('click', (e) => {
             e.stopPropagation();
             roomFilterDropdown.classList.toggle('open');
         });
-        
-        // Handle item selection
         roomFilterMenu.querySelectorAll('.custom-dropdown-item').forEach(item => {
             item.addEventListener('click', (e) => {
                 e.stopPropagation();
                 const value = item.dataset.value;
                 const label = item.textContent;
-                
-                // Update active state
                 roomFilterMenu.querySelectorAll('.custom-dropdown-item').forEach(i => i.classList.remove('active'));
                 item.classList.add('active');
-                
-                // Update trigger text
                 roomFilterTrigger.querySelector('span').textContent = label;
-                
-                // Update filter value
                 currentRoomFilter = value;
-                
-                // Close dropdown
                 roomFilterDropdown.classList.remove('open');
-                
-                // Trigger room refresh
                 if (checkServerAndShowError()) socket.emit('getRooms');
             });
         });
-        
-        // Close dropdown when clicking outside
         document.addEventListener('click', () => {
             roomFilterDropdown.classList.remove('open');
         });
     }
-    
     document.getElementById('sendMessageBtn').addEventListener('click', sendChatMessage);
     document.getElementById('chatInput').addEventListener('keypress', (e) => { 
         if (e.key === 'Enter') sendChatMessage(); 
     });
-    
     document.getElementById('sendMiniChatBtn').addEventListener('click', sendMiniChatMessage);
     document.getElementById('miniChatInput').addEventListener('keypress', (e) => { 
         if (e.key === 'Enter') sendMiniChatMessage(); 
     });
-    
     const sendLobbyChatBtn = document.getElementById('sendLobbyChatBtn');
     const lobbyChatInput = document.getElementById('lobbyChatInput');
     if (sendLobbyChatBtn) sendLobbyChatBtn.addEventListener('click', sendLobbyChatMessage);
     if (lobbyChatInput) lobbyChatInput.addEventListener('keypress', (e) => { 
         if (e.key === 'Enter') sendLobbyChatMessage(); 
     });
-    
     const wordSelectionForm = document.getElementById('wordSelectionForm');
     if (wordSelectionForm) {
         wordSelectionForm.addEventListener('submit', (e) => {
@@ -4216,13 +3292,10 @@ function initEventListeners() {
             submitCustomWord();
         });
     }
-    
     const askHintBtn = document.getElementById('askHintBtn');
     if (askHintBtn) {
         askHintBtn.addEventListener('click', requestHint);
     }
-
-    // Ask Question modal handlers
     const askQuestionForm = document.getElementById('askQuestionForm');
     if (askQuestionForm) {
         askQuestionForm.addEventListener('submit', (e) => {
@@ -4230,14 +3303,12 @@ function initEventListeners() {
             submitQuestion();
         });
     }
-
     const cancelAskQuestionBtn = document.getElementById('cancelAskQuestion');
     if (cancelAskQuestionBtn) {
         cancelAskQuestionBtn.addEventListener('click', () => {
             hideModal('askQuestionModal');
         });
     }
-
     const provideHintForm = document.getElementById('provideHintForm');
     if (provideHintForm) {
         provideHintForm.addEventListener('submit', (e) => {
@@ -4245,7 +3316,6 @@ function initEventListeners() {
             provideHint();
         });
     }
-
     const cancelHintBtn = document.getElementById('cancelHint');
     if (cancelHintBtn) {
         cancelHintBtn.addEventListener('click', () => {
@@ -4255,24 +3325,19 @@ function initEventListeners() {
             }
         });
     }
-    
     document.getElementById('leaveGameBtn').addEventListener('click', () => { 
         leaveRoom(); 
         hideModal('gameOverModal'); 
     });
-    
     document.getElementById('playAgainBtn').addEventListener('click', () => { 
         hideModal('gameOverModal'); 
         if (isHost) startGame(); 
     });
-    
     document.getElementById('backToLobby').addEventListener('click', () => { 
         hideModal('gameOverModal'); 
         leaveRoom(); 
     });
-    
     document.addEventListener('keydown', (e) => {
-        // Admin panel shortcut (Ctrl+Shift+A)
         if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'a') {
             e.preventDefault();
             if (isAdmin()) {
@@ -4285,7 +3350,6 @@ function initEventListeners() {
             }
             return;
         }
-
         if (gameView.classList.contains('active')) {
             const activeElement = document.activeElement;
             if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA' || activeElement.isContentEditable)) return;
@@ -4293,12 +3357,10 @@ function initEventListeners() {
             if (letter.match(/^[A-Z]$/)) makeGuess(letter);
         }
     });
-    
     window.addEventListener('beforeunload', () => {
         if (socket) {
             socket.disconnect();
         }
     });
 }
-
 log('Hangman client initialized');
