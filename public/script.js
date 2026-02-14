@@ -47,6 +47,7 @@ let unreadCounts = {
 // NEW: Track player indices for turn management
 let myPlayerIndex = -1;
 let activePlayers = []; // Players who can guess (excluding word setter's team)
+let currentRoomFilter = 'all'; // Current room filter value
 
 // ── User Stats (Cookie-based) ──
 let userStats = {
@@ -111,7 +112,7 @@ function renderOnlineUsers(users) {
 function switchLeaderboardTab(tabName) {
     currentLeaderboardTab = tabName;
     
-    document.querySelectorAll('.dropdown-tab').forEach(t => {
+    document.querySelectorAll('.dropdown-tab-inline').forEach(t => {
         t.classList.toggle('active', t.dataset.tab === tabName);
     });
     
@@ -2252,6 +2253,20 @@ function initAuth() {
                 }
             });
         }
+        
+        // Handle password visibility toggle
+        const adminPasswordToggle = document.getElementById('adminPasswordToggle');
+        if (adminPasswordToggle && adminPasswordInput) {
+            adminPasswordToggle.addEventListener('click', () => {
+                const type = adminPasswordInput.type === 'password' ? 'text' : 'password';
+                adminPasswordInput.type = type;
+                const icon = adminPasswordToggle.querySelector('i');
+                if (icon) {
+                    icon.className = type === 'password' ? 'fas fa-eye' : 'fas fa-eye-slash';
+                }
+                adminPasswordToggle.title = type === 'password' ? 'Show password' : 'Hide password';
+            });
+        }
     }
 }
 
@@ -2374,7 +2389,7 @@ function hideModal(modalId) {
 
 function updateRoomsList(rooms) {
     const roomsList = document.getElementById('roomsList');
-    const filter = document.getElementById('roomFilter').value;
+    const filter = currentRoomFilter;
     
     roomsList.innerHTML = '';
     
@@ -3741,6 +3756,11 @@ function initEventListeners() {
     const settingsBtn = document.getElementById('settingsBtn');
     if (settingsBtn) settingsBtn.addEventListener('click', () => { 
         updateAvatarPreview();
+        // Hide username change section for admin users
+        const usernameSettingsSection = document.getElementById('usernameSettingsSection');
+        if (usernameSettingsSection) {
+            usernameSettingsSection.style.display = isAdmin() ? 'none' : 'block';
+        }
         showModal('settingsModal'); 
     });
 
@@ -3821,6 +3841,15 @@ function initEventListeners() {
                 }
             }
             
+            // Check if trying to change to "admin"
+            if (usernameLower === 'admin') {
+                if (usernameError) {
+                    usernameError.textContent = 'This username is reserved and cannot be used';
+                    usernameError.style.display = 'block';
+                }
+                return;
+            }
+            
             // Clear error
             if (usernameError) {
                 usernameError.style.display = 'none';
@@ -3888,7 +3917,7 @@ function initEventListeners() {
         });
         
         // Tab click handlers
-        document.querySelectorAll('.dropdown-tab').forEach(tab => {
+        document.querySelectorAll('.dropdown-tab-inline').forEach(tab => {
             tab.addEventListener('click', (e) => {
                 e.stopPropagation();
                 const tabName = e.target.dataset.tab;
@@ -3997,9 +4026,48 @@ function initEventListeners() {
         if (checkServerAndShowError()) socket.emit('getRooms'); 
     });
     
-    document.getElementById('roomFilter').addEventListener('change', () => { 
-        if (checkServerAndShowError()) socket.emit('getRooms'); 
-    });
+    // Custom Dropdown functionality for room filter
+    const roomFilterDropdown = document.getElementById('roomFilterDropdown');
+    const roomFilterTrigger = document.getElementById('roomFilterTrigger');
+    const roomFilterMenu = document.getElementById('roomFilterMenu');
+    
+    if (roomFilterDropdown && roomFilterTrigger && roomFilterMenu) {
+        // Toggle dropdown on trigger click
+        roomFilterTrigger.addEventListener('click', (e) => {
+            e.stopPropagation();
+            roomFilterDropdown.classList.toggle('open');
+        });
+        
+        // Handle item selection
+        roomFilterMenu.querySelectorAll('.custom-dropdown-item').forEach(item => {
+            item.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const value = item.dataset.value;
+                const label = item.textContent;
+                
+                // Update active state
+                roomFilterMenu.querySelectorAll('.custom-dropdown-item').forEach(i => i.classList.remove('active'));
+                item.classList.add('active');
+                
+                // Update trigger text
+                roomFilterTrigger.querySelector('span').textContent = label;
+                
+                // Update filter value
+                currentRoomFilter = value;
+                
+                // Close dropdown
+                roomFilterDropdown.classList.remove('open');
+                
+                // Trigger room refresh
+                if (checkServerAndShowError()) socket.emit('getRooms');
+            });
+        });
+        
+        // Close dropdown when clicking outside
+        document.addEventListener('click', () => {
+            roomFilterDropdown.classList.remove('open');
+        });
+    }
     
     document.getElementById('sendMessageBtn').addEventListener('click', sendChatMessage);
     document.getElementById('chatInput').addEventListener('keypress', (e) => { 
