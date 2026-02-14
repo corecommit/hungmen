@@ -67,13 +67,18 @@
                 
                 <!-- Admin Password Field (hidden by default) -->
                 <div id="adminPasswordGroup" class="admin-password-group hidden">
-                    <input 
-                        type="password" 
-                        id="adminPasswordInput" 
-                        placeholder="Enter admin password" 
-                        maxlength="50"
-                        autocomplete="off"
-                    >
+                    <div class="password-input-wrapper">
+                        <input 
+                            type="password" 
+                            id="adminPasswordInput" 
+                            placeholder="Enter admin password" 
+                            maxlength="50"
+                            autocomplete="off"
+                        >
+                        <button type="button" class="password-toggle-btn" id="adminPasswordToggle" title="Show password">
+                            <i class="fas fa-eye"></i>
+                        </button>
+                    </div>
                     <p class="password-hint">Password required for Admin account</p>
                 </div>
                 
@@ -86,8 +91,8 @@
                 <span class="build-label">Build:</span>
                 <span class="build-number" id="buildNumber">Loading...</span>
                 <span class="version-separator">|</span>
-                <span class="version-label">Ver:</span>
-                <span class="version-number" id="versionNumber">Loading...</span>
+                <span class="version-label">Version:</span>
+                <span class="version-number" id="versionNumber">v1.6.0</span>
             </div>
         </div>
     </div>
@@ -109,9 +114,23 @@
                     </h1>
                 </div>
                 <div class="header-center">
-                    <div class="online-status">
+                    <div class="online-status" id="onlineStatusBtn">
                         <span class="online-dot"></span>
-                        <span><span id="onlineCount">0</span> Online</span>
+                        <span><span id="onlineCount">0</span> <span id="onlineLabel">Players</span></span>
+                        <i class="fas fa-chevron-down"></i>
+                    </div>
+                    <div class="online-users-dropdown hidden" id="onlineUsersDropdown">
+                        <div class="dropdown-header">
+                            <span class="dropdown-title">Leaderboard</span>
+                            <div class="dropdown-tabs-inline">
+                                <button class="dropdown-tab-inline active" data-tab="server">Lobby</button>
+                                <span class="tab-separator">|</span>
+                                <button class="dropdown-tab-inline" data-tab="global">Global</button>
+                            </div>
+                        </div>
+                        <div class="dropdown-content" id="onlineUsersList">
+                            <!-- Online users will be populated here -->
+                        </div>
                     </div>
                 </div>
                 <div class="header-right">
@@ -162,14 +181,20 @@
                         <div class="rooms-header">
                             <h2>Available Rooms</h2>
                             <div class="rooms-filter">
-                                <select id="roomFilter">
-                                    <option value="all">All Rooms</option>
-                                    <option value="waiting">Waiting</option>
-                                    <option value="1v1">1v1</option>
-                                    <option value="2v2">2v2</option>
-                                    <option value="3v3">3v3</option>
-                                    <option value="4v4">4v4</option>
-                                </select>
+                                <div class="custom-dropdown" id="roomFilterDropdown">
+                                    <button class="custom-dropdown-trigger" id="roomFilterTrigger">
+                                        <span>All Rooms</span>
+                                        <i class="fas fa-chevron-down"></i>
+                                    </button>
+                                    <div class="custom-dropdown-menu" id="roomFilterMenu">
+                                        <button class="custom-dropdown-item active" data-value="all">All Rooms</button>
+                                        <button class="custom-dropdown-item" data-value="waiting">Waiting</button>
+                                        <button class="custom-dropdown-item" data-value="1v1">1v1</button>
+                                        <button class="custom-dropdown-item" data-value="2v2">2v2</button>
+                                        <button class="custom-dropdown-item" data-value="3v3">3v3</button>
+                                        <button class="custom-dropdown-item" data-value="4v4">4v4</button>
+                                    </div>
+                                </div>
                                 <button class="btn btn-icon" id="refreshRooms" title="Refresh">
                                     <i class="fas fa-sync-alt"></i>
                                 </button>
@@ -518,12 +543,12 @@
                         <input 
                             type="text" 
                             id="customWord" 
-                            placeholder="Enter a word (letters only)" 
-                            maxlength="20"
+                            placeholder="Enter a word (e.g. The World, Wither Skull, etc.)" 
+                            maxlength="30"
                             required
                             autocomplete="off"
                         >
-                        <small class="form-hint">3-20 letters, no spaces or numbers</small>
+                        <small class="form-hint">3-25 characters, letters and spaces only</small>
                     </div>
                     
                     <div class="modal-actions">
@@ -711,7 +736,7 @@
                     </div>
                 </div>
 
-                <div class="settings-section">
+                <div class="settings-section" id="usernameSettingsSection">
                     <h3>Username</h3>
                     <div class="username-change-container">
                         <div class="form-group">
