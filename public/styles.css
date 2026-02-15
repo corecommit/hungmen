@@ -24,6 +24,127 @@ textarea,
     -ms-user-select: text;
 }
 
+/* ═══════════════════════════════════════════════════════════════════════
+   LOADING SCREEN ANIMATION
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.loading-screen {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: var(--bg-dark);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 9999;
+    transition: opacity 0.5s ease-out, visibility 0.5s ease-out;
+}
+
+.loading-screen.hidden {
+    opacity: 0;
+    visibility: hidden;
+}
+
+.loading-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2rem;
+}
+
+/* Loading Spinner */
+.loading-spinner {
+    width: 60px;
+    height: 60px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.spinner-circle {
+    width: 100%;
+    height: 100%;
+    border: 4px solid rgba(255, 255, 255, 0.1);
+    border-top: 4px solid var(--success);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    align-self: center;
+    text-align: center;
+    align-items: center;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+@keyframes loadingDrawLine {
+    0% {
+        stroke-dashoffset: 200;
+    }
+    20% {
+        stroke-dashoffset: 0;
+    }
+    70% {
+        stroke-dashoffset: 0;
+    }
+    90% {
+        stroke-dashoffset: 200;
+    }
+    100% {
+        stroke-dashoffset: 200;
+    }
+}
+
+@keyframes loadingDrawPart {
+    0%, 15% {
+        opacity: 0;
+        stroke-dasharray: 100;
+        stroke-dashoffset: 100;
+    }
+    25% {
+        opacity: 1;
+    }
+    35% {
+        stroke-dashoffset: 0;
+        opacity: 1;
+    }
+    70% {
+        stroke-dashoffset: 0;
+        opacity: 1;
+    }
+    85% {
+        opacity: 0;
+        stroke-dashoffset: 100;
+    }
+    100% {
+        opacity: 0;
+        stroke-dashoffset: 100;
+    }
+}
+
+.loading-text {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    letter-spacing: 2px;
+    animation: pulse 1.5s ease-in-out infinite;
+    text-align: center;
+    justify-self: center;
+    align-self: center;
+}
+
+@keyframes pulse {
+    0%, 100% {
+        opacity: 0.5;
+    }
+    50% {
+        opacity: 1;
+    }
+}
+
 :root {
     /* Colors */
     --primary: #1a1a1a;
@@ -192,8 +313,6 @@ body::before {
     width: 80px;
     height: 100px;
     margin-left: 10px;
-    opacity: 0;
-    animation: fadeIn 0.5s ease 0.8s forwards;
 }
 
 .title-hangman-svg {
@@ -209,10 +328,11 @@ body::before {
     fill: none;
 }
 
+/* Title hangman - draw once and stay visible */
 .title-draw-part {
     stroke-dasharray: 100;
     stroke-dashoffset: 100;
-    animation: drawTitlePart 0.5s ease forwards;
+    animation: titleDrawPart 0.5s ease forwards;
 }
 
 .title-man-part {
@@ -220,9 +340,30 @@ body::before {
     animation: showTitlePart 0.5s ease forwards;
 }
 
-.title-man-part:nth-child(5) {
-    fill: #ffffff;
-    fill-opacity: 0.3;
+/* Gallows parts */
+.title-part-1 { animation-delay: 0.1s; }
+.title-part-2 { animation-delay: 0.2s; }
+.title-part-3 { animation-delay: 0.3s; }
+.title-part-4 { animation-delay: 0.4s; }
+
+/* Man parts */
+.title-part-5 {animation-delay: 0.5s; }
+.title-part-6 { animation-delay: 0.6s; }
+.title-part-7 { animation-delay: 0.7s; }
+.title-part-8 { animation-delay: 0.8s; }
+.title-part-9 { animation-delay: 0.9s; }
+.title-part-10 { animation-delay: 1.0s; }
+
+@keyframes titleDrawPart {
+    to {
+        stroke-dashoffset: 0;
+    }
+}
+
+@keyframes showTitlePart {
+    to {
+        opacity: 1;
+    }
 }
 
 .title-part-1 { animation-delay: 0.9s; }
@@ -853,6 +994,26 @@ body::before {
 .btn-large:hover::before {
     width: 300px;
     height: 300px;
+}
+
+.btn-large .btn-text,
+.btn-large .btn-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.btn-large .btn-loading.hidden {
+    display: none;
+}
+
+.btn-large.loading .btn-text {
+    display: none;
+}
+
+.btn-large.loading .btn-loading {
+    display: flex;
 }
 
 .btn-large:hover {
@@ -3406,7 +3567,7 @@ select:focus {
 
 .loading-spinner {
     text-align: center;
-    padding: 40px;
+    padding: 10px;
 }
 
 /* FIXED: Better mode selector button styling */
@@ -4233,10 +4394,6 @@ select:focus {
     
     .container {
         padding: 8px;
-    }
-    
-    .no-rooms{
-        margin-left: 10px;
     }
 
     .chat-input-area button,

@@ -8,7 +8,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="description" content="Play Hangman with friends! Multiplayer word guessing game with custom words and team modes.">
-    <title>Hangman - Multiplayer Word Game</title>
+    <title>Hangman</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
@@ -16,8 +16,18 @@
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+    <!-- Loading Screen -->
+    <div id="loadingScreen" class="loading-screen">
+        <div class="loading-content">
+            <div class="loading-spinner">
+                <div class="spinner-circle"></div>
+            </div>
+            <div class="loading-text">Loading...</div>
+        </div>
+    </div>
+
     <!-- Auth Screen -->
-    <div id="authScreen" class="auth-screen">
+    <div id="authScreen" class="auth-screen" style="display: none;">
         <div class="username-container">
             <div class="game-logo">
                 <span class="title">
@@ -82,17 +92,20 @@
                     <p class="password-hint">Password required for Admin account</p>
                 </div>
                 
-                <button type="submit" class="btn-large">
-                    <i class="fas fa-play"></i>
-                    Join Game
+                <button type="submit" class="btn-large" id="loginBtn">
+                    <span class="btn-text">
+                        <i class="fas fa-play"></i>
+                        Join Game
+                    </span>
+                    <span class="btn-loading hidden">
+                        <i class="fas fa-circle-notch fa-spin"></i>
+                        Connecting...
+                    </span>
                 </button>
             </form>
             <div class="build-info" id="buildInfo">
-                <span class="build-label">Build:</span>
-                <span class="build-number" id="buildNumber">Loading...</span>
-                <span class="version-separator">|</span>
                 <span class="version-label">Version:</span>
-                <span class="version-number" id="versionNumber">v1.6.0</span>
+                <span class="version-number" id="versionNumber">v1.0.1</span>
             </div>
         </div>
     </div>
@@ -735,7 +748,7 @@
                     <div class="avatar-upload-container">
                         <div class="current-avatar-preview" id="currentAvatarPreview">
                             <img id="avatarPreviewImg" src="" alt="Current Avatar" style="display: none;">
-                            <span class="avatar-placeholder" id="avatarPlaceholder">👤</span>
+                            <i class="fa fa-user" id="avatarPlaceholder" style="font-size: 3rem;"></i>
                         </div>
                         <div class="upload-controls">
                             <input type="file" id="avatarInput" accept="image/jpeg,image/jpg,image/png" style="display: none;">

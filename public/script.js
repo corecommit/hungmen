@@ -5,7 +5,8 @@
 
 // ── Configuration ──
 const CONFIG = {
-    SERVER_URL: window.location.hostname === 'localhost' ? 'http://localhost:3000' : window.location.protocol + '//' + window.location.host,
+    // Server URL - always use the Wispbyte server
+    SERVER_URL: 'http://217.160.3.69:12244',
     MAX_WRONG_GUESSES: 6,
     MAX_USERNAME_LENGTH: 20,
     MAX_ROOM_NAME_LENGTH: 30,
@@ -1517,6 +1518,18 @@ function inspectUserProfile(username) {
 // ═══════════════════════════════════════════════════════════════════════
 
 document.addEventListener('DOMContentLoaded', () => {
+    // Hide loading screen after a short delay to ensure smooth transition
+    setTimeout(() => {
+        const loadingScreen = document.getElementById('loadingScreen');
+        const authScreen = document.getElementById('authScreen');
+        if (loadingScreen) {
+            loadingScreen.classList.add('hidden');
+        }
+        if (authScreen) {
+            authScreen.style.display = 'flex';
+        }
+    }, 2000); // Show loading animation for 2 seconds
+
     authScreen = document.getElementById('authScreen');
     gameScreen = document.getElementById('gameScreen');
     authError = document.getElementById('authError');
@@ -1849,6 +1862,14 @@ function setupSocketListeners(username, connectionTimeout, adminPassword = null)
 
     socket.on('authenticated', (data) => {
         log('Authenticated successfully');
+        
+        // Reset loading button state on successful login
+        const loginBtn = document.getElementById('loginBtn');
+        if (loginBtn) {
+            loginBtn.classList.remove('loading');
+            loginBtn.disabled = false;
+        }
+        
         if (data && data.user) {
             currentUser = data.user;
             
@@ -2346,6 +2367,14 @@ function initAuth() {
 
 function handleJoinGame(e) {
     e.preventDefault();
+    
+    // Show loading state on button
+    const loginBtn = document.getElementById('loginBtn');
+    if (loginBtn) {
+        loginBtn.classList.add('loading');
+        loginBtn.disabled = true;
+    }
+    
     const usernameInput = document.getElementById('usernameInput');
     const adminPasswordInput = document.getElementById('adminPasswordInput');
     const username = usernameInput.value.trim();
@@ -2434,6 +2463,14 @@ function showAuthError(message, type = 'error') {
     } else if (type === 'success') {
         authError.classList.add('success');
     }
+    
+    // Reset loading button state on error
+    const loginBtn = document.getElementById('loginBtn');
+    if (loginBtn && type !== 'success') {
+        loginBtn.classList.remove('loading');
+        loginBtn.disabled = false;
+    }
+    
     setTimeout(() => {
         authError.textContent = '';
         authError.className = 'auth-error';
@@ -4351,11 +4388,93 @@ function initEventListeners() {
         }
     });
     
-    window.addEventListener('beforeunload', () => {
+window.addEventListener('beforeunload', () => {
         if (socket) {
             socket.disconnect();
         }
     });
 }
+
+// ═══════════════════════════════════════════════════════════════════════
+// MOBILE APP INITIALIZATION (Capacitor)
+// ═══════════════════════════════════════════════════════════════════════
+
+// Initialize Capacitor plugins when running as mobile app
+document.addEventListener('DOMContentLoaded', async () => {
+    // Check if running in Capacitor environment
+    if (window.Capacitor && window.Capacitor.isNativePlatform()) {
+        log('Running in Capacitor mobile app');
+        
+        try {
+            // Dynamically import Capacitor plugins
+            const { App } = await import('@capacitor/app');
+            const { Keyboard } = await import('@capacitor/keyboard');
+            const { StatusBar } = await import('@capacitor/status-bar');
+            const { SplashScreen } = await import('@capacitor/splash-screen');
+            
+            // Handle app state changes
+            App.addListener('appStateChange', ({ isActive }) => {
+                log('App state changed. Is active:', isActive);
+                if (!isActive && socket) {
+                    // App went to background - could optionally disconnect here
+                    // socket.disconnect();
+                }
+            });
+            
+            // Handle back button
+            App.addListener('backButton', ({ canGoBack }) => {
+                if (!canGoBack) {
+                    // Show exit confirmation or minimize app
+                    App.minimizeApp();
+                } else {
+                    window.history.back();
+                }
+            });
+            
+            // Configure keyboard
+            Keyboard.setAccessoryBarVisible({ isVisible: true });
+            
+            // Configure status bar
+            StatusBar.setBackgroundColor({ color: '#0a0a0a' });
+            StatusBar.setStyle({ style: 'DARK' });
+            
+            // Hide splash screen after app is ready
+            setTimeout(() => {
+                SplashScreen.hide({ fadeOutDuration: 500 });
+            }, 2000);
+            
+            // Mobile-specific UI adjustments
+            document.body.classList.add('mobile-app');
+            
+            // Adjust viewport for mobile
+            const viewportMeta = document.querySelector('meta[name="viewport"]');
+            if (viewportMeta) {
+                viewportMeta.setAttribute('content', 'width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no');
+            }
+            
+            // Prevent zoom on double tap
+            let lastTouchEnd = 0;
+            document.addEventListener('touchend', (e) => {
+                const now = Date.now();
+                if (now - lastTouchEnd <= 300) {
+                    e.preventDefault();
+                }
+                lastTouchEnd = now;
+            }, false);
+            
+            // Handle keyboard show/hide
+            Keyboard.addListener('keyboardWillShow', (info) => {
+                document.body.classList.add('keyboard-open');
+            });
+            
+            Keyboard.addListener('keyboardWillHide', () => {
+                document.body.classList.remove('keyboard-open');
+            });
+            
+        } catch (error) {
+            log('Error initializing Capacitor plugins:', error);
+        }
+    }
+});
 
 log('Hangman client initialized');
