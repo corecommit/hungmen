@@ -93,7 +93,7 @@ const buildInfo = getBuildInfo();
 async function getGitHubBuildInfo() {
     try {
         // Replace with your actual GitHub username and repo name
-        const githubUsername = 'shreyanroy';
+        const githubUsername = 'corecommit';
         const repoName = 'hungmen';
         const branch = 'main';
         
