@@ -6,8 +6,7 @@ const cors = require('cors');
 const { v4: uuidv4 } = require('uuid');
 const path = require('path');
 const { execSync } = require('child_process');
-const mongoose = require('mongoose');
-const User = require('./models/User');
+const { createClient } = require('@supabase/supabase-js');
 
 const app = express();
 const server = http.createServer(app);
@@ -127,10 +126,11 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ═══════════════════════════════════════════════════════════════════════
-// MONGODB CONNECTION
+// SUPABASE CONNECTION (Postgres)
 // ═══════════════════════════════════════════════════════════════════════
 
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/hangman';
+const SUPABASE_URL = process.env.SUPABASE_URL || '';
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY || '';
 const DEBUG = process.env.DEBUG === 'true' || false;
 
 // Logging utility
@@ -140,21 +140,69 @@ const log = {
     warn: (msg, ...args) => console.warn(msg, ...args)
 };
 
-async function connectToMongoDB() {
+// Admin client using the SERVICE ROLE key. This key bypasses Row Level
+// Security, so it must ONLY ever be used server-side (never ship it to the
+// browser). The anon key is not used anywhere: browsers talk to this server
+// over Socket.IO, never to Supabase directly.
+const db = SUPABASE_URL && SUPABASE_SERVICE_KEY
+    ? createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
+        auth: { persistSession: false, autoRefreshToken: false }
+      })
+    : null;
+
+let supabaseReady = false;
+
+// Pings Supabase once at startup. If it fails (missing env vars, bad key,
+// network), the server keeps running on the in-memory fallback.
+async function connectToSupabase() {
+    if (!db) {
+        log.error('[SUPABASE] SUPABASE_URL / SUPABASE_SERVICE_KEY not set - using in-memory storage (data will be lost on restart)');
+        return false;
+    }
     try {
-        log.info('[MONGODB] Connecting to MongoDB...');
-        await mongoose.connect(MONGODB_URI);
-        log.info('[MONGODB] Connected to MongoDB successfully!');
+        const { error } = await db.from('users').select('username').limit(1);
+        if (error) throw error;
+        supabaseReady = true;
+        log.info('[SUPABASE] Connected to Supabase successfully!');
         return true;
     } catch (error) {
-        log.error('[MONGODB] Failed to connect:', error.message);
-        log.info('[MONGODB] Falling back to in-memory storage (data will be lost on restart)');
+        supabaseReady = false;
+        log.error('[SUPABASE] Connection check failed:', error.message);
+        log.error('[SUPABASE] Falling back to in-memory storage (data will be lost on restart)');
         return false;
     }
 }
 
-// Connect to MongoDB
-connectToMongoDB();
+// Helper: is the Supabase connection known-good? Helpers skip straight to
+// the in-memory fallback when it isn't, so users never wait on timeouts.
+function usingSupabase() {
+    return supabaseReady && !!db;
+}
+
+// Maps a snake_case Supabase row to the camelCase user shape the rest of
+// the server expects (same shape the old Mongoose documents had).
+function mapRow(row) {
+    if (!row) return null;
+    return {
+        username: row.username,
+        displayName: row.display_name || row.username,
+        firstLogin: row.first_login,
+        lastLogin: row.last_login,
+        stats: {
+            wins: row.wins || 0,
+            losses: row.losses || 0,
+            gamesPlayed: row.games_played || 0
+        },
+        avatar: row.avatar || null,
+        totalPlayTime: row.total_play_time || 0,
+        serverBan: !!row.server_ban,
+        serverBanExpiry: row.server_ban_expiry || null,
+        serverBanDuration: row.server_ban_duration || null,
+        serverBanReason: row.server_ban_reason || null
+    };
+}
+
+connectToSupabase();
 
 let rooms = new Map();
 let onlineUsers = new Map();
@@ -189,113 +237,69 @@ function getMaintenanceMessage() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// USER DATABASE - MongoDB Storage
+// USER DATABASE - Supabase (Postgres) Storage
 // ═══════════════════════════════════════════════════════════════════════
+
+// Shared in-memory user factory (fallback storage when Supabase is down)
+function makeMemUser(username) {
+    return {
+        username: username.toLowerCase(),
+        displayName: username,
+        stats: { wins: 0, losses: 0, gamesPlayed: 0 },
+        avatar: null,
+        totalPlayTime: 0,
+        serverBan: false,
+        serverBanExpiry: null,
+        serverBanDuration: null,
+        serverBanReason: null,
+        lastLogin: new Date(),
+        firstLogin: new Date()
+    };
+}
 
 // Get or create user entry (with in-memory fallback)
 async function getUserData(username) {
     const key = username.toLowerCase();
-    
     try {
-        let user = await User.findOne({ username: key });
-        
-        if (!user) {
-            // Check in-memory fallback first
-            if (inMemoryUsers.has(key)) {
-                const memUser = inMemoryUsers.get(key);
-                memUser.lastLogin = new Date();
-                return memUser;
-            }
-            
-            // Create new user
-            user = new User({
-                username: key,
-                displayName: username,
-                stats: {
-                    wins: 0,
-                    losses: 0,
-                    gamesPlayed: 0
-                }
-            });
-            await user.save();
+        if (!usingSupabase()) { throw new Error('Supabase unavailable'); }
+
+        let { data: row, error } = await db.from('users').select('*').eq('username', key).maybeSingle();
+
+        if (error) throw error;
+
+        if (!row) {
+            // Not in Supabase: create the user (on-conflict keeps this safe
+            // if two logins with the same name race each other).
+            const { data: inserted, error: insertError } = await db.from('users')
+                .upsert({ username: key, display_name: username, last_login: new Date().toISOString() }, { onConflict: 'username' })
+                .select()
+                .maybeSingle();
+            if (insertError) throw insertError;
+            return mapRow(inserted);
         }
-        
+
         // Update last login
-        user.lastLogin = new Date();
-        await user.save();
-        
-        return user;
+        await db.from('users').update({ last_login: new Date().toISOString() }).eq('username', key);
+
+        return mapRow(row);
     } catch (error) {
-        console.error('[MONGODB] Error in getUserData:', error.message);
+        console.error('[SUPABASE] Error in getUserData:', error.message);
         // Use in-memory fallback if database fails
         if (inMemoryUsers.has(key)) {
             const memUser = inMemoryUsers.get(key);
             memUser.lastLogin = new Date();
             return memUser;
         }
-        
-        // Create new in-memory user
-        const newMemUser = {
-            username: key,
-            displayName: username,
-            stats: { wins: 0, losses: 0, gamesPlayed: 0 },
-            avatar: null,
-            serverBan: false,
-            serverBanExpiry: null,
-            serverBanDuration: null,
-            serverBanReason: null,
-            lastLogin: new Date(),
-            firstLogin: new Date()
-        };
+
+        const newMemUser = makeMemUser(username);
         inMemoryUsers.set(key, newMemUser);
         return newMemUser;
     }
 }
 
-// Get all users for admin panel
-async function getAllUsersInDatabase() {
-    try {
-        const users = await User.find({}).sort({ lastLogin: -1 });
-        const mongoUsers = users.map(user => ({
-            username: user.displayName,
-            stats: user.stats,
-            avatar: user.avatar,
-            lastLogin: user.lastLogin,
-            banned: user.banned,
-            banExpiry: user.banExpiry,
-            banReason: user.banReason
-        }));
-        
-        // Also include in-memory users
-        const memUsers = Array.from(inMemoryUsers.values()).map(user => ({
-            username: user.displayName,
-            stats: user.stats,
-            avatar: user.avatar,
-            lastLogin: user.lastLogin,
-            banned: user.banned,
-            banExpiry: user.banExpiry,
-            banReason: user.banReason
-        }));
-        
-        return [...mongoUsers, ...memUsers];
-    } catch (error) {
-        console.error('[MONGODB] Error getting all users:', error.message);
-        // Return in-memory users on error
-        return Array.from(inMemoryUsers.values()).map(user => ({
-            username: user.displayName,
-            stats: user.stats,
-            avatar: user.avatar,
-            lastLogin: user.lastLogin,
-            banned: user.banned,
-            banExpiry: user.banExpiry,
-            banReason: user.banReason
-        }));
-    }
-}
-
 // Reload user database (for admin refresh)
 async function reloadUserDatabaseFromFile() {
-    log.info('[MONGODB] Reload not needed with MongoDB - data is always current');
+    log.info('[SUPABASE] Reload not needed - data is always current');
     return true;
 }
 
@@ -320,21 +324,23 @@ async function createDatabaseBackup() {
         ensureBackupDir();
         const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
         const backupFile = path.join(BACKUP_DIR, `user_database_backup_${timestamp}.json`);
-        
-        const users = await User.find({});
-        const backupData = users.map(user => ({
-            username: user.username,
-            displayName: user.displayName,
-            firstLogin: user.firstLogin,
-            lastLogin: user.lastLogin,
-            stats: user.stats,
-            avatar: user.avatar,
-            totalPlayTime: user.totalPlayTime,
-            banned: user.banned,
-            banExpiry: user.banExpiry,
-            banReason: user.banReason
+
+        const { data: rows, error } = await db.from('users').select('*');
+        if (error) throw error;
+        const backupData = (rows || []).map(row => ({
+            username: row.username,
+            displayName: row.display_name,
+            firstLogin: row.first_login,
+            lastLogin: row.last_login,
+            stats: { wins: row.wins, losses: row.losses, gamesPlayed: row.games_played },
+            avatar: row.avatar,
+            totalPlayTime: row.total_play_time,
+            serverBan: row.server_ban,
+            serverBanExpiry: row.server_ban_expiry,
+            serverBanDuration: row.server_ban_duration,
+            serverBanReason: row.server_ban_reason
         }));
-        
+
         fs.writeFileSync(backupFile, JSON.stringify(backupData, null, 2));
         log.info(`[BACKUP] Database backup created: ${backupFile}`);
         return { success: true, file: backupFile, timestamp: timestamp };
@@ -374,26 +380,43 @@ async function restoreFromBackup(filename) {
         if (!fs.existsSync(backupPath)) {
             return { success: false, message: 'Backup file not found' };
         }
-        
+
         // Create backup of current database before restoring
         await createDatabaseBackup();
-        
+
         const data = fs.readFileSync(backupPath, 'utf8');
         const backupData = JSON.parse(data);
-        
+
         // Clear existing users and restore from backup
-        await User.deleteMany({});
-        
-        for (const userData of backupData) {
-            const user = new User(userData);
-            await user.save();
+        const { error: deleteError } = await db.from('users').delete().neq('username', '__impossible__');
+        if (deleteError) throw deleteError;
+
+        const rows = backupData.map(u => ({
+            username: (u.username || '').toLowerCase(),
+            display_name: u.displayName || u.username,
+            first_login: u.firstLogin || new Date().toISOString(),
+            last_login: u.lastLogin || new Date().toISOString(),
+            wins: u.stats?.wins || 0,
+            losses: u.stats?.losses || 0,
+            games_played: u.stats?.gamesPlayed || 0,
+            avatar: u.avatar || null,
+            total_play_time: u.totalPlayTime || 0,
+            server_ban: !!u.serverBan,
+            server_ban_expiry: u.serverBanExpiry || null,
+            server_ban_duration: u.serverBanDuration || null,
+            server_ban_reason: u.serverBanReason || null
+        })).filter(r => r.username);
+
+        if (rows.length > 0) {
+            const { error: insertError } = await db.from('users').upsert(rows, { onConflict: 'username' });
+            if (insertError) throw insertError;
         }
-        
+
         log.info(`[BACKUP] Database restored from: ${filename}`);
-        return { success: true, message: `Database restored from ${filename}`, userCount: backupData.length };
+        return { success: true, message: `Database restored from ${filename}`, userCount: rows.length };
     } catch (error) {
         console.error('[BACKUP] Error restoring backup:', error);
-        return { success: false, message: error.message };
+        return { success: false, error: error.message };
     }
 }
 
@@ -417,59 +440,52 @@ function deleteBackup(filename) {
 // Check if user is currently banned (server ban only)
 async function isUserBanned(username) {
     const key = username.toLowerCase();
-    
     try {
-        const user = await User.findOne({ username: key });
-        
-        // Check in-memory if not in MongoDB
-        let memUser = inMemoryUsers.get(key);
-        
-        const userData = user || memUser;
-        
+        if (!usingSupabase()) { throw new Error('Supabase unavailable'); }
+        const { data: row, error } = await db.from('users')
+            .select('username, server_ban, server_ban_expiry, server_ban_reason')
+            .eq('username', key)
+            .maybeSingle();
+        if (error) throw error;
+
+        const memUser = inMemoryUsers.get(key);
+        const userData = row || memUser;
+
         if (!userData) return { banned: false };
-        
-        // Check server ban
-        if (userData.serverBan) {
-            // Check if server ban has expired
-            if (userData.serverBanExpiry) {
-                const serverExpiryDate = new Date(userData.serverBanExpiry);
-                if (serverExpiryDate <= new Date()) {
-                    // Server ban expired, auto-unban
-                    if (user) {
-                        user.serverBan = false;
-                        user.serverBanExpiry = null;
-                        user.serverBanDuration = null;
-                        user.serverBanReason = null;
-                        await user.save();
-                    } else if (memUser) {
-                        memUser.serverBan = false;
-                        memUser.serverBanExpiry = null;
-                        memUser.serverBanDuration = null;
-                        memUser.serverBanReason = null;
-                    }
-                    return { banned: false };
-                } else {
-                    return { 
-                        banned: true, 
-                        expiry: userData.serverBanExpiry, 
-                        reason: userData.serverBanReason,
-                        isPermanent: false
-                    };
+
+        const banned = row ? row.server_ban : userData.serverBan;
+        const expiry = row ? row.server_ban_expiry : userData.serverBanExpiry;
+        const reason = row ? row.server_ban_reason : userData.serverBanReason;
+
+        if (!banned) return { banned: false };
+
+        if (expiry) {
+            const expiryDate = new Date(expiry);
+            if (expiryDate <= new Date()) {
+                // Ban expired - auto-unban
+                if (row) {
+                    await db.from('users').update({
+                        server_ban: false,
+                        server_ban_expiry: null,
+                        server_ban_duration: null,
+                        server_ban_reason: null
+                    }).eq('username', key);
                 }
-            } else {
-                // Permanent server ban
-                return { 
-                    banned: true, 
-                    expiry: null, 
-                    reason: userData.serverBanReason,
-                    isPermanent: true
-                };
+                if (memUser) {
+                    memUser.serverBan = false;
+                    memUser.serverBanExpiry = null;
+                    memUser.serverBanDuration = null;
+                    memUser.serverBanReason = null;
+                }
+                return { banned: false };
             }
+            return { banned: true, expiry: expiry, reason: reason, isPermanent: false };
         }
-        
-        return { banned: false };
+
+        // Permanent ban
+        return { banned: true, expiry: null, reason: reason, isPermanent: true };
     } catch (error) {
-        console.error('[MONGODB] Error in isUserBanned:', error.message);
+        console.error('[SUPABASE] Error in isUserBanned:', error.message);
         // Check in-memory fallback
         const memUser = inMemoryUsers.get(key);
         if (memUser && memUser.serverBan) {
@@ -483,135 +499,116 @@ async function isUserBanned(username) {
     }
 }
 
-// Update user stats (incremental)
+// Ban a user (admin tool). duration is in HOURS (0 = permanent).
+async function banUser(username, durationHours, reason) {
+    const key = username.toLowerCase();
+
+    const isPermanent = !durationHours || parseInt(durationHours) === 0;
+    const expiryISO = isPermanent ? null : new Date(Date.now() + parseInt(durationHours) * 3600000).toISOString();
+
+    try {
+        if (!usingSupabase()) { throw new Error('Supabase unavailable'); }
+        const { error } = await db.from('users').upsert({
+            username: key,
+            display_name: username,
+            server_ban: true,
+            server_ban_expiry: expiryISO,
+            server_ban_duration: isPermanent ? 'permanent' : `${durationHours}h`,
+            server_ban_reason: reason || 'Banned by admin'
+        }, { onConflict: 'username' });
+        if (error) throw error;
+        return true;
+    } catch (error) {
+        console.error('[SUPABASE] Error in banUser:', error.message);
+        // In-memory fallback so the ban still applies while the DB is down
+        const memUser = inMemoryUsers.get(key) || makeMemUser(username);
+        memUser.serverBan = true;
+        memUser.serverBanExpiry = isPermanent ? null : new Date(Date.now() + parseInt(durationHours) * 3600000);
+        memUser.serverBanDuration = isPermanent ? 'permanent' : `${durationHours}h`;
+        memUser.serverBanReason = reason || 'Banned by admin';
+        inMemoryUsers.set(key, memUser);
+        return true;
+    }
+}
+
+// Update user stats (incremental). Uses the atomic increment_stats RPC so
+// concurrent game endings can never lose an increment.
 async function updateUserStats(username, result) {
     const key = username.toLowerCase();
-    
+    let newStats = null;
     try {
-        const user = await User.findOne({ username: key });
-        
-        if (user) {
-            user.stats.gamesPlayed++;
-            if (result === 'win') {
-                user.stats.wins++;
-            } else if (result === 'loss') {
-                user.stats.losses++;
-            }
-            await user.save();
-            
-            // Update online users' stats in memory
-            for (const onlineUser of onlineUsers.values()) {
-                if (onlineUser.username.toLowerCase() === key) {
-                    onlineUser.stats = { ...user.stats };
-                    break;
-                }
-            }
-            
-            // Emit updated online users list
-            const onlineUsersList = Array.from(onlineUsers.values()).map(u => ({
-                username: u.username,
-                stats: u.stats || { wins: 0, losses: 0, gamesPlayed: 0 },
-                avatar: u.avatar,
-                isAdmin: u.isAdmin || false
-            })).sort((a, b) => (b.stats.wins || 0) - (a.stats.wins || 0));
-            io.emit('onlineUsersUpdate', { users: onlineUsersList });
-            
-            return;
-        }
-        
-        // Try in-memory fallback
-        const memUser = inMemoryUsers.get(key);
-        if (memUser) {
-            memUser.stats.gamesPlayed++;
-            if (result === 'win') {
-                memUser.stats.wins++;
-            } else if (result === 'loss') {
-                memUser.stats.losses++;
-            }
-            
-            // Update online users
-            for (const onlineUser of onlineUsers.values()) {
-                if (onlineUser.username.toLowerCase() === key) {
-                    onlineUser.stats = { ...memUser.stats };
-                    break;
-                }
-            }
-            
-            // Emit updated online users list
-            const onlineUsersList = Array.from(onlineUsers.values()).map(u => ({
-                username: u.username,
-                stats: u.stats || { wins: 0, losses: 0, gamesPlayed: 0 },
-                avatar: u.avatar,
-                isAdmin: u.isAdmin || false
-            })).sort((a, b) => (b.stats.wins || 0) - (a.stats.wins || 0));
-            io.emit('onlineUsersUpdate', { users: onlineUsersList });
+        if (!usingSupabase()) { throw new Error('Supabase unavailable'); }
+        const { error } = await db.rpc('increment_stats', { p_username: key, p_result: result });
+        if (error) throw error;
+
+        const { data: row, error: selectError } = await db.from('users')
+            .select('wins, losses, games_played').eq('username', key).maybeSingle();
+        if (selectError) throw selectError;
+        if (row) {
+            newStats = { wins: row.wins, losses: row.losses, gamesPlayed: row.games_played };
         }
     } catch (error) {
-        console.error('[MONGODB] Error in updateUserStats:', error.message);
-        // Try in-memory fallback
+        console.error('[SUPABASE] Error in updateUserStats:', error.message);
+        // In-memory fallback
         const memUser = inMemoryUsers.get(key);
         if (memUser) {
             memUser.stats.gamesPlayed++;
             if (result === 'win') memUser.stats.wins++;
             else if (result === 'loss') memUser.stats.losses++;
-            
-            // Update online users
-            for (const onlineUser of onlineUsers.values()) {
-                if (onlineUser.username.toLowerCase() === key) {
-                    onlineUser.stats = { ...memUser.stats };
-                    break;
-                }
-            }
-            
-            // Emit updated online users list
-            const onlineUsersList = Array.from(onlineUsers.values()).map(u => ({
-                username: u.username,
-                stats: u.stats || { wins: 0, losses: 0, gamesPlayed: 0 },
-                avatar: u.avatar,
-                isAdmin: u.isAdmin || false
-            })).sort((a, b) => (b.stats.wins || 0) - (a.stats.wins || 0));
-            io.emit('onlineUsersUpdate', { users: onlineUsersList });
+            newStats = { ...memUser.stats };
         }
     }
+
+    if (newStats) {
+        broadcastStatsUpdate(key, newStats);
+    }
+}
+
+// Push fresh stats for one user to all clients (shared by both paths above)
+function broadcastStatsUpdate(key, newStats) {
+    for (const onlineUser of onlineUsers.values()) {
+        if (onlineUser.username.toLowerCase() === key) {
+            onlineUser.stats = { ...newStats };
+            break;
+        }
+    }
+    const onlineUsersList = Array.from(onlineUsers.values()).map(u => ({
+        username: u.username,
+        stats: u.stats || { wins: 0, losses: 0, gamesPlayed: 0 },
+        avatar: u.avatar,
+        isAdmin: u.isAdmin || false
+    })).sort((a, b) => (b.stats.wins || 0) - (a.stats.wins || 0));
+    io.emit('onlineUsersUpdate', { users: onlineUsersList });
 }
 
 // Set user stats directly (for admin editing)
 async function setUserStats(username, stats) {
     const key = username.toLowerCase();
-    
+    const normalized = {
+        wins: parseInt(stats.wins) || 0,
+        losses: parseInt(stats.losses) || 0,
+        games_played: parseInt(stats.gamesPlayed) || 0
+    };
     try {
-        const user = await User.findOne({ username: key });
-        
-        if (user) {
-            user.stats = {
-                wins: parseInt(stats.wins) || 0,
-                losses: parseInt(stats.losses) || 0,
-                gamesPlayed: parseInt(stats.gamesPlayed) || 0
-            };
-            await user.save();
-            return true;
-        }
-        
-        // Try in-memory fallback
-        const memUser = inMemoryUsers.get(key);
-        if (memUser) {
-            memUser.stats = {
-                wins: parseInt(stats.wins) || 0,
-                losses: parseInt(stats.losses) || 0,
-                gamesPlayed: parseInt(stats.gamesPlayed) || 0
-            };
-            return true;
-        }
-        return false;
+        if (!usingSupabase()) { throw new Error('Supabase unavailable'); }
+        const { error } = await db.from('users').upsert({
+            username: key,
+            display_name: username,
+            wins: normalized.wins,
+            losses: normalized.losses,
+            games_played: normalized.games_played
+        }, { onConflict: 'username' });
+        if (error) throw error;
+        return true;
     } catch (error) {
-        console.error('[MONGODB] Error in setUserStats:', error.message);
-        // Try in-memory fallback
+        console.error('[SUPABASE] Error in setUserStats:', error.message);
+        // In-memory fallback
         const memUser = inMemoryUsers.get(key);
         if (memUser) {
             memUser.stats = {
-                wins: parseInt(stats.wins) || 0,
-                losses: parseInt(stats.losses) || 0,
-                gamesPlayed: parseInt(stats.gamesPlayed) || 0
+                wins: normalized.wins,
+                losses: normalized.losses,
+                gamesPlayed: normalized.games_played
             };
             return true;
         }
@@ -622,48 +619,68 @@ async function setUserStats(username, stats) {
 // Reload user stats from database (for live updates)
 async function reloadUserStats(username) {
     const key = username.toLowerCase();
-    
     try {
-        const user = await User.findOne({ username: key });
-        
-        if (user) {
-            return user.stats;
-        }
-        
-        // Try in-memory fallback
+        if (!usingSupabase()) { throw new Error('Supabase unavailable'); }
+        const { data: row, error } = await db.from('users')
+            .select('wins, losses, games_played').eq('username', key).maybeSingle();
+        if (error) throw error;
+        if (row) return { wins: row.wins, losses: row.losses, gamesPlayed: row.games_played };
+
         const memUser = inMemoryUsers.get(key);
-        if (memUser) {
-            return memUser.stats;
-        }
+        if (memUser) return memUser.stats;
         return null;
     } catch (error) {
-        console.error('[MONGODB] Error in reloadUserStats:', error.message);
+        console.error('[SUPABASE] Error in reloadUserStats:', error.message);
         const memUser = inMemoryUsers.get(key);
         if (memUser) return memUser.stats;
         return null;
     }
 }
 
-// Update user avatar
+// Update user avatar.
+// The client sends a base64 JPEG (~100KB after its own compression). We
+// upload it to the public 'avatars' Storage bucket and store the public URL
+// in the users table - chat messages then carry a short URL instead of the
+// full base64 image. Falls back to storing the base64 string directly in
+// the column if Storage fails.
 async function updateUserAvatar(username, avatarData) {
     const key = username.toLowerCase();
-    
     try {
-        const user = await User.findOne({ username: key });
+        if (!usingSupabase()) { throw new Error('Supabase unavailable'); }
 
-        if (user) {
-            user.avatar = avatarData;
-            await user.save();
-            return;
+        let avatarValue = avatarData;
+
+        if (avatarData && typeof avatarData === 'string' && avatarData.startsWith('data:image')) {
+            try {
+                const base64 = avatarData.split(',')[1];
+                const buffer = Buffer.from(base64, 'base64');
+                const filePath = `${key}/${Date.now()}.jpg`;
+
+                const { error: uploadError } = await db.storage
+                    .from('avatars')
+                    .upload(filePath, buffer, { contentType: 'image/jpeg', upsert: true });
+                if (uploadError) throw uploadError;
+
+                const { data: urlData } = db.storage.from('avatars').getPublicUrl(filePath);
+                if (urlData && urlData.publicUrl) {
+                    avatarValue = urlData.publicUrl;
+                }
+            } catch (storageError) {
+                console.error('[SUPABASE] Avatar upload to Storage failed, storing inline:', storageError.message);
+                // avatarValue stays the base64 string
+            }
         }
-        
-        // Try in-memory fallback
-        const memUser = inMemoryUsers.get(key);
-        if (memUser) {
-            memUser.avatar = avatarData;
-        }
+
+        const { error } = await db.from('users').upsert({
+            username: key,
+            display_name: username,
+            avatar: avatarValue
+        }, { onConflict: 'username' });
+        if (error) throw error;
+        return;
     } catch (error) {
-        console.error('[MONGODB] Error in updateUserAvatar:', error.message);
+        console.error('[SUPABASE] Error in updateUserAvatar:', error.message);
+        // In-memory fallback
         const memUser = inMemoryUsers.get(key);
         if (memUser) memUser.avatar = avatarData;
     }
@@ -672,30 +689,32 @@ async function updateUserAvatar(username, avatarData) {
 // Delete user from database
 async function deleteUser(username) {
     const key = username.toLowerCase();
-    
     try {
-        console.log(`[MONGODB DELETE] Attempting to delete user: ${username}`);
-        
-        const result = await User.deleteOne({ username: key });
-        
-        if (result.deletedCount > 0) {
-            console.log(`[MONGODB DELETE] Successfully deleted user: ${username}`);
-            // Also delete from in-memory
-            inMemoryUsers.delete(key);
-            return true;
+        if (!usingSupabase()) { throw new Error('Supabase unavailable'); }
+        console.log(`[SUPABASE DELETE] Attempting to delete user: ${username}`);
+
+        const { data, error } = await db.from('users').delete().eq('username', key).select('username');
+        if (error) throw error;
+
+        const deleted = Array.isArray(data) && data.length > 0;
+        if (deleted) {
+            console.log(`[SUPABASE DELETE] Successfully deleted user: ${username}`);
         }
-        
-        // Check in-memory fallback
+
+        // Also delete from in-memory
+        inMemoryUsers.delete(key);
+
+        if (deleted) return true;
+
         if (inMemoryUsers.has(key)) {
-            inMemoryUsers.delete(key);
-            console.log(`[MONGODB DELETE] Deleted from in-memory: ${username}`);
+            console.log(`[SUPABASE DELETE] Deleted from in-memory: ${username}`);
             return true;
         }
-        
-        console.log(`[MONGODB DELETE] User not found: ${username}`);
+
+        console.log(`[SUPABASE DELETE] User not found: ${username}`);
         return false;
     } catch (error) {
-        console.error('[MONGODB] Error in deleteUser:', error.message);
+        console.error('[SUPABASE] Error in deleteUser:', error.message);
         // Try in-memory fallback
         if (inMemoryUsers.has(key)) {
             inMemoryUsers.delete(key);
@@ -708,12 +727,14 @@ async function deleteUser(username) {
 // Delete all users from database (admin only)
 async function deleteAllUsers() {
     try {
-        await User.deleteMany({});
+        if (!usingSupabase()) { throw new Error('Supabase unavailable'); }
+        const { error } = await db.from('users').delete().neq('username', '__impossible__');
+        if (error) throw error;
         inMemoryUsers.clear();
-        log.info('[MONGODB] All users deleted');
+        log.info('[SUPABASE] All users deleted');
         return true;
     } catch (error) {
-        console.error('[MONGODB] Error in deleteAllUsers:', error.message);
+        console.error('[SUPABASE] Error in deleteAllUsers:', error.message);
         inMemoryUsers.clear();
         return false;
     }
@@ -723,84 +744,72 @@ async function deleteAllUsers() {
 async function transferUserData(oldUsername, newUsername) {
     const oldKey = oldUsername.toLowerCase();
     const newKey = newUsername.toLowerCase();
-    
+
     try {
+        if (!usingSupabase()) { throw new Error('Supabase unavailable'); }
         log.info(`[TRANSFER] Transferring data from ${oldUsername} to ${newUsername}`);
-        
-        // Try MongoDB first
-        let oldUser = await User.findOne({ username: oldKey });
-        
-        // If not in MongoDB, check in-memory
-        if (!oldUser && inMemoryUsers.has(oldKey)) {
-            oldUser = inMemoryUsers.get(oldKey);
-        }
-        
-        if (!oldUser) {
+
+        let { data: oldRow, error: oldError } = await db.from('users').select('*').eq('username', oldKey).maybeSingle();
+        if (oldError) throw oldError;
+
+        // If not in Supabase, check in-memory
+        const oldMem = !oldRow ? inMemoryUsers.get(oldKey) : null;
+        if (!oldRow && !oldMem) {
             log.info(`[TRANSFER] No data to transfer - old user ${oldUsername} not found`);
             return { success: true, message: 'No existing data to transfer' };
         }
-        
-        // Check if new user already exists
-        let newUser = await User.findOne({ username: newKey });
-        
-        // If not in MongoDB, check in-memory
-        if (!newUser && inMemoryUsers.has(newKey)) {
-            newUser = inMemoryUsers.get(newKey);
-        }
-        
-        if (newUser) {
-            // Transfer old data to existing new user
-            if (newUser.save) {
-                // MongoDB document
-                newUser.stats = oldUser.stats;
-                newUser.avatar = oldUser.avatar;
-                newUser.totalPlayTime = oldUser.totalPlayTime;
-                newUser.banned = oldUser.banned;
-                newUser.banExpiry = oldUser.banExpiry;
-                newUser.banReason = oldUser.banReason;
-                newUser.firstLogin = oldUser.firstLogin;
-                await newUser.save();
-            } else {
-                // In-memory object
-                newUser.stats = oldUser.stats;
-                newUser.avatar = oldUser.avatar;
-                newUser.totalPlayTime = oldUser.totalPlayTime;
-                newUser.banned = oldUser.banned;
-                newUser.banExpiry = oldUser.banExpiry;
-                newUser.banReason = oldUser.banReason;
-                newUser.firstLogin = oldUser.firstLogin;
+
+        const { data: newRow, error: newError } = await db.from('users').select('*').eq('username', newKey).maybeSingle();
+        if (newError) throw newError;
+
+        const carryOver = oldRow ? {
+            wins: oldRow.wins, losses: oldRow.losses, games_played: oldRow.games_played,
+            avatar: oldRow.avatar, total_play_time: oldRow.total_play_time,
+            server_ban: oldRow.server_ban, server_ban_expiry: oldRow.server_ban_expiry,
+            server_ban_duration: oldRow.server_ban_duration, server_ban_reason: oldRow.server_ban_reason,
+            first_login: oldRow.first_login
+        } : {
+            wins: oldMem.stats.wins, losses: oldMem.stats.losses, games_played: oldMem.stats.gamesPlayed,
+            avatar: oldMem.avatar, total_play_time: oldMem.totalPlayTime,
+            server_ban: oldMem.serverBan, server_ban_expiry: oldMem.serverBanExpiry,
+            server_ban_duration: oldMem.serverBanDuration, server_ban_reason: oldMem.serverBanReason,
+            first_login: oldMem.firstLogin
+        };
+
+        if (newRow) {
+            // New user already exists: copy old data onto it, then delete old
+            const { error: updateError } = await db.from('users')
+                .update({ ...carryOver, display_name: newUsername, last_login: new Date().toISOString() })
+                .eq('username', newKey);
+            if (updateError) throw updateError;
+
+            if (oldRow) {
+                const { error: delError } = await db.from('users').delete().eq('username', oldKey);
+                if (delError) throw delError;
             }
-            
-            // Delete old user
-            if (oldUser.save) {
-                await User.deleteOne({ username: oldKey });
-            } else {
-                inMemoryUsers.delete(oldKey);
-            }
-            
+            inMemoryUsers.delete(oldKey);
+
             log.info(`[TRANSFER] Data transferred and old user ${oldUsername} deleted`);
             return { success: true, message: 'Data transferred successfully' };
-        } else {
-            // Rename old user to new username
-            if (oldUser.save) {
-                // MongoDB document
-                oldUser.username = newKey;
-                oldUser.displayName = newUsername;
-                await oldUser.save();
-            } else {
-                // In-memory object - rename
-                inMemoryUsers.delete(oldKey);
-                oldUser.username = newKey;
-                oldUser.displayName = newUsername;
-                inMemoryUsers.set(newKey, oldUser);
-            }
-            
-            log.info(`[TRANSFER] User renamed successfully`);
-            return { success: true, message: 'User renamed successfully' };
         }
+
+        // No new user: rename the old row (or move the in-memory entry)
+        if (oldRow) {
+            const { error: renameError } = await db.from('users')
+                .update({ username: newKey, display_name: newUsername })
+                .eq('username', oldKey);
+            if (renameError) throw renameError;
+        } else {
+            inMemoryUsers.delete(oldKey);
+            const renamed = { ...oldMem, username: newKey, displayName: newUsername };
+            inMemoryUsers.set(newKey, renamed);
+        }
+
+        log.info(`[TRANSFER] User renamed successfully`);
+        return { success: true, message: 'User renamed successfully' };
     } catch (error) {
         console.error('[TRANSFER] Error:', error.message);
-        
+
         // Try in-memory fallback
         if (inMemoryUsers.has(oldKey)) {
             const oldUser = inMemoryUsers.get(oldKey);
@@ -809,9 +818,9 @@ async function transferUserData(oldUsername, newUsername) {
                 newUser.stats = oldUser.stats;
                 newUser.avatar = oldUser.avatar;
                 newUser.totalPlayTime = oldUser.totalPlayTime;
-                newUser.banned = oldUser.banned;
-                newUser.banExpiry = oldUser.banExpiry;
-                newUser.banReason = oldUser.banReason;
+                newUser.serverBan = oldUser.serverBan;
+                newUser.serverBanExpiry = oldUser.serverBanExpiry;
+                newUser.serverBanReason = oldUser.serverBanReason;
                 newUser.firstLogin = oldUser.firstLogin;
             } else {
                 oldUser.username = newKey;
@@ -820,34 +829,84 @@ async function transferUserData(oldUsername, newUsername) {
             inMemoryUsers.delete(oldKey);
             return { success: true, message: 'Data transferred (in-memory)' };
         }
-        
+
         return { success: false, message: error.message };
     }
 }
 
-// Get all users in database
+// Get all users in database (for the admin panel)
 async function getAllUsersInDatabase() {
+    const toAdminEntry = (key, displayName, firstLogin, lastLogin, stats, hasAvatar, isBanned, isPermanent, banExpiry, banReason) => ({
+        key: key,
+        username: displayName,
+        firstLogin: firstLogin,
+        lastLogin: lastLogin,
+        stats: stats,
+        hasAvatar: hasAvatar,
+        banned: isBanned,
+        isPermanent: isPermanent,
+        banExpiry: banExpiry,
+        banReason: banReason
+    });
+
     try {
-        const users = await User.find({}).sort({ lastLogin: -1 });
-        return users.map(user => {
-            const isBanned = user.banned || false;
-            
-            return {
-                key: user.username,
-                username: user.displayName,
-                firstLogin: user.firstLogin,
-                lastLogin: user.lastLogin,
-                stats: user.stats,
-                hasAvatar: !!user.avatar,
-                banned: isBanned,
-                isPermanent: isBanned ? !user.banExpiry : false,
-                banExpiry: isBanned ? user.banExpiry : null,
-                banReason: isBanned ? user.banReason : null
-            };
+        if (!usingSupabase()) { throw new Error('Supabase unavailable'); }
+        const { data: rows, error } = await db.from('users').select('*').order('last_login', { ascending: false });
+        if (error) throw error;
+
+        const dbUsers = (rows || []).map(row => {
+            const isBanned = !!(row.server_ban && (!row.server_ban_expiry || new Date(row.server_ban_expiry) > new Date()));
+            return toAdminEntry(
+                row.username,
+                row.display_name || row.username,
+                row.first_login,
+                row.last_login,
+                { wins: row.wins, losses: row.losses, gamesPlayed: row.games_played },
+                !!row.avatar,
+                isBanned,
+                isBanned ? !row.server_ban_expiry : false,
+                isBanned ? row.server_ban_expiry : null,
+                isBanned ? row.server_ban_reason : null
+            );
         });
+
+        // Include in-memory fallback users that are not in Supabase
+        const memUsers = Array.from(inMemoryUsers.values())
+            .filter(mem => !dbUsers.some(u => u.key === mem.username))
+            .map(user => {
+                const isBanned = !!(user.serverBan && (!user.serverBanExpiry || new Date(user.serverBanExpiry) > new Date()));
+                return toAdminEntry(
+                    user.username,
+                    user.displayName,
+                    user.firstLogin,
+                    user.lastLogin,
+                    user.stats,
+                    !!user.avatar,
+                    isBanned,
+                    isBanned ? !user.serverBanExpiry : false,
+                    isBanned ? user.serverBanExpiry : null,
+                    isBanned ? user.serverBanReason : null
+                );
+            });
+
+        return [...dbUsers, ...memUsers];
     } catch (error) {
-        console.error('[MONGODB] Error getting all users:', error);
-        return [];
+        console.error('[SUPABASE] Error getting all users:', error.message);
+        return Array.from(inMemoryUsers.values()).map(user => {
+            const isBanned = !!(user.serverBan && (!user.serverBanExpiry || new Date(user.serverBanExpiry) > new Date()));
+            return toAdminEntry(
+                user.username,
+                user.displayName,
+                user.firstLogin,
+                user.lastLogin,
+                user.stats,
+                !!user.avatar,
+                isBanned,
+                isBanned ? !user.serverBanExpiry : false,
+                isBanned ? user.serverBanExpiry : null,
+                isBanned ? user.serverBanReason : null
+            );
+        });
     }
 }
 
@@ -987,8 +1046,33 @@ class Room {
         
         if (this.players.length === 0) {
             rooms.delete(this.id);
-        } else if (this.hostId === playerId && this.players.length > 0) {
-            this.hostId = this.players[0].id;
+        } else {
+            // FIX: migrate the host if the host just left (this was done by
+            // the callers in some paths only, and never during a game).
+            if (this.hostId === playerId) {
+                this.hostId = this.players[0].id;
+            }
+
+            // FIX: if a game was running and too few players remain to
+            // continue, end it and return the room to 'waiting' instead of
+            // leaving it stuck in 'playing' forever (nobody could rejoin or
+            // restart). Also handle the custom-word flow where the setter
+            // left before submitting a word.
+            if (this.status === 'playing' || this.status === 'coin_flip' || this.status === 'word_selection') {
+                const needsBothSides = this.mode !== 'solo';
+
+                if (this.players.length < (needsBothSides ? 2 : 1)) {
+                    this.gameState = null;
+                    this.status = 'waiting';
+                } else if (this.gameState && this.gameState.isCustomWord) {
+                    // The word setter left mid-game: nobody can answer hints
+                    // any more, so abort back to the waiting screen.
+                    if (this.gameState.wordSetter === playerId) {
+                        this.gameState = null;
+                        this.status = 'waiting';
+                    }
+                }
+            }
         }
     }
 
@@ -1180,13 +1264,20 @@ class Room {
             return { success: false, message: 'Game not found' };
         }
 
-        // Only the host can provide hints in custom word mode
-        if (this.gameState.isCustomWord && providerId !== this.hostId) {
-            return { success: false, message: 'Only the host can provide hints' };
+        // FIX: in custom word mode only the word setter may answer hints.
+        // The old check used hostId, so in 1v1 the guessing player (who is
+        // usually the host after the setter disconnects) could answer their
+        // own hint questions.
+        if (this.gameState.isCustomWord && providerId !== this.gameState.wordSetter) {
+            return { success: false, message: 'Only the word setter can provide hints' };
+        }
+
+        if (typeof hint !== 'string' || hint.trim().length === 0) {
+            return { success: false, message: 'Hint cannot be empty' };
         }
 
         this.gameState.hintsRemaining--;
-        this.gameState.hints.push(hint);
+        this.gameState.hints.push(hint.trim());
 
         return {
             success: true,
@@ -1201,7 +1292,25 @@ class Room {
         return words[Math.floor(Math.random() * words.length)];
     }
 
+    // FIX (anti-cheat): the raw word must never be sent to clients while the
+    // game is running - it was included in gameStarted and guessResult, so
+    // anyone could read the secret word in DevTools. Clients now only ever
+    // receive this masked view; the full word is revealed on gameEnded.
+    getMaskedWord() {
+        if (!this.gameState || !this.gameState.word) return [];
+        return this.gameState.word.split('').map(letter =>
+            this.gameState.guessedLetters.includes(letter) ? letter : null
+        );
+    }
+
     checkGuess(letter) {
+        // FIX: validate the incoming guess. A non-string (or non A-Z)
+        // payload used to be pushed into guessedLetters/wrongLetters and
+        // could crash the room via word.includes(undefined).
+        if (typeof letter !== 'string' || !/^[A-Z]$/.test(letter)) {
+            return { valid: false };
+        }
+
         if (this.gameState.guessedLetters.includes(letter) || 
             this.gameState.wrongLetters.includes(letter)) {
             return { valid: false };
@@ -1309,8 +1418,26 @@ class Room {
 io.on('connection', (socket) => {
     log.info('New connection:', socket.id);
 
-    socket.on('authenticate', async (data) => {
-        const { username, adminPassword } = data;
+    // FIX: a malformed payload (e.g. emitting an event with `null` instead
+    // of an object) crashed the whole server via destructuring errors like
+    // "Cannot destructure property 'name' of 'data' as it is null".
+    // Every handler registered through this helper now fails safely, the
+    // offender gets an error message, and the server keeps running.
+    const safeOn = (event, handler) => {
+        socket.on(event, async (data) => {
+            try {
+                await handler(data);
+            } catch (err) {
+                console.error(`[SOCKET] Error in '${event}' handler:`, err.message);
+                try {
+                    socket.emit('serverError', { message: 'Invalid request' });
+                } catch (_) { /* socket may already be gone */ }
+            }
+        });
+    };
+
+    safeOn('authenticate', async (data) => {
+        const { username, adminPassword } = data || {};
         
         if (!username || username.trim().length === 0) {
             socket.emit('authError', { message: 'Username is required' });
@@ -1514,7 +1641,7 @@ io.on('connection', (socket) => {
     });
 
     // Handle username change
-    socket.on('changeUsername', async (data) => {
+    safeOn('changeUsername', async (data) => {
         const { newUsername } = data;
         const user = onlineUsers.get(socket.id);
         
@@ -1615,14 +1742,20 @@ io.on('connection', (socket) => {
         io.emit('lobbyChatUpdate', { messages: lobbyMessages });
     });
 
-    socket.on('lobbyChatMessage', (data) => {
-        const { message, username, avatar } = data;
+    safeOn('lobbyChatMessage', (data) => {
+        // FIX: use the authenticated username/avatar instead of trusting the
+        // client-supplied ones (anyone could impersonate other users before).
+        const user = onlineUsers.get(socket.id);
+        if (!user) return;
+
+        const message = typeof data.message === 'string' ? data.message.slice(0, 500) : '';
+        if (!message.trim()) return;
 
         const chatMessage = {
             id: uuidv4(),
-            username: username,
+            username: user.username,
             message: message,
-            avatar: avatar || null,
+            avatar: user.avatar || null,
             timestamp: new Date().toISOString()
         };
         
@@ -1639,7 +1772,7 @@ io.on('connection', (socket) => {
         socket.emit('lobbyChatUpdate', { messages: lobbyMessages });
     });
 
-    socket.on('createRoom', (data) => {
+    safeOn('createRoom', (data) => {
         const { name, mode, password, username, difficulty, hintCount } = data;
         
         if (!name || name.trim().length === 0) {
@@ -1680,13 +1813,16 @@ io.on('connection', (socket) => {
         })));
     });
 
-    socket.on('joinRoom', (data) => {
+    safeOn('joinRoom', async (data) => {
         const { roomId, password, username, avatar } = data;
         const room = rooms.get(roomId);
         
         // Check if user is banned
+        // FIX: isUserBanned is async but was never awaited here, so this
+        // check always saw a pending Promise (never banned) and the logs
+        // printed "[object Promise]".
         log.info(`[JOIN ROOM] Checking ban status for: ${username}`);
-        const banStatus = isUserBanned(username);
+        const banStatus = await isUserBanned(username);
         log.info(`[JOIN ROOM] Ban status for ${username}:`, banStatus);
         if (banStatus.banned) {
             log.info(`[JOIN ROOM] REJECTING banned user from joining room: ${username}`);
@@ -1717,7 +1853,29 @@ io.on('connection', (socket) => {
             socket.emit('joinError', { message: 'Room is full' });
             return;
         }
-        
+
+        // FIX: duplicate-join protection. A double-click or reconnect race
+        // could add the same player twice, occupying two slots and breaking
+        // turn order. Re-joining is now idempotent.
+        if (room.players.some(p => p.id === socket.id)) {
+            socket.emit('joinedRoom', {
+                roomId,
+                roomName: room.name,
+                mode: room.mode,
+                players: room.players.map(p => ({
+                    id: p.id,
+                    username: p.username,
+                    team: p.team,
+                    avatar: p.avatar,
+                    isAdmin: onlineUsers.get(p.id)?.isAdmin || false
+                })),
+                isHost: room.hostId === socket.id,
+                hostId: room.hostId,
+                team: room.players.find(p => p.id === socket.id)?.team || null
+            });
+            return;
+        }
+
         if (room.status !== 'waiting') {
             socket.emit('joinError', { message: 'Game already in progress' });
             return;
@@ -1780,6 +1938,8 @@ io.on('connection', (socket) => {
         if (user && user.room) {
             const room = rooms.get(user.room);
             if (room) {
+                const wasPlaying = room.status === 'playing' || room.status === 'coin_flip' || room.status === 'word_selection';
+
                 room.removePlayer(socket.id);
                 socket.leave(user.room);
                 socket.to(user.room).emit('playerLeft', { id: socket.id, username: user.username });
@@ -1796,6 +1956,14 @@ io.on('connection', (socket) => {
 
                 if (room.players.length > 0) {
                     io.to(user.room).emit('hostChanged', { newHostId: room.hostId });
+
+                    // FIX: notify remaining players when a running game was
+                    // aborted because someone left (room went back to waiting)
+                    if (wasPlaying && room.status === 'waiting' && room.gameState === null) {
+                        io.to(user.room).emit('gameAborted', {
+                            message: `${user.username} left the game. Waiting for the host to start a new game.`
+                        });
+                    }
                 }
 
                 io.emit('roomList', Array.from(rooms.values()).map(r => ({
@@ -1814,7 +1982,7 @@ io.on('connection', (socket) => {
         }
     });
 
-    socket.on('changeTeam', (data) => {
+    safeOn('changeTeam', (data) => {
         const { roomId, team } = data;
         const room = rooms.get(roomId);
         
@@ -1846,7 +2014,7 @@ io.on('connection', (socket) => {
         }
     });
 
-    socket.on('startGame', (data) => {
+    safeOn('startGame', (data) => {
         const { roomId } = data;
         const room = rooms.get(roomId);
         
@@ -1900,10 +2068,13 @@ io.on('connection', (socket) => {
             });
         } else {
             // Regular game starts immediately
+            // FIX: send maskedWord instead of the real word (anti-cheat)
             io.to(roomId).emit('gameStarted', {
                 gameState: {
-                    word: room.gameState.word,
+                    word: null, // Don't send actual word to clients
                     wordLength: room.gameState.word.length,
+                    spaceIndices: [],
+                    maskedWord: room.gameState.word.split('').map(() => null),
                     hint: room.gameState.hint,
                     guessedLetters: room.gameState.guessedLetters,
                     wrongLetters: room.gameState.wrongLetters,
@@ -1928,7 +2099,7 @@ io.on('connection', (socket) => {
     });
 
     // Coin Flip handlers for custom word mode
-    socket.on('selectCoinSide', (data) => {
+    safeOn('selectCoinSide', (data) => {
         const { roomId, side } = data;
         const room = rooms.get(roomId);
         
@@ -2042,7 +2213,7 @@ io.on('connection', (socket) => {
         }
     });
 
-    socket.on('submitCustomWord', (data) => {
+    safeOn('submitCustomWord', (data) => {
         const { roomId, word } = data;
         const room = rooms.get(roomId);
         
@@ -2070,27 +2241,32 @@ io.on('connection', (socket) => {
             socket.emit('wordAccepted');
             
             // Get indices of spaces in the word
+            // FIX: this redeclared `word` (shadowing the destructured param
+            // above). Works by accident, but is fragile - use the game state
+            // word explicitly.
             const spaceIndices = [];
-            const word = room.gameState.word;
-            for (let i = 0; i < word.length; i++) {
-                if (word[i] === ' ') {
+            const gameWord = room.gameState.word;
+            for (let i = 0; i < gameWord.length; i++) {
+                if (gameWord[i] === ' ') {
                     spaceIndices.push(i);
                 }
             }
             
             // Pre-fill spaces as guessed letters
             spaceIndices.forEach(index => {
-                if (!room.gameState.guessedLetters.includes(word[index])) {
-                    room.gameState.guessedLetters.push(word[index]);
+                if (!room.gameState.guessedLetters.includes(gameWord[index])) {
+                    room.gameState.guessedLetters.push(gameWord[index]);
                 }
             });
             
             // Start the game for all players
+            // FIX: send maskedWord + spaces instead of the real word (anti-cheat)
             io.to(roomId).emit('gameStarted', {
                 gameState: {
                     word: null, // Don't send actual word to clients
                     wordLength: room.gameState.word.length,
                     spaceIndices: spaceIndices,
+                    maskedWord: room.getMaskedWord(),
                     hint: null,
                     guessedLetters: room.gameState.guessedLetters,
                     wrongLetters: room.gameState.wrongLetters,
@@ -2117,12 +2293,18 @@ io.on('connection', (socket) => {
         }
     });
 
-    socket.on('requestHint', (data) => {
+    safeOn('requestHint', (data) => {
         const { roomId, question } = data;
         const room = rooms.get(roomId);
 
         if (!room || !room.gameState) {
             socket.emit('hintError', { message: 'Game not found' });
+            return;
+        }
+
+        // FIX: don't allow hint requests after the game finished
+        if (room.status !== 'playing' || room.gameState.status !== 'playing') {
+            socket.emit('hintError', { message: 'No game in progress' });
             return;
         }
 
@@ -2147,7 +2329,7 @@ io.on('connection', (socket) => {
         }
     });
 
-    socket.on('provideHint', (data) => {
+    safeOn('provideHint', (data) => {
         const { roomId, hint } = data;
         const room = rooms.get(roomId);
 
@@ -2174,7 +2356,7 @@ io.on('connection', (socket) => {
         }
     });
 
-    socket.on('dismissHint', (data) => {
+    safeOn('dismissHint', (data) => {
         const { roomId } = data;
         const room = rooms.get(roomId);
         if (!room || !room.gameState) return;
@@ -2184,7 +2366,7 @@ io.on('connection', (socket) => {
         io.to(roomId).emit('hintDismissed', { requesterId });
     });
 
-    socket.on('makeGuess', (data) => {
+    safeOn('makeGuess', (data) => {
         const { roomId, letter } = data;
         const room = rooms.get(roomId);
         
@@ -2226,7 +2408,9 @@ io.on('connection', (socket) => {
             // Get next turn (automatically skips word setter's team if custom word mode)
             room.gameState.currentTurn = room.getNextTurn();
             
-            // FIX: Always send the word in the response so client can update display
+            // FIX: send maskedWord instead of the raw word. The old code sent
+            // the full word to every client on every guess, so the secret word
+            // was readable in DevTools and the game was trivially cheatable.
             io.to(roomId).emit('guessResult', {
                 letter: result.letter,
                 isCorrect: result.isCorrect,
@@ -2234,7 +2418,7 @@ io.on('connection', (socket) => {
                 wrongLetters: room.gameState.wrongLetters,
                 currentTurn: room.gameState.currentTurn,
                 scores: room.gameState.scores,
-                word: result.word, // Send full word so client can update display
+                maskedWord: room.getMaskedWord(), // letter where guessed, null otherwise
                 isWin: result.isWin,
                 isLose: result.isLose
             });
@@ -2253,10 +2437,17 @@ io.on('connection', (socket) => {
                 });
                 
                 // Update user stats in database for all players
+                // FIX: in solo mode the single player wins when the word is
+                // completed (isWin) and loses on 6 wrong letters (isLose);
+                // the old code only looked at the top score, which is 0-0
+                // until a correct guess is made.
+                const isSoloMode = room.mode === 'solo';
                 room.players.forEach(player => {
                     const user = onlineUsers.get(player.id);
                     if (user && !user.isAdmin) {
-                        const isWinner = winner && winner[0] === player.id;
+                        const isWinner = isSoloMode
+                            ? result.isWin
+                            : !!(winner && winner[0] === player.id);
                         updateUserStats(user.username, isWinner ? 'win' : 'loss');
                     }
                 });
@@ -2279,19 +2470,29 @@ io.on('connection', (socket) => {
         }
     });
 
-    socket.on('chatMessage', (data) => {
-        const { roomId, message, username, chatType, avatar } = data;
+    safeOn('chatMessage', (data) => {
+        // FIX: use the authenticated username/avatar instead of trusting the
+        // client-supplied ones (anyone could impersonate other users before).
+        const user = onlineUsers.get(socket.id);
+        const { roomId, chatType } = data;
         const room = rooms.get(roomId);
         
-        if (!room) return;
+        if (!room || !user) return;
+
+        // Only allow team chat from players actually on a team
+        const sender = room.players.find(p => p.id === socket.id);
+        if (chatType === 'team' && !sender?.team) return;
         
+        const message = typeof data.message === 'string' ? data.message.slice(0, 500) : '';
+        if (!message.trim()) return;
+
         const chatMessage = {
             id: uuidv4(),
-            username: username,
+            username: user.username,
             message: message,
-            avatar: avatar || null,
+            avatar: user.avatar || null,
             timestamp: new Date().toISOString(),
-            type: chatType || 'global'
+            type: (chatType === 'team' && sender?.team) ? 'team' : 'global'
         };
         
         room.messages.push(chatMessage);
@@ -2300,8 +2501,7 @@ io.on('connection', (socket) => {
             room.messages = room.messages.slice(-100);
         }
         
-        if (chatType === 'team') {
-            const sender = room.players.find(p => p.id === socket.id);
+        if (chatMessage.type === 'team') {
             if (sender && sender.team) {
                 room.players.forEach(player => {
                     if (player.team === sender.team) {
@@ -2314,7 +2514,7 @@ io.on('connection', (socket) => {
         }
     });
 
-    socket.on('getRoomPlayers', (data) => {
+    safeOn('getRoomPlayers', (data) => {
         const { roomId } = data;
         const room = rooms.get(roomId);
         if (!room) return;
@@ -2344,7 +2544,7 @@ io.on('connection', (socket) => {
     });
 
     // Handle host changing the game mode
-    socket.on('setGameMode', (data) => {
+    safeOn('setGameMode', (data) => {
         const { roomId, gameMode } = data;
         const room = rooms.get(roomId);
         
@@ -2369,7 +2569,7 @@ io.on('connection', (socket) => {
     });
 
     // Handle host changing the hint count
-    socket.on('setHintCount', (data) => {
+    safeOn('setHintCount', (data) => {
         const { roomId, hintCount } = data;
         const room = rooms.get(roomId);
         
@@ -2399,6 +2599,8 @@ io.on('connection', (socket) => {
         if (user && user.room) {
             const room = rooms.get(user.room);
             if (room) {
+                const wasPlaying = room.status === 'playing' || room.status === 'coin_flip' || room.status === 'word_selection';
+
                 room.removePlayer(socket.id);
                 socket.to(user.room).emit('playerLeft', { id: socket.id, username: user.username });
 
@@ -2414,6 +2616,14 @@ io.on('connection', (socket) => {
 
                 if (room.players.length > 0) {
                     io.to(user.room).emit('hostChanged', { newHostId: room.hostId });
+
+                    // FIX: notify remaining players when a running game was
+                    // aborted because someone left (room went back to waiting)
+                    if (wasPlaying && room.status === 'waiting' && room.gameState === null) {
+                        io.to(user.room).emit('gameAborted', {
+                            message: `${user.username} left the game. Waiting for the host to start a new game.`
+                        });
+                    }
                 }
 
                 io.emit('roomList', Array.from(rooms.values()).map(r => ({
@@ -2450,7 +2660,7 @@ io.on('connection', (socket) => {
     }
 
     // Delete room (admin only)
-    socket.on('adminDeleteRoom', (data) => {
+    safeOn('adminDeleteRoom', (data) => {
         if (!isAdmin(socket.id)) {
             socket.emit('adminError', { message: 'Unauthorized - Admin only' });
             return;
@@ -2515,7 +2725,7 @@ io.on('connection', (socket) => {
     });
 
     // Kick player (admin only)
-    socket.on('adminKickPlayer', (data) => {
+    safeOn('adminKickPlayer', (data) => {
         if (!isAdmin(socket.id)) {
             socket.emit('adminError', { message: 'Unauthorized - Admin only' });
             return;
@@ -2628,7 +2838,7 @@ io.on('connection', (socket) => {
     });
 
     // Broadcast message (admin only)
-    socket.on('adminBroadcast', (data) => {
+    safeOn('adminBroadcast', (data) => {
         if (!isAdmin(socket.id)) {
             socket.emit('adminError', { message: 'Unauthorized - Admin only' });
             return;
@@ -2652,7 +2862,7 @@ io.on('connection', (socket) => {
     // ═══════════════════════════════════════════════════════════════════════
 
     // Server Kick Player (admin only)
-    socket.on('serverKickPlayer', (data) => {
+    safeOn('serverKickPlayer', (data) => {
         if (!isAdmin(socket.id)) {
             socket.emit('adminError', { message: 'Unauthorized - Admin only' });
             return;
@@ -2711,7 +2921,7 @@ io.on('connection', (socket) => {
     });
 
     // Server Ban Player (admin only)
-    socket.on('serverBanPlayer', async (data) => {
+    safeOn('serverBanPlayer', async (data) => {
         if (!isAdmin(socket.id)) {
             socket.emit('adminError', { message: 'Unauthorized - Admin only' });
             return;
@@ -2754,18 +2964,17 @@ io.on('connection', (socket) => {
 
         // Update user in database with server ban
         try {
-            await User.findOneAndUpdate(
-                { username: username.toLowerCase() },
-                { 
-                    serverBan: true,
-                    serverBanExpiry: expiryDate,
-                    serverBanDuration: duration,
-                    serverBanReason: reason || 'Banned by server admin'
-                },
-                { upsert: false }
-            );
+            const { error } = await db.from('users').upsert({
+                username: username.toLowerCase(),
+                display_name: username,
+                server_ban: true,
+                server_ban_expiry: expiryDate ? expiryDate.toISOString() : null,
+                server_ban_duration: duration,
+                server_ban_reason: reason || 'Banned by server admin'
+            }, { onConflict: 'username' });
+            if (error) throw error;
         } catch (error) {
-            console.error('[SERVER BAN] Error updating database:', error);
+            console.error('[SERVER BAN] Error updating database:', error.message);
         }
 
         // Find and disconnect the user if online
@@ -2812,7 +3021,7 @@ io.on('connection', (socket) => {
     });
 
     // Server Unban Player (admin only)
-    socket.on('serverUnbanPlayer', async (data) => {
+    safeOn('serverUnbanPlayer', async (data) => {
         if (!isAdmin(socket.id)) {
             socket.emit('adminError', { message: 'Unauthorized - Admin only' });
             return;
@@ -2827,31 +3036,29 @@ io.on('connection', (socket) => {
 
         // Remove server ban from database
         try {
-            const result = await User.findOneAndUpdate(
-                { username: username.toLowerCase() },
-                { 
-                    serverBan: false,
-                    serverBanExpiry: null,
-                    serverBanDuration: null,
-                    serverBanReason: null
-                },
-                { upsert: false }
-            );
+            const { data, error } = await db.from('users').update({
+                server_ban: false,
+                server_ban_expiry: null,
+                server_ban_duration: null,
+                server_ban_reason: null
+            }).eq('username', username.toLowerCase()).select('username');
 
-            if (!result) {
+            if (error) throw error;
+
+            if (!data || data.length === 0) {
                 socket.emit('adminError', { message: `User "${username}" not found in database` });
                 return;
             }
 
             socket.emit('adminSuccess', { message: `Server ban removed for "${username}"` });
         } catch (error) {
-            console.error('[SERVER UNBAN] Error updating database:', error);
+            console.error('[SERVER UNBAN] Error updating database:', error.message);
             socket.emit('adminError', { message: 'Failed to remove server ban' });
         }
     });
 
     // Clear chat (admin only)
-    socket.on('adminClearChat', (data) => {
+    safeOn('adminClearChat', (data) => {
         if (!isAdmin(socket.id)) {
             socket.emit('adminError', { message: 'Unauthorized - Admin only' });
             return;
@@ -2930,7 +3137,7 @@ io.on('connection', (socket) => {
     });
 
     // Delete user from database (admin only)
-    socket.on('adminDeleteUser', async (data) => {
+    safeOn('adminDeleteUser', async (data) => {
         if (!isAdmin(socket.id)) {
             socket.emit('adminError', { message: 'Unauthorized - Admin only' });
             return;
@@ -2978,7 +3185,7 @@ io.on('connection', (socket) => {
     });
 
     // Edit user stats (admin only)
-    socket.on('adminEditUserStats', async (data) => {
+    safeOn('adminEditUserStats', async (data) => {
         if (!isAdmin(socket.id)) {
             socket.emit('adminError', { message: 'Unauthorized - Admin only' });
             return;
@@ -3066,7 +3273,7 @@ io.on('connection', (socket) => {
     });
 
     // Handle avatar update
-    socket.on('updateAvatar', async (data) => {
+    safeOn('updateAvatar', async (data) => {
         const user = onlineUsers.get(socket.id);
         if (!user) return;
 
@@ -3101,7 +3308,7 @@ io.on('connection', (socket) => {
     });
 
     // Inspect user profile (any user can inspect any other user)
-    socket.on('inspectUserProfile', async (data) => {
+    safeOn('inspectUserProfile', async (data) => {
         const { username } = data;
         const inspector = onlineUsers.get(socket.id);
         
@@ -3135,7 +3342,7 @@ io.on('connection', (socket) => {
     });
     
     // Admin: Quick inspect user from online users dropdown
-    socket.on('adminInspectUser', async (data) => {
+    safeOn('adminInspectUser', async (data) => {
         if (!isAdmin(socket.id)) {
             socket.emit('adminError', { message: 'Unauthorized - Admin only' });
             return;
@@ -3154,14 +3361,16 @@ io.on('connection', (socket) => {
             lastLogin: userData.lastLogin,
             isAdmin: username.toLowerCase() === 'admin',
             isInspectorAdmin: true,
-            banned: userData.banned,
-            banExpiry: userData.banExpiry,
-            banReason: userData.banReason
+            // FIX: read the real serverBan* fields (banned/banExpiry/banReason
+            // don't exist on the model and always came back undefined)
+            banned: !!(userData.serverBan && (!userData.serverBanExpiry || new Date(userData.serverBanExpiry) > new Date())),
+            banExpiry: userData.serverBanExpiry || null,
+            banReason: userData.serverBanReason || null
         });
     });
 
     // Admin: Ban user
-    socket.on('adminBanUser', async (data) => {
+    safeOn('adminBanUser', async (data) => {
         if (!isAdmin(socket.id)) {
             socket.emit('adminError', { message: 'Unauthorized - Admin only' });
             return;
@@ -3219,8 +3428,58 @@ io.on('connection', (socket) => {
         }
     });
 
+    // Admin: Unban user
+    // FIX: the client emits 'adminUnbanUser' but the server had no handler
+    // for it, so the Unban button in the admin database panel did nothing.
+    safeOn('adminUnbanUser', async (data) => {
+        if (!isAdmin(socket.id)) {
+            socket.emit('adminError', { message: 'Unauthorized - Admin only' });
+            return;
+        }
+
+        const { username } = data;
+
+        if (!username) {
+            socket.emit('adminError', { message: 'Username is required' });
+            return;
+        }
+
+        try {
+            const { error } = await db.from('users').upsert({
+                username: username.toLowerCase(),
+                display_name: username,
+                server_ban: false,
+                server_ban_expiry: null,
+                server_ban_duration: null,
+                server_ban_reason: null
+            }, { onConflict: 'username' });
+            if (error) throw error;
+
+            // Also clear any in-memory fallback ban
+            const memUser = inMemoryUsers.get(username.toLowerCase());
+            if (memUser) {
+                memUser.serverBan = false;
+                memUser.serverBanExpiry = null;
+                memUser.serverBanDuration = null;
+                memUser.serverBanReason = null;
+            }
+
+            socket.emit('adminSuccess', { message: `User "${username}" has been unbanned` });
+
+            // Refresh database view
+            const users = await getAllUsersInDatabase();
+            socket.emit('adminUserDatabase', {
+                users: users,
+                total: users.length
+            });
+        } catch (error) {
+            console.error('[ADMIN UNBAN] Error:', error.message);
+            socket.emit('adminError', { message: 'Failed to unban user' });
+        }
+    });
+
     // Admin: Toggle maintenance mode
-    socket.on('adminToggleMaintenance', (data) => {
+    safeOn('adminToggleMaintenance', (data) => {
         if (!isAdmin(socket.id)) {
             socket.emit('adminError', { message: 'Unauthorized - Admin only' });
             return;
@@ -3288,7 +3547,7 @@ io.on('connection', (socket) => {
     });
 
     // Admin: Restore from backup
-    socket.on('adminRestoreBackup', async (data) => {
+    safeOn('adminRestoreBackup', async (data) => {
         if (!isAdmin(socket.id)) {
             socket.emit('adminError', { message: 'Unauthorized - Admin only' });
             return;
@@ -3321,7 +3580,7 @@ io.on('connection', (socket) => {
     });
 
     // Admin: Delete backup
-    socket.on('adminDeleteBackup', (data) => {
+    safeOn('adminDeleteBackup', (data) => {
         if (!isAdmin(socket.id)) {
             socket.emit('adminError', { message: 'Unauthorized - Admin only' });
             return;
@@ -3348,7 +3607,25 @@ io.on('connection', (socket) => {
     });
 });
 
-const PORT = 12244;
+// Render (and most PaaS hosts) provide the port via process.env.PORT.
+// The old hardcoded 12244 made the app unreachable on Render.
+const PORT = process.env.PORT || 12244;
+
+// Lightweight health endpoint for keep-alive pings (cron-job.org / GitHub
+// Actions / Render health checks). Cheaper than loading the full index.html.
+app.get('/health', (req, res) => {
+    res.status(200).json({
+        status: 'ok',
+        uptime: Math.floor(process.uptime()),
+        onlineUsers: onlineUsers.size,
+        rooms: rooms.size,
+        mongodb: 'n/a (Supabase)',
+        supabase: usingSupabase() ? 'connected' : 'disconnected',
+        storage: 'supabase',
+        timestamp: new Date().toISOString()
+    });
+});
+
 server.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
     console.log(`Online users: ${onlineUsers.size}`);

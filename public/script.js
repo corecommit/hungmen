@@ -5,8 +5,27 @@
 
 // ── Configuration ──
 const CONFIG = {
-    // Server URL - always use the Wispbyte server
-    SERVER_URL: 'http://217.160.3.69:12244',
+    // FIX: the old hardcoded 'http://217.160.3.69:12244' broke the app as
+    // soon as the backend moved (and mixed content when the frontend is on
+    // HTTPS, e.g. Vercel). The URL is now resolved in this order:
+    //   1. window.GAME_SERVER_URL  - set in index.html before script.js
+    //   2. BACKEND_URL search param - ...?backend=https://myapp.onrender.com
+    //   3. same origin              - works when server.js also serves the
+    //                                  frontend (Render single-service setup)
+    //   4. http://localhost:12244   - local development fallback
+    get SERVER_URL() {
+        if (typeof window !== 'undefined' && window.GAME_SERVER_URL) {
+            return window.GAME_SERVER_URL;
+        }
+        if (typeof window !== 'undefined') {
+            const param = new URLSearchParams(window.location.search).get('backend');
+            if (param) return param.replace(/\/+$/, '');
+        }
+        if (typeof window !== 'undefined' && window.location && window.location.protocol.startsWith('http')) {
+            return window.location.origin;
+        }
+        return 'http://localhost:12244';
+    },
     MAX_WRONG_GUESSES: 6,
     MAX_USERNAME_LENGTH: 20,
     MAX_ROOM_NAME_LENGTH: 30,
@@ -1661,8 +1680,20 @@ function setupSocketListeners(username, connectionTimeout, adminPassword = null)
     });
     
     socket.on('connect_error', (error) => {
+        // FIX: the old handler immediately destroyed the session on ANY
+        // connection error. Behind proxies (Render / Vercel / Cloudflare)
+        // WebSocket upgrades get dropped all the time; socket.io retries
+        // automatically, so only give up once the retry budget is exhausted
+        // (socket.io sets connected=false and stops reconnecting then).
+        log('Connection error:', error && error.message);
         clearTimeout(connectionTimeout);
-        log('Connection error:', error);
+
+        const willRetry = socket && socket.io && socket.io.reconnecting;
+        if (willRetry) {
+            showNotification('Connection lost, retrying...', 'warning');
+            return;
+        }
+
         showNotification('Server is down. Please try again later.', 'error');
         if (socket) {
             socket.disconnect();
@@ -1670,11 +1701,20 @@ function setupSocketListeners(username, connectionTimeout, adminPassword = null)
         }
         clearSession();
     });
-    
+
     socket.on('disconnect', (reason) => {
         log('Disconnected:', reason);
-        if (reason === 'io server disconnect' || reason === 'transport close') {
-            showServerDownMessage();
+        if (reason === 'io server disconnect') {
+            // Server explicitly disconnected us (kick/ban) - the forceLogout
+            // handler deals with the message. Show the server-down screen
+            // only if we are not being logged out.
+            if (!currentUser) {
+                showServerDownMessage();
+            }
+        } else if (reason === 'transport close' || reason === 'transport error' || reason === 'ping timeout') {
+            // FIX: don't slam the "server is down" modal over the game for
+            // transient drops - socket.io auto-reconnects. Show a soft toast.
+            showNotification('Connection lost, reconnecting...', 'warning');
         }
     });
 
@@ -2144,8 +2184,12 @@ function setupSocketListeners(username, connectionTimeout, adminPassword = null)
         // IMPORTANT: Must use the full players array from server, not filtered activePlayers
         gameState.players = data.players;
 
-        // Initialize word for tracking
-        if (!gameState.word && gameState.wordLength) {
+        // FIX (anti-cheat): keep the masked word sent by the server. The old
+        // code set gameState.word = '' which silently broke the letter-box
+        // rendering once the server stopped leaking the raw word.
+        if (Array.isArray(data.gameState.maskedWord)) {
+            gameState.maskedWord = data.gameState.maskedWord;
+        } else if (!gameState.word && gameState.wordLength) {
             gameState.word = '';
         }
 
@@ -2240,6 +2284,29 @@ function setupSocketListeners(username, connectionTimeout, adminPassword = null)
 
     socket.on('gameEnded', (data) => {
         showGameOverModal(data);
+    });
+
+    // FIX: server emits this when a running game is aborted (e.g. the word
+    // setter left mid-game). Without a handler the remaining players were
+    // stuck on the game screen with no way back to the lobby.
+    socket.on('gameAborted', (data) => {
+        // Hide any open modal (game over, hint request, word selection, ...)
+        document.querySelectorAll('.modal.show').forEach(m => m.classList.remove('show'));
+        gameState = null;
+        isWordSetter = false;
+        isOnWordSetterTeam = false;
+        showNotification(data.message || 'Game aborted', 'warning', 4000);
+
+        if (currentRoom) {
+            showRoomView({
+                roomName: currentRoom.roomName || '',
+                mode: currentRoom.mode || '1v1',
+                players: [],
+                isHost: false
+            });
+        } else {
+            showView('lobbyView');
+        }
     });
     
     socket.on('newMessage', (message) => {
@@ -3554,25 +3621,37 @@ function makeGuess(letter) {
 }
 
 function updateGameState(data) {
-    // FIX: Always update word from server (word is not logged to console for security)
-    if (data.word) {
-        gameState.word = data.word;
+    // FIX (anti-cheat): the server now only ever sends maskedWord (array of
+    // revealed letters / nulls) - never the raw word. The old client stored
+    // the full word from the server, which made it readable in DevTools.
+    if (Array.isArray(data.maskedWord)) {
+        gameState.maskedWord = data.maskedWord;
     }
-    
+
     gameState.guessedLetters = data.guessedLetters;
     gameState.currentTurn = data.currentTurn;
-    
+
     // Update players array if sent from server
     if (data.players) {
         gameState.players = data.players;
         log('Updated players array from guessResult, count:', data.players.length);
     }
-    
-    // Update letter boxes
-    if (gameState.word) {
-        document.querySelectorAll('.letter-box').forEach((box, index) => {
+
+    // Update letter boxes from the masked word
+    const boxes = document.querySelectorAll('.letter-box');
+    if (Array.isArray(gameState.maskedWord)) {
+        boxes.forEach((box, index) => {
+            const letter = gameState.maskedWord[index];
+            if (letter && !box.classList.contains('filled')) {
+                box.textContent = letter;
+                box.classList.add('filled');
+            }
+        });
+    } else if (gameState.word) {
+        // Fallback for servers that still send the raw word
+        boxes.forEach((box, index) => {
             const letter = gameState.word[index];
-            if (data.guessedLetters.includes(letter) && !box.classList.contains('filled')) {
+            if (letter && data.guessedLetters.includes(letter) && !box.classList.contains('filled')) {
                 box.textContent = letter;
                 box.classList.add('filled');
             }

@@ -1,0 +1,45 @@
+# Keep-alive ping for the Render free tier.
+#
+# Render free web services spin down after 15 minutes without inbound
+# traffic. This workflow pings the /health endpoint every 13 minutes
+# (safely inside the 12-14 minute window) so the service never idles out.
+#
+# Setup (one-time, per repo):
+#   1. Push this file to the main branch of the repo that owns the workflow.
+#   2. In GitHub: Settings -> Secrets and variables -> Actions -> New secret
+#      Name:  RENDER_HEALTH_URL
+#      Value: https://YOUR-SERVICE-NAME.onrender.com/health
+#   3. Enable Actions for the repo (they are on by default).
+#
+# Notes:
+# - GitHub cron schedules can lag a few minutes at busy times; the 13-minute
+#   interval still keeps you inside the 15-minute spin-down window.
+# - The minimum interval GitHub supports is 5 minutes, so 13 minutes is fine.
+# - cron is in UTC.
+
+name: Keep Render Awake
+
+on:
+  schedule:
+    # Every 13 minutes: minute 0, 13, 26, 39, 52 of every hour.
+    - cron: '0/13 * * * *'
+  # Allows triggering the ping manually from the Actions tab (for testing).
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Render health endpoint
+        run: |
+          if [ -z "${{ secrets.RENDER_HEALTH_URL }}" ]; then
+            echo "::error::RENDER_HEALTH_URL secret is not set. Add it in repo Settings -> Secrets and variables -> Actions."
+            exit 1
+          fi
+          echo "Pinging ${{ secrets.RENDER_HEALTH_URL }} ..."
+          response=$(curl -s -o /tmp/health.json -w "%{http_code}" --max-time 60 "${{ secrets.RENDER_HEALTH_URL }}")
+          echo "HTTP status: $response"
+          cat /tmp/health.json || true
+          if [ "$response" != "200" ]; then
+            echo "::warning::Health check returned $response (service may be spinning up after a restart)"
+          fi
