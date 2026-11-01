@@ -192,7 +192,7 @@ function showAdminIndicator() {
         const adminBadge = document.createElement('div');
         adminBadge.className = 'admin-badge';
         adminBadge.innerHTML = '<i class="fas fa-shield-alt"></i> ADMIN';
-        adminBadge.style.cssText = 'background: linear-gradient(135deg, #f59e0b, #d97706); color: #000; padding: 6px 12px; border-radius: 20px; font-size: 0.75rem; font-weight: 700; display: flex; align-items: center; gap: 6px; margin-left: 10px;';
+        adminBadge.style.cssText = 'background: #f59e0b; color: #000; padding: 6px 12px; border-radius: 20px; font-size: 0.75rem; font-weight: 700; display: flex; align-items: center; gap: 6px; margin-left: 10px;';
 
         const usernameElement = header.querySelector('.current-user');
         if (usernameElement) {
