@@ -788,17 +788,7 @@
 
     <!-- Socket.io Client -->
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-    <!--
-        Backend URL for the socket connection.
-        - Same-origin (default): works out of the box when the Node server
-          also serves this page (Render single-service setup).
-        - Vercel + separate Render backend: uncomment the line below and put
-          your Render URL in it. The client (script.js) reads
-          window.GAME_SERVER_URL before falling back to same-origin.
-        - You can also pass ?backend=https://your-app.onrender.com as a URL
-          parameter without editing anything.
-    -->
-    <!-- <script>window.GAME_SERVER_URL = 'https://YOUR-RENDER-APP.onrender.com';</script> -->
+    <script>window.GAME_SERVER_URL = 'https://hungmen-n24h.onrender.com';</script>
     <script src="script.js"></script>
     <script src="qol.js" defer></script>
 </body>
