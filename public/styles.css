@@ -5323,3 +5323,101 @@ input:focus, textarea:focus, select:focus {
 @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
 }
+
+
+/* ═══════════════════════════════════════════════════════════════════════
+   THEME v3 - flat colours only (no gradients). Loaded last so it wins.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* 1. Login button: spinner + label while connecting */
+.btn-large .btn-loading { display: none; align-items: center; justify-content: center; gap: 10px; }
+.btn-large.loading .btn-text { display: none; }
+.btn-large.loading .btn-loading { display: inline-flex; }
+.btn-large:disabled, .btn-large.loading:disabled { opacity: 1; cursor: progress; transform: none; }
+.btn-large.loading { background: var(--amber); pointer-events: none; }
+.btn-spinner {
+    width: 20px; height: 20px; flex: none; border-radius: 50%;
+    border: 3px solid rgba(29, 22, 6, 0.22); border-top-color: var(--amber-ink);
+    animation: btnSpin 0.7s linear infinite;
+}
+@keyframes btnSpin { to { transform: rotate(360deg); } }
+.btn-slow-label { display: none; }
+.btn-large.slow .btn-loading-label { display: none; }
+.btn-large.slow .btn-slow-label { display: inline; }
+.btn-large { text-transform: none; letter-spacing: 0.2px; font-size: 1.05rem; padding: 16px 40px; min-height: 54px; }
+
+/* 2. Settings / any modal: lock the page behind it */
+html { scrollbar-gutter: stable; }
+html:has(.modal.show), body:has(.modal.show), html.modal-open, body.modal-open { overflow: hidden; }
+.modal { overscroll-behavior: contain; }
+.modal-content { overscroll-behavior: contain; max-height: calc(100dvh - 40px); -webkit-overflow-scrolling: touch; }
+
+/* 3. No glows, one consistent surface/border/radius system */
+* { text-shadow: none !important; }
+:root { --radius: 14px; --radius-sm: 10px; --surface-2: #20262e; }
+
+.username-container {
+    background: var(--bg-card); backdrop-filter: none; border: 1px solid var(--border-color-light);
+    border-radius: 20px; box-shadow: var(--shadow-lg); padding: 40px 36px; max-width: 460px;
+}
+.game-logo { font-size: clamp(2.4rem, 8vw, 3.4rem); margin-bottom: 26px; }
+.username-input-group input {
+    padding: 16px 18px; border: 1px solid var(--border-color); border-radius: var(--radius-sm);
+    background: var(--bg-input); font-weight: 500; text-align: left; transform: none;
+}
+.username-input-group input:focus { transform: none; background: var(--bg-input); box-shadow: 0 0 0 3px rgba(233, 180, 76, 0.22); }
+.username-hint, .password-hint { color: var(--text-muted); font-size: 0.8rem; margin: 8px 2px 0; text-align: left; }
+.auth-error { border-radius: var(--radius-sm); }
+.build-info { background: transparent; border: 0; color: var(--text-muted); }
+
+/* Header + panels */
+.game-header, .header { background: var(--bg-card); border: 1px solid var(--border-color-light); border-radius: var(--radius); box-shadow: none; backdrop-filter: none; }
+.chat-header, .chat-section h3, .lobby-chat-section .chat-header { background: var(--surface-2); border-bottom: 1px solid var(--border-color-light); }
+.chat-messages, .mini-chat-messages { background: transparent; }
+.chat-input-area, .mini-chat-input { background: var(--surface-2); border-top: 1px solid var(--border-color-light); padding: 12px; }
+.chat-input-area input, .mini-chat-input input {
+    min-width: 0; padding: 11px 14px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-dark);
+}
+.chat-input-area input:focus, .mini-chat-input input:focus { border-color: var(--amber); box-shadow: 0 0 0 3px rgba(233, 180, 76, 0.22); }
+.chat-input-area button, .mini-chat-input button {
+    flex: none; margin-top: 0; min-width: 44px; padding: 0 14px; border-radius: var(--radius-sm);
+    background: var(--amber); color: var(--amber-ink); box-shadow: none;
+}
+.chat-input-area button:hover, .mini-chat-input button:hover { transform: none; box-shadow: none; background: #f2c466; }
+.chat-message.own .message-content { background: var(--amber); color: var(--amber-ink); }
+
+/* Buttons + controls */
+.btn, .btn-icon { border-radius: var(--radius-sm); box-shadow: none; transition: background 0.15s, border-color 0.15s, transform 0.1s; }
+.btn:hover:not(:disabled), .btn-icon:hover:not(:disabled) { transform: none; box-shadow: none; }
+.btn:active:not(:disabled), .btn-icon:active:not(:disabled) { transform: scale(0.97); }
+.btn-secondary:hover:not(:disabled), .btn-icon:hover:not(:disabled) { background: var(--bg-hover); border-color: var(--border-color); }
+.btn-icon { background: var(--raised); border: 1px solid var(--border-color-light); color: var(--text-primary); }
+.custom-dropdown-trigger, .online-status { background: var(--raised); border: 1px solid var(--border-color-light); border-radius: var(--radius-sm); box-shadow: none; }
+.custom-dropdown-menu, .online-users-dropdown { background: var(--raised); border: 1px solid var(--border-color); border-radius: var(--radius-sm); box-shadow: var(--shadow); backdrop-filter: none; }
+.mode-btn, .difficulty-btn, .hint-btn, .chat-tab { border-radius: var(--radius-sm); box-shadow: none; }
+.mode-btn.active, .difficulty-btn.active, .hint-btn.active { background: var(--amber); color: var(--amber-ink); border-color: var(--amber); }
+.chat-tab.active { border-color: var(--amber); color: var(--amber); }
+
+/* Modals */
+.modal-content { background: var(--bg-card); padding: 28px; transform: none; }
+.modal-content h2 { margin-bottom: 18px; }
+.settings-section { margin: 0 0 22px; padding-bottom: 22px; border-bottom: 1px solid var(--border-color-light); }
+.settings-section h3 { font-size: 0.8rem; letter-spacing: 0.08em; color: var(--text-muted); margin-bottom: 14px; }
+.modal-actions { display: flex; gap: 10px; justify-content: flex-end; }
+.form-group label { color: var(--text-secondary); font-size: 0.85rem; font-weight: 600; }
+
+/* Room list + cards */
+.rooms-list:empty::before, .no-rooms { color: var(--text-muted); }
+.room-card { background: var(--surface-2); border: 1px solid var(--border-color-light); border-radius: var(--radius); }
+.room-card:hover { border-color: var(--amber); background: var(--surface-2); }
+
+@media (max-width: 480px) {
+    .username-container { padding: 28px 20px; }
+    .modal { padding: 12px; }
+    .modal-content { padding: 22px 18px; }
+}
+
+/* v3 tweaks: keep the logo inside the card, full-width primary action */
+.username-container { max-width: 480px; }
+.game-logo { font-size: clamp(2rem, 7vw, 2.8rem); gap: 12px; }
+.username-form .btn-large { width: 100%; }

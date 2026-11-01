@@ -1660,6 +1660,7 @@ function connectSocket(username, adminPassword = null) {
     connectionTimeout = setTimeout(() => {
         if (!socket || !socket.connected) {
             showNotification('Server is down. Please try again later.', 'error');
+            resetLoginButton();
             if (socket) {
                 socket.disconnect();
             }
@@ -2440,6 +2441,8 @@ function handleJoinGame(e) {
     if (loginBtn) {
         loginBtn.classList.add('loading');
         loginBtn.disabled = true;
+        clearTimeout(window.__loginSlowTimer);
+        window.__loginSlowTimer = setTimeout(() => loginBtn.classList.add('slow'), 3000);
     }
     
     const usernameInput = document.getElementById('usernameInput');
@@ -2522,6 +2525,15 @@ function handleJoinGame(e) {
     connectSocket(username);
 }
 
+function resetLoginButton() {
+    const loginBtn = document.getElementById('loginBtn');
+    if (loginBtn) {
+        loginBtn.classList.remove('loading', 'slow');
+        loginBtn.disabled = false;
+    }
+    clearTimeout(window.__loginSlowTimer);
+}
+
 function showAuthError(message, type = 'error') {
     authError.textContent = message;
     authError.className = 'auth-error';
@@ -2534,8 +2546,9 @@ function showAuthError(message, type = 'error') {
     // Reset loading button state on error
     const loginBtn = document.getElementById('loginBtn');
     if (loginBtn && type !== 'success') {
-        loginBtn.classList.remove('loading');
+        loginBtn.classList.remove('loading', 'slow');
         loginBtn.disabled = false;
+        clearTimeout(window.__loginSlowTimer);
     }
     
     setTimeout(() => {

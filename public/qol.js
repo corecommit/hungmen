@@ -113,4 +113,15 @@
         new MutationObserver(wake).observe(gv, { attributes: true, attributeFilter: ['class'] });
         document.addEventListener('visibilitychange', wake);
     }
+    // 6. Lock page scroll while any dialog is open (fallback for browsers without :has()).
+    (function () {
+        const root = document.documentElement;
+        const sync = () => {
+            const open = !!document.querySelector('.modal.show');
+            root.classList.toggle('modal-open', open);
+            document.body.classList.toggle('modal-open', open);
+        };
+        new MutationObserver(sync).observe(document.body, { subtree: true, attributes: true, attributeFilter: ['class'] });
+        sync();
+    })();
 })();
