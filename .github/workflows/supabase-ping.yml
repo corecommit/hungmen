@@ -1,0 +1,47 @@
+# Pings Supabase at a RANDOM time every 5-6 days so the free project never
+# hits the 7-day inactivity pause.
+#
+# How: ticks hourly; scripts/scheduled_ping.py holds a hash-based random
+# schedule (gap = 5d + random 0-24h, down to the second). When a ping is due
+# in this hour it sleeps until that exact second, then queries the REST API.
+#
+# Setup: repo Settings -> Secrets and variables -> Actions -> New secret
+#   SUPABASE_URL      = https://YOUR-PROJECT-REF.supabase.co
+#   SUPABASE_ANON_KEY = the "anon" (or "publishable") key from
+#                       Supabase -> Project Settings -> API
+# Use the anon/publishable key, NOT service_role. RLS has no policies on
+# `users`, so the query returns [] - which still counts as database activity.
+
+name: Keep Supabase Awake
+
+on:
+  schedule:
+    - cron: '11 * * * *'
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Ping now, ignoring the random schedule
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ping Supabase if due
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          FORCE: ${{ inputs.force }}
+        run: |
+          ARGS=""
+          if [ "$FORCE" = "true" ]; then ARGS="--force"; fi
+          python3 scripts/scheduled_ping.py \
+            --url "${SUPABASE_URL%/}/rest/v1/users?select=username&limit=1" \
+            --header "apikey: $SUPABASE_ANON_KEY" \
+            --min 432000 --max 518400 --window 3600 --salt supabase $ARGS

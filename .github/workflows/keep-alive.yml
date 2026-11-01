@@ -1,45 +1,44 @@
-# Keep-alive ping for the Render free tier.
+# Keeps the Render free service awake with RANDOM gaps of 12:00 - 14:50
+# (minutes and seconds both random) between pings, instead of a fixed 13 min.
 #
-# Render free web services spin down after 15 minutes without inbound
-# traffic. This workflow pings the /health endpoint every 13 minutes
-# (safely inside the 12-14 minute window) so the service never idles out.
+# How: the workflow ticks every 5 min (GitHub's minimum). scripts/scheduled_ping.py
+# holds a hash-based random schedule; if a ping is due inside this tick's
+# window it sleeps until that exact second, then pings /health.
 #
-# Setup (one-time, per repo):
-#   1. Push this file to the main branch of the repo that owns the workflow.
-#   2. In GitHub: Settings -> Secrets and variables -> Actions -> New secret
-#      Name:  RENDER_HEALTH_URL
-#      Value: https://YOUR-SERVICE-NAME.onrender.com/health
-#   3. Enable Actions for the repo (they are on by default).
+# Setup: repo Settings -> Secrets and variables -> Actions -> New secret
+#   RENDER_HEALTH_URL = https://hungmen-n24h.onrender.com/health
 #
-# Notes:
-# - GitHub cron schedules can lag a few minutes at busy times; the 13-minute
-#   interval still keeps you inside the 15-minute spin-down window.
-# - The minimum interval GitHub supports is 5 minutes, so 13 minutes is fine.
-# - cron is in UTC.
+# Note: ~8,600 short runs/month. Free for PUBLIC repos; private repos only get
+# 2,000 free minutes/month.
 
 name: Keep Render Awake
 
 on:
   schedule:
-    # Every 13 minutes: minute 0, 13, 26, 39, 52 of every hour.
-    - cron: '0/13 * * * *'
-  # Allows triggering the ping manually from the Actions tab (for testing).
+    - cron: '*/5 * * * *'
   workflow_dispatch:
+    inputs:
+      force:
+        description: Ping now, ignoring the random schedule
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
 
 jobs:
   ping:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - name: Ping Render health endpoint
+      - uses: actions/checkout@v4
+      - name: Ping Render if due
+        env:
+          RENDER_HEALTH_URL: ${{ secrets.RENDER_HEALTH_URL }}
+          FORCE: ${{ inputs.force }}
         run: |
-          if [ -z "${{ secrets.RENDER_HEALTH_URL }}" ]; then
-            echo "::error::RENDER_HEALTH_URL secret is not set. Add it in repo Settings -> Secrets and variables -> Actions."
-            exit 1
-          fi
-          echo "Pinging ${{ secrets.RENDER_HEALTH_URL }} ..."
-          response=$(curl -s -o /tmp/health.json -w "%{http_code}" --max-time 60 "${{ secrets.RENDER_HEALTH_URL }}")
-          echo "HTTP status: $response"
-          cat /tmp/health.json || true
-          if [ "$response" != "200" ]; then
-            echo "::warning::Health check returned $response (service may be spinning up after a restart)"
-          fi
+          ARGS=""
+          if [ "$FORCE" = "true" ]; then ARGS="--force"; fi
+          python3 scripts/scheduled_ping.py \
+            --url "$RENDER_HEALTH_URL" \
+            --min 720 --max 890 --window 300 --salt render $ARGS
