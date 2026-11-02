@@ -95,11 +95,13 @@
                 </button>
             </form>
             <div class="build-info" id="buildInfo">
+                <span class="server-status" id="serverStatus" data-state="checking" title="Render server status">
+                    <span class="server-status-dot" aria-hidden="true"></span>
+                    <span class="server-status-text" id="serverStatusText">Checking...</span>
+                </span>
+                <span class="server-info-separator">|</span>
                 <span class="build-label">Build:</span>
-                <span class="build-number" id="buildNumber">Loading...</span>
-                <span class="version-separator">|</span>
-                <span class="version-label">Version:</span>
-                <span class="version-number" id="versionNumber">v1.6.0</span>
+                <span class="build-number" id="buildNumber">—</span>
             </div>
         </div>
     </div>

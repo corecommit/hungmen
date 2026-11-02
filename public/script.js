@@ -1482,7 +1482,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    loadBuildNumber();
+    initServerStatus();
 
     const savedUsername = getSession();
     if (savedUsername) {
@@ -1496,23 +1496,102 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 
+const SERVER_STATUS_LABELS = {
+    checking: 'Checking...',
+    online: 'Online',
+    sleeping: 'Sleeping',
+    building: 'Building'
+};
+
+const SERVER_STATUS_DELAYS = {
+    checking: 10000,
+    online: 30000,
+    sleeping: 5000,
+    building: 8000
+};
+
+let serverStatusTimer = null;
+let serverStatusCheckInFlight = false;
+
+function setServerStatus(state) {
+    const statusEl = document.getElementById('serverStatus');
+    const textEl = document.getElementById('serverStatusText');
+    if (statusEl) statusEl.dataset.state = state;
+    if (textEl) textEl.textContent = SERVER_STATUS_LABELS[state] || state;
+}
+
+function setBuildNumber(value) {
+    const buildNumberEl = document.getElementById('buildNumber');
+    if (buildNumberEl && value) {
+        buildNumberEl.textContent = value;
+    }
+}
+
 async function loadBuildNumber() {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
+
     try {
-        const response = await fetch('/api/build');
-        if (response.ok) {
-            const buildInfo = await response.json();
-            const buildNumberEl = document.getElementById('buildNumber');
-            if (buildNumberEl) {
-                buildNumberEl.textContent = buildInfo.buildNumber || 'dev';
-            }
-        }
+        const response = await fetch(`${CONFIG.SERVER_URL}/api/build`, {
+            cache: 'no-store',
+            signal: controller.signal
+        });
+        if (!response.ok) return;
+        const buildInfo = await response.json();
+        setBuildNumber(buildInfo.buildNumber);
     } catch (error) {
         log('Failed to load build number:', error);
-        const buildNumberEl = document.getElementById('buildNumber');
-        if (buildNumberEl) {
-            buildNumberEl.textContent = 'dev';
-        }
+    } finally {
+        clearTimeout(timeoutId);
     }
+}
+
+async function checkServerStatus() {
+    if (serverStatusCheckInFlight) return;
+    serverStatusCheckInFlight = true;
+
+    let state = 'sleeping';
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
+
+    try {
+        const response = await fetch(`${CONFIG.SERVER_URL}/health?ts=${Date.now()}`, {
+            cache: 'no-store',
+            signal: controller.signal
+        });
+
+        if (response.ok) {
+            state = 'online';
+            try {
+                const health = await response.json();
+                setBuildNumber(health.build);
+            } catch (_) {}
+        } else if (response.status === 502 || response.status === 503) {
+            state = 'building';
+        }
+    } catch (error) {
+        log('Server status check failed:', error);
+    } finally {
+        clearTimeout(timeoutId);
+        serverStatusCheckInFlight = false;
+    }
+
+    setServerStatus(state);
+    clearTimeout(serverStatusTimer);
+    serverStatusTimer = setTimeout(checkServerStatus, SERVER_STATUS_DELAYS[state]);
+}
+
+function initServerStatus() {
+    setServerStatus('checking');
+    loadBuildNumber();
+    checkServerStatus();
+
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) {
+            clearTimeout(serverStatusTimer);
+            checkServerStatus();
+        }
+    });
 }
 
 

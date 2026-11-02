@@ -1364,19 +1364,57 @@ header .build-info {
     color: var(--text-secondary);
 }
 
-.version-separator {
+.server-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 600;
+    color: var(--text-muted);
+}
+
+.server-status-dot {
+    position: relative;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: currentColor;
+    flex: none;
+}
+
+.server-status-dot::after {
+    content: '';
+    position: absolute;
+    inset: -3px;
+    border-radius: inherit;
+    background: currentColor;
+    opacity: 0.18;
+}
+
+.server-status[data-state="online"] {
+    color: var(--success);
+}
+
+.server-status[data-state="sleeping"] {
+    color: var(--warning);
+}
+
+.server-status[data-state="building"] {
+    color: var(--info);
+}
+
+.server-status[data-state="building"] .server-status-dot,
+.server-status[data-state="checking"] .server-status-dot {
+    animation: serverStatusPulse 1.2s ease-in-out infinite;
+}
+
+@keyframes serverStatusPulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.35; }
+}
+
+.server-info-separator {
     margin: 0 5px;
     opacity: 0.5;
-}
-
-.version-label {
-    font-weight: 500;
-}
-
-.version-number {
-    font-family: monospace;
-    font-weight: 600;
-    color: var(--text-secondary);
 }
 
 @media (max-width: 768px) {

@@ -17,56 +17,71 @@ const io = socketIo(server, {
     }
 });
 
+function getEnvironmentCommit() {
+    const commit =
+        process.env.RENDER_GIT_COMMIT ||
+        process.env.VERCEL_GIT_COMMIT_SHA ||
+        process.env.GITHUB_SHA ||
+        process.env.COMMIT_SHA ||
+        process.env.GIT_COMMIT ||
+        '';
+    return commit.trim();
+}
+
 function getBuildInfo() {
+    const environmentCommit = getEnvironmentCommit();
     try {
-        let commitHash;
-        try {
-            commitHash = execSync('git rev-parse --short HEAD', { 
-                encoding: 'utf8', 
-                cwd: __dirname,
-                stdio: ['pipe', 'pipe', 'ignore']
-            }).trim();
-        } catch (e) {
-            commitHash = null;
+        let commitHash = environmentCommit ? environmentCommit.slice(0, 7) : null;
+
+        if (!commitHash) {
+            try {
+                commitHash = execSync('git rev-parse --short HEAD', {
+                    encoding: 'utf8',
+                    cwd: __dirname,
+                    stdio: ['pipe', 'pipe', 'ignore']
+                }).trim();
+            } catch (e) {
+                commitHash = null;
+            }
         }
-        
+
         if (!commitHash || commitHash === 'unknown') {
             return {
                 version: process.env.npm_package_version || '1.0.0',
                 commit: 'unknown',
                 date: new Date().toISOString(),
-                branch: 'main',
-                buildNumber: 'dev'
+                branch: process.env.RENDER_GIT_BRANCH || 'main',
+                buildNumber: 'unknown'
             };
         }
-        
+
         let commitDate;
         try {
-            commitDate = execSync('git log -1 --format=%cd --date=iso', { 
-                encoding: 'utf8', 
+            commitDate = execSync('git log -1 --format=%cd --date=iso', {
+                encoding: 'utf8',
                 cwd: __dirname,
                 stdio: ['pipe', 'pipe', 'ignore']
             }).trim();
         } catch (e) {
             commitDate = new Date().toISOString();
         }
-        
+
         let branch;
         try {
-            branch = execSync('git rev-parse --abbrev-ref HEAD', { 
-                encoding: 'utf8', 
+            branch = execSync('git rev-parse --abbrev-ref HEAD', {
+                encoding: 'utf8',
                 cwd: __dirname,
                 stdio: ['pipe', 'pipe', 'ignore']
             }).trim();
         } catch (e) {
             branch = 'main';
         }
-        
+
         return {
             version: process.env.npm_package_version || '1.0.0',
-            commit: commitHash,
+            commit: environmentCommit || commitHash,
             date: commitDate || new Date().toISOString(),
-            branch: branch || 'main',
+            branch: process.env.RENDER_GIT_BRANCH || branch || 'main',
             buildNumber: commitHash
         };
     } catch (error) {
@@ -74,8 +89,8 @@ function getBuildInfo() {
             version: process.env.npm_package_version || '1.0.0',
             commit: 'unknown',
             date: new Date().toISOString(),
-            branch: 'main',
-            buildNumber: 'dev'
+            branch: process.env.RENDER_GIT_BRANCH || 'main',
+            buildNumber: 'unknown'
         };
     }
 }
@@ -1104,6 +1119,10 @@ app.get('/api/rooms', (req, res) => {
 
 app.get('/api/build', async (req, res) => {
     try {
+        if (buildInfo.commit && buildInfo.commit !== 'unknown') {
+            res.json(buildInfo);
+            return;
+        }
         const githubBuildInfo = await getGitHubBuildInfo();
         res.json(githubBuildInfo);
     } catch (error) {
@@ -3506,6 +3525,8 @@ const PORT = process.env.PORT || 12244;
 app.get('/health', (req, res) => {
     res.status(200).json({
         status: 'ok',
+        build: buildInfo.buildNumber,
+        commit: buildInfo.commit,
         uptime: Math.floor(process.uptime()),
         onlineUsers: onlineUsers.size,
         rooms: rooms.size,
