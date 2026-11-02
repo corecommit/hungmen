@@ -1,16 +1,3 @@
-# Keeps the Render free service awake with RANDOM gaps of 12:00 - 14:50
-# (minutes and seconds both random) between pings, instead of a fixed 13 min.
-#
-# How: the workflow ticks every 5 min (GitHub's minimum). scripts/scheduled_ping.py
-# holds a hash-based random schedule; if a ping is due inside this tick's
-# window it sleeps until that exact second, then pings /health.
-#
-# Setup: repo Settings -> Secrets and variables -> Actions -> New secret
-#   RENDER_HEALTH_URL = https://hungmen-n24h.onrender.com/health
-#
-# Note: ~8,600 short runs/month. Free for PUBLIC repos; private repos only get
-# 2,000 free minutes/month.
-
 name: Keep Render Awake
 
 on:

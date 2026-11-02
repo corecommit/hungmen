@@ -17,10 +17,8 @@ const io = socketIo(server, {
     }
 });
 
-// Get build info from Git
 function getBuildInfo() {
     try {
-        // Get the latest commit hash (short version)
         let commitHash;
         try {
             commitHash = execSync('git rev-parse --short HEAD', { 
@@ -32,7 +30,6 @@ function getBuildInfo() {
             commitHash = null;
         }
         
-        // If no commit hash, return dev build
         if (!commitHash || commitHash === 'unknown') {
             return {
                 version: process.env.npm_package_version || '1.0.0',
@@ -43,7 +40,6 @@ function getBuildInfo() {
             };
         }
         
-        // Get the commit date
         let commitDate;
         try {
             commitDate = execSync('git log -1 --format=%cd --date=iso', { 
@@ -55,7 +51,6 @@ function getBuildInfo() {
             commitDate = new Date().toISOString();
         }
         
-        // Get the branch name
         let branch;
         try {
             branch = execSync('git rev-parse --abbrev-ref HEAD', { 
@@ -75,7 +70,6 @@ function getBuildInfo() {
             buildNumber: commitHash
         };
     } catch (error) {
-        // Fallback if git is not available
         return {
             version: process.env.npm_package_version || '1.0.0',
             commit: 'unknown',
@@ -88,10 +82,8 @@ function getBuildInfo() {
 
 const buildInfo = getBuildInfo();
 
-// Function to fetch latest commit from GitHub
 async function getGitHubBuildInfo() {
     try {
-        // Replace with your actual GitHub username and repo name
         const githubUsername = 'corecommit';
         const repoName = 'hungmen';
         const branch = 'main';
@@ -112,11 +104,10 @@ async function getGitHubBuildInfo() {
             branch: branch,
             buildNumber: shortSha,
             author: commit.commit.author.name,
-            message: commit.commit.message.split('\n')[0] // First line only
+            message: commit.commit.message.split('\n')[0]
         };
     } catch (error) {
         console.log('GitHub API fetch failed, using local build info:', error.message);
-        // Fallback to local build info
         return buildInfo;
     }
 }
@@ -125,25 +116,17 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// ═══════════════════════════════════════════════════════════════════════
-// SUPABASE CONNECTION (Postgres)
-// ═══════════════════════════════════════════════════════════════════════
 
 const SUPABASE_URL = process.env.SUPABASE_URL || '';
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY || '';
 const DEBUG = process.env.DEBUG === 'true' || false;
 
-// Logging utility
 const log = {
     info: (msg, ...args) => DEBUG && console.log(msg, ...args),
     error: (msg, ...args) => console.error(msg, ...args),
     warn: (msg, ...args) => console.warn(msg, ...args)
 };
 
-// Admin client using the SERVICE ROLE key. This key bypasses Row Level
-// Security, so it must ONLY ever be used server-side (never ship it to the
-// browser). The anon key is not used anywhere: browsers talk to this server
-// over Socket.IO, never to Supabase directly.
 const db = SUPABASE_URL && SUPABASE_SERVICE_KEY
     ? createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
         auth: { persistSession: false, autoRefreshToken: false }
@@ -152,8 +135,6 @@ const db = SUPABASE_URL && SUPABASE_SERVICE_KEY
 
 let supabaseReady = false;
 
-// Pings Supabase once at startup. If it fails (missing env vars, bad key,
-// network), the server keeps running on the in-memory fallback.
 async function connectToSupabase() {
     if (!db) {
         log.error('[SUPABASE] SUPABASE_URL / SUPABASE_SERVICE_KEY not set - using in-memory storage (data will be lost on restart)');
@@ -173,14 +154,10 @@ async function connectToSupabase() {
     }
 }
 
-// Helper: is the Supabase connection known-good? Helpers skip straight to
-// the in-memory fallback when it isn't, so users never wait on timeouts.
 function usingSupabase() {
     return supabaseReady && !!db;
 }
 
-// Maps a snake_case Supabase row to the camelCase user shape the rest of
-// the server expects (same shape the old Mongoose documents had).
 function mapRow(row) {
     if (!row) return null;
     return {
@@ -207,11 +184,8 @@ connectToSupabase();
 let rooms = new Map();
 let onlineUsers = new Map();
 let lobbyMessages = [];
-let inMemoryUsers = new Map(); // Fallback when MongoDB is unavailable
+let inMemoryUsers = new Map();
 
-// ═══════════════════════════════════════════════════════════════════════
-// MAINTENANCE MODE
-// ═══════════════════════════════════════════════════════════════════════
 
 let maintenanceMode = false;
 let maintenanceMessage = 'Website is under maintenance. Please try again later.';
@@ -236,11 +210,7 @@ function getMaintenanceMessage() {
     return maintenanceMessage;
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// USER DATABASE - Supabase (Postgres) Storage
-// ═══════════════════════════════════════════════════════════════════════
 
-// Shared in-memory user factory (fallback storage when Supabase is down)
 function makeMemUser(username) {
     return {
         username: username.toLowerCase(),
@@ -257,7 +227,6 @@ function makeMemUser(username) {
     };
 }
 
-// Get or create user entry (with in-memory fallback)
 async function getUserData(username) {
     const key = username.toLowerCase();
     try {
@@ -268,8 +237,6 @@ async function getUserData(username) {
         if (error) throw error;
 
         if (!row) {
-            // Not in Supabase: create the user (on-conflict keeps this safe
-            // if two logins with the same name race each other).
             const { data: inserted, error: insertError } = await db.from('users')
                 .upsert({ username: key, display_name: username, last_login: new Date().toISOString() }, { onConflict: 'username' })
                 .select()
@@ -278,13 +245,11 @@ async function getUserData(username) {
             return mapRow(inserted);
         }
 
-        // Update last login
         await db.from('users').update({ last_login: new Date().toISOString() }).eq('username', key);
 
         return mapRow(row);
     } catch (error) {
         console.error('[SUPABASE] Error in getUserData:', error.message);
-        // Use in-memory fallback if database fails
         if (inMemoryUsers.has(key)) {
             const memUser = inMemoryUsers.get(key);
             memUser.lastLogin = new Date();
@@ -297,20 +262,15 @@ async function getUserData(username) {
     }
 }
 
-// Reload user database (for admin refresh)
 async function reloadUserDatabaseFromFile() {
     log.info('[SUPABASE] Reload not needed - data is always current');
     return true;
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// USER DATABASE BACKUP SYSTEM (Export/Import for MongoDB)
-// ═══════════════════════════════════════════════════════════════════════
 
 const fs = require('fs');
 const BACKUP_DIR = path.join(__dirname, 'backups');
 
-// Ensure backup directory exists
 function ensureBackupDir() {
     if (!fs.existsSync(BACKUP_DIR)) {
         fs.mkdirSync(BACKUP_DIR, { recursive: true });
@@ -318,7 +278,6 @@ function ensureBackupDir() {
     }
 }
 
-// Create a backup of the user database
 async function createDatabaseBackup() {
     try {
         ensureBackupDir();
@@ -350,7 +309,6 @@ async function createDatabaseBackup() {
     }
 }
 
-// Get list of all backups
 function getBackupList() {
     try {
         ensureBackupDir();
@@ -373,7 +331,6 @@ function getBackupList() {
     }
 }
 
-// Restore from a backup file
 async function restoreFromBackup(filename) {
     try {
         const backupPath = path.join(BACKUP_DIR, filename);
@@ -381,13 +338,11 @@ async function restoreFromBackup(filename) {
             return { success: false, message: 'Backup file not found' };
         }
 
-        // Create backup of current database before restoring
         await createDatabaseBackup();
 
         const data = fs.readFileSync(backupPath, 'utf8');
         const backupData = JSON.parse(data);
 
-        // Clear existing users and restore from backup
         const { error: deleteError } = await db.from('users').delete().neq('username', '__impossible__');
         if (deleteError) throw deleteError;
 
@@ -420,7 +375,6 @@ async function restoreFromBackup(filename) {
     }
 }
 
-// Delete a backup file
 function deleteBackup(filename) {
     try {
         const backupPath = path.join(BACKUP_DIR, filename);
@@ -437,7 +391,6 @@ function deleteBackup(filename) {
     }
 }
 
-// Check if user is currently banned (server ban only)
 async function isUserBanned(username) {
     const key = username.toLowerCase();
     try {
@@ -462,7 +415,6 @@ async function isUserBanned(username) {
         if (expiry) {
             const expiryDate = new Date(expiry);
             if (expiryDate <= new Date()) {
-                // Ban expired - auto-unban
                 if (row) {
                     await db.from('users').update({
                         server_ban: false,
@@ -482,11 +434,9 @@ async function isUserBanned(username) {
             return { banned: true, expiry: expiry, reason: reason, isPermanent: false };
         }
 
-        // Permanent ban
         return { banned: true, expiry: null, reason: reason, isPermanent: true };
     } catch (error) {
         console.error('[SUPABASE] Error in isUserBanned:', error.message);
-        // Check in-memory fallback
         const memUser = inMemoryUsers.get(key);
         if (memUser && memUser.serverBan) {
             if (memUser.serverBanExpiry && new Date(memUser.serverBanExpiry) > new Date()) {
@@ -499,7 +449,6 @@ async function isUserBanned(username) {
     }
 }
 
-// Ban a user (admin tool). duration is in HOURS (0 = permanent).
 async function banUser(username, durationHours, reason) {
     const key = username.toLowerCase();
 
@@ -520,7 +469,6 @@ async function banUser(username, durationHours, reason) {
         return true;
     } catch (error) {
         console.error('[SUPABASE] Error in banUser:', error.message);
-        // In-memory fallback so the ban still applies while the DB is down
         const memUser = inMemoryUsers.get(key) || makeMemUser(username);
         memUser.serverBan = true;
         memUser.serverBanExpiry = isPermanent ? null : new Date(Date.now() + parseInt(durationHours) * 3600000);
@@ -531,8 +479,6 @@ async function banUser(username, durationHours, reason) {
     }
 }
 
-// Update user stats (incremental). Uses the atomic increment_stats RPC so
-// concurrent game endings can never lose an increment.
 async function updateUserStats(username, result) {
     const key = username.toLowerCase();
     let newStats = null;
@@ -549,7 +495,6 @@ async function updateUserStats(username, result) {
         }
     } catch (error) {
         console.error('[SUPABASE] Error in updateUserStats:', error.message);
-        // In-memory fallback
         const memUser = inMemoryUsers.get(key);
         if (memUser) {
             memUser.stats.gamesPlayed++;
@@ -564,7 +509,6 @@ async function updateUserStats(username, result) {
     }
 }
 
-// Push fresh stats for one user to all clients (shared by both paths above)
 function broadcastStatsUpdate(key, newStats) {
     for (const onlineUser of onlineUsers.values()) {
         if (onlineUser.username.toLowerCase() === key) {
@@ -581,7 +525,6 @@ function broadcastStatsUpdate(key, newStats) {
     io.emit('onlineUsersUpdate', { users: onlineUsersList });
 }
 
-// Set user stats directly (for admin editing)
 async function setUserStats(username, stats) {
     const key = username.toLowerCase();
     const normalized = {
@@ -602,7 +545,6 @@ async function setUserStats(username, stats) {
         return true;
     } catch (error) {
         console.error('[SUPABASE] Error in setUserStats:', error.message);
-        // In-memory fallback
         const memUser = inMemoryUsers.get(key);
         if (memUser) {
             memUser.stats = {
@@ -616,7 +558,6 @@ async function setUserStats(username, stats) {
     }
 }
 
-// Reload user stats from database (for live updates)
 async function reloadUserStats(username) {
     const key = username.toLowerCase();
     try {
@@ -637,12 +578,6 @@ async function reloadUserStats(username) {
     }
 }
 
-// Update user avatar.
-// The client sends a base64 JPEG (~100KB after its own compression). We
-// upload it to the public 'avatars' Storage bucket and store the public URL
-// in the users table - chat messages then carry a short URL instead of the
-// full base64 image. Falls back to storing the base64 string directly in
-// the column if Storage fails.
 async function updateUserAvatar(username, avatarData) {
     const key = username.toLowerCase();
     try {
@@ -667,7 +602,6 @@ async function updateUserAvatar(username, avatarData) {
                 }
             } catch (storageError) {
                 console.error('[SUPABASE] Avatar upload to Storage failed, storing inline:', storageError.message);
-                // avatarValue stays the base64 string
             }
         }
 
@@ -680,13 +614,11 @@ async function updateUserAvatar(username, avatarData) {
         return;
     } catch (error) {
         console.error('[SUPABASE] Error in updateUserAvatar:', error.message);
-        // In-memory fallback
         const memUser = inMemoryUsers.get(key);
         if (memUser) memUser.avatar = avatarData;
     }
 }
 
-// Delete user from database
 async function deleteUser(username) {
     const key = username.toLowerCase();
     try {
@@ -701,7 +633,6 @@ async function deleteUser(username) {
             console.log(`[SUPABASE DELETE] Successfully deleted user: ${username}`);
         }
 
-        // Also delete from in-memory
         inMemoryUsers.delete(key);
 
         if (deleted) return true;
@@ -715,7 +646,6 @@ async function deleteUser(username) {
         return false;
     } catch (error) {
         console.error('[SUPABASE] Error in deleteUser:', error.message);
-        // Try in-memory fallback
         if (inMemoryUsers.has(key)) {
             inMemoryUsers.delete(key);
             return true;
@@ -724,7 +654,6 @@ async function deleteUser(username) {
     }
 }
 
-// Delete all users from database (admin only)
 async function deleteAllUsers() {
     try {
         if (!usingSupabase()) { throw new Error('Supabase unavailable'); }
@@ -740,7 +669,6 @@ async function deleteAllUsers() {
     }
 }
 
-// Transfer user data from old username to new username
 async function transferUserData(oldUsername, newUsername) {
     const oldKey = oldUsername.toLowerCase();
     const newKey = newUsername.toLowerCase();
@@ -752,7 +680,6 @@ async function transferUserData(oldUsername, newUsername) {
         let { data: oldRow, error: oldError } = await db.from('users').select('*').eq('username', oldKey).maybeSingle();
         if (oldError) throw oldError;
 
-        // If not in Supabase, check in-memory
         const oldMem = !oldRow ? inMemoryUsers.get(oldKey) : null;
         if (!oldRow && !oldMem) {
             log.info(`[TRANSFER] No data to transfer - old user ${oldUsername} not found`);
@@ -777,7 +704,6 @@ async function transferUserData(oldUsername, newUsername) {
         };
 
         if (newRow) {
-            // New user already exists: copy old data onto it, then delete old
             const { error: updateError } = await db.from('users')
                 .update({ ...carryOver, display_name: newUsername, last_login: new Date().toISOString() })
                 .eq('username', newKey);
@@ -793,7 +719,6 @@ async function transferUserData(oldUsername, newUsername) {
             return { success: true, message: 'Data transferred successfully' };
         }
 
-        // No new user: rename the old row (or move the in-memory entry)
         if (oldRow) {
             const { error: renameError } = await db.from('users')
                 .update({ username: newKey, display_name: newUsername })
@@ -810,7 +735,6 @@ async function transferUserData(oldUsername, newUsername) {
     } catch (error) {
         console.error('[TRANSFER] Error:', error.message);
 
-        // Try in-memory fallback
         if (inMemoryUsers.has(oldKey)) {
             const oldUser = inMemoryUsers.get(oldKey);
             if (inMemoryUsers.has(newKey)) {
@@ -834,7 +758,6 @@ async function transferUserData(oldUsername, newUsername) {
     }
 }
 
-// Get all users in database (for the admin panel)
 async function getAllUsersInDatabase() {
     const toAdminEntry = (key, displayName, firstLogin, lastLogin, stats, hasAvatar, isBanned, isPermanent, banExpiry, banReason) => ({
         key: key,
@@ -870,7 +793,6 @@ async function getAllUsersInDatabase() {
             );
         });
 
-        // Include in-memory fallback users that are not in Supabase
         const memUsers = Array.from(inMemoryUsers.values())
             .filter(mem => !dbUsers.some(u => u.key === mem.username))
             .map(user => {
@@ -1180,7 +1102,6 @@ app.get('/api/rooms', (req, res) => {
     res.json(roomList);
 });
 
-// API endpoint to get build info
 app.get('/api/build', async (req, res) => {
     try {
         const githubBuildInfo = await getGitHubBuildInfo();
@@ -1222,8 +1143,8 @@ class Room {
         this.gameState = null;
         this.messages = [];
         this.teams = { team1: [], team2: [] };
-        this.selectedGameMode = 'medium'; // Default game mode selected by host
-        this.selectedHintCount = 5; // Default hint count for custom mode
+        this.selectedGameMode = 'medium';
+        this.selectedHintCount = 5;
     }
 
     addPlayer(player) {
@@ -1258,17 +1179,10 @@ class Room {
         if (this.players.length === 0) {
             rooms.delete(this.id);
         } else {
-            // FIX: migrate the host if the host just left (this was done by
-            // the callers in some paths only, and never during a game).
             if (this.hostId === playerId) {
                 this.hostId = this.players[0].id;
             }
 
-            // FIX: if a game was running and too few players remain to
-            // continue, end it and return the room to 'waiting' instead of
-            // leaving it stuck in 'playing' forever (nobody could rejoin or
-            // restart). Also handle the custom-word flow where the setter
-            // left before submitting a word.
             if (this.status === 'playing' || this.status === 'coin_flip' || this.status === 'word_selection') {
                 const needsBothSides = this.mode !== 'solo';
 
@@ -1276,8 +1190,6 @@ class Room {
                     this.gameState = null;
                     this.status = 'waiting';
                 } else if (this.gameState && this.gameState.isCustomWord) {
-                    // The word setter left mid-game: nobody can answer hints
-                    // any more, so abort back to the waiting screen.
                     if (this.gameState.wordSetter === playerId) {
                         this.gameState = null;
                         this.status = 'waiting';
@@ -1323,7 +1235,6 @@ class Room {
     }
 
     startGame(gameMode = 'medium', hintCount = 5) {
-        // For solo mode, use random word from database
         if (this.mode === 'solo') {
             const wordData = this.getRandomWord(gameMode);
             this.gameState = {
@@ -1347,7 +1258,6 @@ class Room {
             
             this.status = 'playing';
         } else if (gameMode === 'custom') {
-            // For custom word mode, use coin flip to determine word setter
             const isTeamMode = this.mode !== 'solo' && this.mode !== '1v1';
             
             this.gameState = {
@@ -1356,13 +1266,13 @@ class Room {
                 guessedLetters: [],
                 wrongLetters: [],
                 currentTurn: 0,
-                status: 'coin_flip', // Start with coin flip phase
+                status: 'coin_flip',
                 gameMode: gameMode,
                 scores: {},
                 isCustomWord: true,
                 hintsRemaining: hintCount,
                 hints: [],
-                wordSetter: null, // Will be set after coin flip
+                wordSetter: null,
                 wordSetterTeam: null,
                 hintCount: hintCount,
                 isTeamMode: isTeamMode,
@@ -1382,7 +1292,6 @@ class Room {
             
             this.status = 'coin_flip';
         } else {
-            // For other modes (easy, medium, hard), use random word
             const wordData = this.getRandomWord(gameMode);
             this.gameState = {
                 word: wordData.word,
@@ -1416,27 +1325,23 @@ class Room {
         this.gameState.status = 'playing';
         this.status = 'playing';
         
-        // FIX: Set the first turn to the first player NOT on the word setter's team
         this.gameState.currentTurn = this.getFirstValidTurn();
         
         return true;
     }
 
-    // FIX: Get the first valid turn (not on word setter's team, or not the word setter in 1v1)
     getFirstValidTurn() {
         if (!this.gameState.isCustomWord) {
             return 0;
         }
         
         if (this.gameState.wordSetterTeam) {
-            // Team mode: find first player NOT on word setter's team
             for (let i = 0; i < this.players.length; i++) {
                 if (this.players[i].team !== this.gameState.wordSetterTeam) {
                     return i;
                 }
             }
         } else {
-            // 1v1 mode: find first player who is NOT the word setter
             for (let i = 0; i < this.players.length; i++) {
                 if (this.players[i].id !== this.gameState.wordSetter) {
                     return i;
@@ -1444,7 +1349,7 @@ class Room {
             }
         }
         
-        return 0; // Fallback (shouldn't happen in a valid game)
+        return 0;
     }
 
     requestHint(playerId) {
@@ -1452,15 +1357,12 @@ class Room {
             return { success: false, message: 'No hints available' };
         }
 
-        // Block word setter or their team from requesting hints
         if (this.gameState.wordSetterTeam) {
-            // Team mode: block the entire word setter's team
             const player = this.players.find(p => p.id === playerId);
             if (player && player.team === this.gameState.wordSetterTeam) {
                 return { success: false, message: 'Your team is setting the word — you cannot request hints!' };
             }
         } else if (this.gameState.isCustomWord && this.gameState.wordSetter === playerId) {
-            // 1v1 mode: block only the word setter
             return { success: false, message: 'You are the word setter — you cannot request hints!' };
         }
 
@@ -1475,10 +1377,6 @@ class Room {
             return { success: false, message: 'Game not found' };
         }
 
-        // FIX: in custom word mode only the word setter may answer hints.
-        // The old check used hostId, so in 1v1 the guessing player (who is
-        // usually the host after the setter disconnects) could answer their
-        // own hint questions.
         if (this.gameState.isCustomWord && providerId !== this.gameState.wordSetter) {
             return { success: false, message: 'Only the word setter can provide hints' };
         }
@@ -1503,10 +1401,6 @@ class Room {
         return words[Math.floor(Math.random() * words.length)];
     }
 
-    // FIX (anti-cheat): the raw word must never be sent to clients while the
-    // game is running - it was included in gameStarted and guessResult, so
-    // anyone could read the secret word in DevTools. Clients now only ever
-    // receive this masked view; the full word is revealed on gameEnded.
     getMaskedWord() {
         if (!this.gameState || !this.gameState.word) return [];
         return this.gameState.word.split('').map(letter =>
@@ -1515,9 +1409,6 @@ class Room {
     }
 
     checkGuess(letter) {
-        // FIX: validate the incoming guess. A non-string (or non A-Z)
-        // payload used to be pushed into guessedLetters/wrongLetters and
-        // could crash the room via word.includes(undefined).
         if (typeof letter !== 'string' || !/^[A-Z]$/.test(letter)) {
             return { valid: false };
         }
@@ -1549,11 +1440,9 @@ class Room {
         };
     }
     
-    // FIX: Improved turn management that properly skips word setter's team
     getNextTurn() {
         let nextTurn = (this.gameState.currentTurn + 1) % this.players.length;
         
-        // In custom word mode, skip word setter or their team
         if (this.gameState.isCustomWord) {
             let attempts = 0;
             const maxAttempts = this.players.length;
@@ -1562,24 +1451,19 @@ class Room {
                 const currentPlayer = this.players[nextTurn];
                 
                 if (this.gameState.wordSetterTeam) {
-                    // Team mode: skip ALL players on the word setter's team
                     if (currentPlayer && currentPlayer.team !== this.gameState.wordSetterTeam) {
                         return nextTurn;
                     }
                 } else {
-                    // 1v1 mode: skip only the word setter
                     if (currentPlayer && currentPlayer.id !== this.gameState.wordSetter) {
                         return nextTurn;
                     }
                 }
                 
-                // Move to next player
                 nextTurn = (nextTurn + 1) % this.players.length;
                 attempts++;
             }
             
-            // If we've looped through all players, something is wrong
-            // Return 0 as fallback (shouldn't happen in a valid game)
             console.error('Could not find valid next turn - no players available to guess');
             return 0;
         }
@@ -1587,10 +1471,9 @@ class Room {
         return nextTurn;
     }
 
-    // FIX: Validate if a player can make a guess
     canPlayerGuess(playerId) {
         if (!this.gameState || !this.gameState.isCustomWord) {
-            return true; // In non-custom mode, everyone can guess
+            return true;
         }
 
         const player = this.players.find(p => p.id === playerId);
@@ -1598,15 +1481,11 @@ class Room {
             return false;
         }
 
-        // In 1v1 mode (no teams), only block the word setter
-        // In team modes (2v2, 3v3, 4v4), block the entire word setter's team
         if (this.gameState.wordSetterTeam) {
-            // Team mode: block the entire word setter's team
             if (player.team === this.gameState.wordSetterTeam) {
                 return false;
             }
         } else {
-            // 1v1 mode: only block the word setter themselves
             if (playerId === this.gameState.wordSetter) {
                 return false;
             }
@@ -1615,7 +1494,6 @@ class Room {
         return true;
     }
 
-    // FIX: Check if it's a specific player's turn (considering team exclusions)
     isPlayerTurn(playerId) {
         if (!this.gameState) {
             return false;
@@ -1629,11 +1507,6 @@ class Room {
 io.on('connection', (socket) => {
     log.info('New connection:', socket.id);
 
-    // FIX: a malformed payload (e.g. emitting an event with `null` instead
-    // of an object) crashed the whole server via destructuring errors like
-    // "Cannot destructure property 'name' of 'data' as it is null".
-    // Every handler registered through this helper now fails safely, the
-    // offender gets an error message, and the server keeps running.
     const safeOn = (event, handler) => {
         socket.on(event, async (data) => {
             try {
@@ -1642,7 +1515,7 @@ io.on('connection', (socket) => {
                 console.error(`[SOCKET] Error in '${event}' handler:`, err.message);
                 try {
                     socket.emit('serverError', { message: 'Invalid request' });
-                } catch (_) { /* socket may already be gone */ }
+                } catch (_) {  }
             }
         });
     };
@@ -1658,7 +1531,6 @@ io.on('connection', (socket) => {
         const trimmedUsername = username.trim();
         const lowerUsername = trimmedUsername.toLowerCase();
         
-        // Help command - show available commands
         if (trimmedUsername === '/help') {
             socket.emit('authError', { 
                 message: '📋 Available Commands:\n• /help - Show this message\n• EveryoneLogout - Logout all users (admin only)\n• AdminLogout - Logout only admins (admin only)',
@@ -1667,7 +1539,6 @@ io.on('connection', (socket) => {
             return;
         }
 
-        // Special admin command: EveryoneLogout (case-insensitive)
         if (lowerUsername === 'everyonelogout') {
             const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'Admin@007';
             
@@ -1678,17 +1549,14 @@ io.on('connection', (socket) => {
             
             log.info(`[ADMIN COMMAND] EveryoneLogout executed by admin`);
             
-            // Kick ALL users including any existing admin sessions
             const sockets = await io.fetchSockets();
             sockets.forEach(s => {
                 s.emit('forceLogout', { message: '🚨 You have been logged out by the server' });
                 s.disconnect(true);
             });
             
-            // Clear all online users
             onlineUsers.clear();
             
-            // Also disconnect the current socket (the one issuing the command)
             socket.emit('authError', { message: '✓ Everyone has been logged out successfully' });
             setTimeout(() => {
                 socket.disconnect(true);
@@ -1696,7 +1564,6 @@ io.on('connection', (socket) => {
             return;
         }
 
-        // Special admin command: AdminLogout - Only logs out admin accounts (case-insensitive)
         if (lowerUsername === 'adminlogout') {
             const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'Admin@007';
             
@@ -1707,13 +1574,11 @@ io.on('connection', (socket) => {
             
             log.info(`[ADMIN COMMAND] AdminLogout executed by admin`);
             
-            // Find and kick only admin users
             let adminCount = 0;
             const sockets = await io.fetchSockets();
             
             for (const [socketId, userData] of onlineUsers.entries()) {
                 if (userData.isAdmin) {
-                    // Find the socket for this admin
                     const adminSocket = sockets.find(s => s.id === socketId);
                     if (adminSocket) {
                         adminSocket.emit('forceLogout', { message: '👤 You have been logged out by an admin' });
@@ -1726,7 +1591,6 @@ io.on('connection', (socket) => {
             
             log.info(`[ADMIN COMMAND] Logged out ${adminCount} admin(s)`);
             
-            // Disconnect the current socket (the one issuing the command)
             socket.emit('authError', { message: `✓ ${adminCount} admin account(s) logged out successfully` });
             setTimeout(() => {
                 socket.disconnect(true);
@@ -1734,13 +1598,11 @@ io.on('connection', (socket) => {
             return;
         }
 
-        // Check if username contains "admin" but is not exactly "admin" (after checking for admin commands)
         if (lowerUsername !== 'admin' && lowerUsername.includes('admin')) {
             socket.emit('authError', { message: '❌ The username "admin" is reserved. You cannot use variations like admin67, admin69, etc.' });
             return;
         }
 
-        // Check maintenance mode (admins can bypass)
         const isAdminLogin = lowerUsername === 'admin';
         if (isMaintenanceMode() && !isAdminLogin) {
             socket.emit('authError', { 
@@ -1750,7 +1612,6 @@ io.on('connection', (socket) => {
             return;
         }
         
-        // Check if user is banned
         log.info(`[AUTH] Checking ban status for: ${trimmedUsername}`);
         const banStatus = await isUserBanned(trimmedUsername);
         log.info(`[AUTH] Ban status for ${trimmedUsername}:`, banStatus);
@@ -1775,7 +1636,6 @@ io.on('connection', (socket) => {
         }
         log.info(`[AUTH] User ${trimmedUsername} is not banned, proceeding with authentication`);
         
-        // Admin account authentication
         if (trimmedUsername.toLowerCase() === 'admin') {
             const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'Admin@007';
             
@@ -1784,7 +1644,6 @@ io.on('connection', (socket) => {
                 return;
             }
             
-            // Check if admin is already logged in
             for (const user of onlineUsers.values()) {
                 if (user.username.toLowerCase() === 'admin') {
                     socket.emit('authError', { message: 'Admin account is already in use' });
@@ -1798,10 +1657,8 @@ io.on('connection', (socket) => {
             return;
         }
         
-        // Check if username is admin (case insensitive) - force to "Admin"
         const finalUsername = isAdminLogin ? 'Admin' : trimmedUsername;
         
-        // Get or create user data from database
         const userData = await getUserData(finalUsername);
         
         onlineUsers.set(socket.id, {
@@ -1826,7 +1683,6 @@ io.on('connection', (socket) => {
         
         io.emit('onlineCount', onlineUsers.size);
         
-        // Send online users with stats (sorted by wins descending)
         const onlineUsersList = Array.from(onlineUsers.values()).map(user => ({
             username: user.username,
             stats: user.stats || { wins: 0, losses: 0, gamesPlayed: 0 },
@@ -1838,7 +1694,6 @@ io.on('connection', (socket) => {
         socket.emit('lobbyChatUpdate', { messages: lobbyMessages });
     });
     
-    // Handle request for global users (all users from database)
     socket.on('getGlobalUsers', async () => {
         const users = await getAllUsersInDatabase();
         const globalUsersList = users.map(user => ({
@@ -1851,7 +1706,6 @@ io.on('connection', (socket) => {
         socket.emit('globalUsersUpdate', { users: globalUsersList });
     });
 
-    // Handle username change
     safeOn('changeUsername', async (data) => {
         const { newUsername } = data;
         const user = onlineUsers.get(socket.id);
@@ -1861,7 +1715,6 @@ io.on('connection', (socket) => {
             return;
         }
         
-        // Prevent admin users from changing their username
         if (user.isAdmin || user.username.toLowerCase() === 'admin') {
             socket.emit('usernameChangeError', { message: 'Admin users cannot change their username' });
             return;
@@ -1874,26 +1727,22 @@ io.on('connection', (socket) => {
         
         const trimmedUsername = newUsername.trim();
         
-        // Prevent users from changing to "admin"
         if (trimmedUsername.toLowerCase() === 'admin') {
             socket.emit('usernameChangeError', { message: 'This username is reserved and cannot be used' });
             return;
         }
 
-        // Prevent users from changing to reserved command names
         const reservedCommands = ['everyonelogout', 'adminlogout', '/help'];
         if (reservedCommands.includes(trimmedUsername.toLowerCase())) {
             socket.emit('usernameChangeError', { message: 'This username is reserved for system commands' });
             return;
         }
 
-        // Check if username is the same as current
         if (trimmedUsername.toLowerCase() === user.username.toLowerCase()) {
             socket.emit('usernameChangeError', { message: 'New username must be different from current username' });
             return;
         }
         
-        // Check if username is taken by another user
         for (const [id, existingUser] of onlineUsers.entries()) {
             if (id !== socket.id && existingUser.username.toLowerCase() === trimmedUsername.toLowerCase()) {
                 socket.emit('usernameChangeError', { message: 'Username already taken' });
@@ -1903,18 +1752,15 @@ io.on('connection', (socket) => {
         
         const oldUsername = user.username;
         
-        // Transfer user data from old username to new username
         const transferResult = await transferUserData(oldUsername, trimmedUsername);
         log.info(`[USERNAME CHANGE] ${oldUsername} -> ${trimmedUsername}:`, transferResult.message);
         
-        // Reload user data to get transferred stats
         const newUserData = await getUserData(trimmedUsername);
         user.stats = newUserData.stats;
         user.avatar = newUserData.avatar;
         
         user.username = trimmedUsername;
         
-        // Update username in room if user is in a room
         if (user.room) {
             const room = rooms.get(user.room);
             if (room) {
@@ -1923,7 +1769,6 @@ io.on('connection', (socket) => {
                     player.username = trimmedUsername;
                 }
                 
-                // Notify room of username change
                 io.to(user.room).emit('newMessage', {
                     type: 'system',
                     message: `${oldUsername} changed their username to ${trimmedUsername}`
@@ -1941,7 +1786,6 @@ io.on('connection', (socket) => {
             }
         }
 
-        // Update session
         socket.emit('usernameChanged', { 
             success: true, 
             username: trimmedUsername,
@@ -1949,13 +1793,10 @@ io.on('connection', (socket) => {
             avatar: user.avatar
         });
         
-        // Update lobby chat display name for future messages
         io.emit('lobbyChatUpdate', { messages: lobbyMessages });
     });
 
     safeOn('lobbyChatMessage', (data) => {
-        // FIX: use the authenticated username/avatar instead of trusting the
-        // client-supplied ones (anyone could impersonate other users before).
         const user = onlineUsers.get(socket.id);
         if (!user) return;
 
@@ -2004,7 +1845,6 @@ io.on('connection', (socket) => {
         
         const room = new Room(roomId, name, mode, maxPlayers, password, socket.id);
         
-        // Store selected difficulty and hint count
         room.selectedGameMode = difficulty || 'medium';
         room.selectedHintCount = hintCount || 5;
         
@@ -2028,10 +1868,6 @@ io.on('connection', (socket) => {
         const { roomId, password, username, avatar } = data;
         const room = rooms.get(roomId);
         
-        // Check if user is banned
-        // FIX: isUserBanned is async but was never awaited here, so this
-        // check always saw a pending Promise (never banned) and the logs
-        // printed "[object Promise]".
         log.info(`[JOIN ROOM] Checking ban status for: ${username}`);
         const banStatus = await isUserBanned(username);
         log.info(`[JOIN ROOM] Ban status for ${username}:`, banStatus);
@@ -2065,9 +1901,6 @@ io.on('connection', (socket) => {
             return;
         }
 
-        // FIX: duplicate-join protection. A double-click or reconnect race
-        // could add the same player twice, occupying two slots and breaking
-        // turn order. Re-joining is now idempotent.
         if (room.players.some(p => p.id === socket.id)) {
             socket.emit('joinedRoom', {
                 roomId,
@@ -2168,8 +2001,6 @@ io.on('connection', (socket) => {
                 if (room.players.length > 0) {
                     io.to(user.room).emit('hostChanged', { newHostId: room.hostId });
 
-                    // FIX: notify remaining players when a running game was
-                    // aborted because someone left (room went back to waiting)
                     if (wasPlaying && room.status === 'waiting' && room.gameState === null) {
                         io.to(user.room).emit('gameAborted', {
                             message: `${user.username} left the game. Waiting for the host to start a new game.`
@@ -2234,30 +2065,24 @@ io.on('connection', (socket) => {
             return;
         }
         
-        // Use stored difficulty and hint count from room creation
         const gameMode = room.selectedGameMode;
         const hintCount = room.selectedHintCount;
         
         room.startGame(gameMode, hintCount);
         
         if (gameMode === 'custom') {
-            // For custom mode, start with coin flip phase to determine word setter
             const isTeamMode = room.mode !== 'solo' && room.mode !== '1v1';
             
-            // Get representatives for coin flip
             let player1, player2;
             
             if (isTeamMode) {
-                // Team mode: first player from each team
                 player1 = room.players.find(p => p.team === 'team1');
                 player2 = room.players.find(p => p.team === 'team2');
             } else {
-                // 1v1 mode: both players
                 player1 = room.players[0];
                 player2 = room.players[1];
             }
             
-            // Store the player IDs for coin flip
             if (player1 && player2) {
                 room.gameState.coinFlip.player1Id = player1.id;
                 room.gameState.coinFlip.player2Id = player2.id;
@@ -2278,11 +2103,9 @@ io.on('connection', (socket) => {
                 hintCount: room.gameState.hintCount
             });
         } else {
-            // Regular game starts immediately
-            // FIX: send maskedWord instead of the real word (anti-cheat)
             io.to(roomId).emit('gameStarted', {
                 gameState: {
-                    word: null, // Don't send actual word to clients
+                    word: null,
                     wordLength: room.gameState.word.length,
                     spaceIndices: [],
                     maskedWord: room.gameState.word.split('').map(() => null),
@@ -2309,7 +2132,6 @@ io.on('connection', (socket) => {
         }
     });
 
-    // Coin Flip handlers for custom word mode
     safeOn('selectCoinSide', (data) => {
         const { roomId, side } = data;
         const room = rooms.get(roomId);
@@ -2332,13 +2154,11 @@ io.on('connection', (socket) => {
             return;
         }
         
-        // Check if coin flip is already in progress (prevent double submission)
         if (room.gameState.coinFlip.player1Choice && room.gameState.coinFlip.player2Choice) {
             socket.emit('coinFlipError', { message: 'Coin flip is already in progress' });
             return;
         }
         
-        // Check if this player already made a choice
         if (isPlayer1 && room.gameState.coinFlip.player1Choice) {
             socket.emit('coinFlipError', { message: 'You already chose a side' });
             return;
@@ -2348,18 +2168,14 @@ io.on('connection', (socket) => {
             return;
         }
         
-        // Record the choice for the player who clicked
         if (isPlayer1) {
             room.gameState.coinFlip.player1Choice = side;
-            // Automatically assign opposite side to player 2
             room.gameState.coinFlip.player2Choice = side === 'heads' ? 'tails' : 'heads';
         } else {
             room.gameState.coinFlip.player2Choice = side;
-            // Automatically assign opposite side to player 1
             room.gameState.coinFlip.player1Choice = side === 'heads' ? 'tails' : 'heads';
         }
         
-        // Notify all players of both selections at once
         io.to(roomId).emit('coinSideSelected', {
             player1Choice: room.gameState.coinFlip.player1Choice,
             player2Choice: room.gameState.coinFlip.player2Choice,
@@ -2368,16 +2184,12 @@ io.on('connection', (socket) => {
             isTeamMode: room.gameState.isTeamMode
         });
         
-        // Both players have chosen (one manually, one automatically)
         if (room.gameState.coinFlip.player1Choice && room.gameState.coinFlip.player2Choice) {
             
-            // Start the coin flip animation (wait longer for the 3-2-1 countdown)
             setTimeout(() => {
-                // Perform coin flip
                 const result = Math.random() < 0.5 ? 'heads' : 'tails';
                 room.gameState.coinFlip.result = result;
                 
-                // Determine winner
                 let winnerId, winnerName, winnerTeam;
                 if (room.gameState.coinFlip.player1Choice === result) {
                     winnerId = room.gameState.coinFlip.player1Id;
@@ -2393,7 +2205,6 @@ io.on('connection', (socket) => {
                 
                 room.gameState.coinFlip.winner = winnerId;
                 
-                // Emit the result
                 io.to(roomId).emit('coinFlipResult', {
                     result: result,
                     winner: {
@@ -2403,11 +2214,9 @@ io.on('connection', (socket) => {
                     }
                 });
                 
-                // Set the word setter to the winner
                 room.gameState.wordSetter = winnerId;
                 room.gameState.wordSetterTeam = winnerTeam;
                 
-                // After showing the result, proceed to word selection
                 setTimeout(() => {
                     room.gameState.status = 'word_selection';
                     const wordSetter = room.players.find(p => p.id === winnerId);
@@ -2419,8 +2228,8 @@ io.on('connection', (socket) => {
                         },
                         hintCount: room.gameState.hintCount
                     });
-                }, 8000); // Wait 8 seconds to show the result (enough time for 3-2-1 countdown + HEADS/TAILS reveal + winner display)
-            }, 2000); // Wait 2 seconds after both selected before starting countdown
+                }, 8000);
+            }, 2000);
         }
     });
 
@@ -2451,10 +2260,6 @@ io.on('connection', (socket) => {
         if (success) {
             socket.emit('wordAccepted');
             
-            // Get indices of spaces in the word
-            // FIX: this redeclared `word` (shadowing the destructured param
-            // above). Works by accident, but is fragile - use the game state
-            // word explicitly.
             const spaceIndices = [];
             const gameWord = room.gameState.word;
             for (let i = 0; i < gameWord.length; i++) {
@@ -2463,18 +2268,15 @@ io.on('connection', (socket) => {
                 }
             }
             
-            // Pre-fill spaces as guessed letters
             spaceIndices.forEach(index => {
                 if (!room.gameState.guessedLetters.includes(gameWord[index])) {
                     room.gameState.guessedLetters.push(gameWord[index]);
                 }
             });
             
-            // Start the game for all players
-            // FIX: send maskedWord + spaces instead of the real word (anti-cheat)
             io.to(roomId).emit('gameStarted', {
                 gameState: {
-                    word: null, // Don't send actual word to clients
+                    word: null,
                     wordLength: room.gameState.word.length,
                     spaceIndices: spaceIndices,
                     maskedWord: room.getMaskedWord(),
@@ -2513,7 +2315,6 @@ io.on('connection', (socket) => {
             return;
         }
 
-        // FIX: don't allow hint requests after the game finished
         if (room.status !== 'playing' || room.gameState.status !== 'playing') {
             socket.emit('hintError', { message: 'No game in progress' });
             return;
@@ -2560,7 +2361,6 @@ io.on('connection', (socket) => {
                 question: room.gameState.lastQuestion || null
             });
 
-            // Clear the stored question after sending
             room.gameState.lastQuestion = null;
         } else {
             socket.emit('hintError', { message: result.message });
@@ -2583,7 +2383,6 @@ io.on('connection', (socket) => {
         
         if (!room || room.status !== 'playing') return;
         
-        // FIX: Use the new validation methods
         if (!room.canPlayerGuess(socket.id)) {
             socket.emit('guessError', { message: 'Your team is setting the word — you cannot guess!' });
             return;
@@ -2601,7 +2400,6 @@ io.on('connection', (socket) => {
                 const isTeamMode = room.mode === '2v2' || room.mode === '3v3' || room.mode === '4v4';
                 
                 if (isTeamMode) {
-                    // Award points to all players on the same team
                     const guesser = room.players.find(p => p.id === socket.id);
                     if (guesser && guesser.team) {
                         room.players.forEach(player => {
@@ -2611,17 +2409,12 @@ io.on('connection', (socket) => {
                         });
                     }
                 } else {
-                    // Individual scoring for solo and 1v1
                     room.gameState.scores[socket.id] += 10;
                 }
             }
             
-            // Get next turn (automatically skips word setter's team if custom word mode)
             room.gameState.currentTurn = room.getNextTurn();
             
-            // FIX: send maskedWord instead of the raw word. The old code sent
-            // the full word to every client on every guess, so the secret word
-            // was readable in DevTools and the game was trivially cheatable.
             io.to(roomId).emit('guessResult', {
                 letter: result.letter,
                 isCorrect: result.isCorrect,
@@ -2629,7 +2422,7 @@ io.on('connection', (socket) => {
                 wrongLetters: room.gameState.wrongLetters,
                 currentTurn: room.gameState.currentTurn,
                 scores: room.gameState.scores,
-                maskedWord: room.getMaskedWord(), // letter where guessed, null otherwise
+                maskedWord: room.getMaskedWord(),
                 isWin: result.isWin,
                 isLose: result.isLose
             });
@@ -2647,11 +2440,6 @@ io.on('connection', (socket) => {
                     isWin: result.isWin
                 });
                 
-                // Update user stats in database for all players
-                // FIX: in solo mode the single player wins when the word is
-                // completed (isWin) and loses on 6 wrong letters (isLose);
-                // the old code only looked at the top score, which is 0-0
-                // until a correct guess is made.
                 const isSoloMode = room.mode === 'solo';
                 room.players.forEach(player => {
                     const user = onlineUsers.get(player.id);
@@ -2682,15 +2470,12 @@ io.on('connection', (socket) => {
     });
 
     safeOn('chatMessage', (data) => {
-        // FIX: use the authenticated username/avatar instead of trusting the
-        // client-supplied ones (anyone could impersonate other users before).
         const user = onlineUsers.get(socket.id);
         const { roomId, chatType } = data;
         const room = rooms.get(roomId);
         
         if (!room || !user) return;
 
-        // Only allow team chat from players actually on a team
         const sender = room.players.find(p => p.id === socket.id);
         if (chatType === 'team' && !sender?.team) return;
         
@@ -2754,7 +2539,6 @@ io.on('connection', (socket) => {
         })));
     });
 
-    // Handle host changing the game mode
     safeOn('setGameMode', (data) => {
         const { roomId, gameMode } = data;
         const room = rooms.get(roomId);
@@ -2765,7 +2549,6 @@ io.on('connection', (socket) => {
         
         room.selectedGameMode = gameMode;
         
-        // Broadcast updated room list to all clients
         io.emit('roomList', Array.from(rooms.values()).map(r => ({
             id: r.id,
             name: r.name,
@@ -2779,7 +2562,6 @@ io.on('connection', (socket) => {
         })));
     });
 
-    // Handle host changing the hint count
     safeOn('setHintCount', (data) => {
         const { roomId, hintCount } = data;
         const room = rooms.get(roomId);
@@ -2790,7 +2572,6 @@ io.on('connection', (socket) => {
         
         room.selectedHintCount = hintCount;
         
-        // Broadcast updated room list to all clients
         io.emit('roomList', Array.from(rooms.values()).map(r => ({
             id: r.id,
             name: r.name,
@@ -2828,8 +2609,6 @@ io.on('connection', (socket) => {
                 if (room.players.length > 0) {
                     io.to(user.room).emit('hostChanged', { newHostId: room.hostId });
 
-                    // FIX: notify remaining players when a running game was
-                    // aborted because someone left (room went back to waiting)
                     if (wasPlaying && room.status === 'waiting' && room.gameState === null) {
                         io.to(user.room).emit('gameAborted', {
                             message: `${user.username} left the game. Waiting for the host to start a new game.`
@@ -2860,17 +2639,12 @@ io.on('connection', (socket) => {
         io.emit('onlineUsersUpdate', { users: onlineUsersList });
     });
 
-    // ═══════════════════════════════════════════════════════════════════════
-    // ADMIN COMMANDS
-    // ═══════════════════════════════════════════════════════════════════════
 
-    // Helper function to check if user is admin
     function isAdmin(socketId) {
         const user = onlineUsers.get(socketId);
         return user && user.isAdmin;
     }
 
-    // Delete room (admin only)
     safeOn('adminDeleteRoom', (data) => {
         if (!isAdmin(socket.id)) {
             socket.emit('adminError', { message: 'Unauthorized - Admin only' });
@@ -2881,12 +2655,10 @@ io.on('connection', (socket) => {
         let roomToDelete = null;
         let roomId = null;
 
-        // Try to find by ID first
         if (rooms.has(roomIdOrName)) {
             roomToDelete = rooms.get(roomIdOrName);
             roomId = roomIdOrName;
         } else {
-            // Try to find by name
             for (const [id, room] of rooms.entries()) {
                 if (room.name.toLowerCase() === roomIdOrName.toLowerCase()) {
                     roomToDelete = room;
@@ -2901,13 +2673,11 @@ io.on('connection', (socket) => {
             return;
         }
 
-        // Notify all players in the room
         io.to(roomId).emit('roomDeleted', { 
             message: 'Room has been deleted by an admin',
             roomName: roomToDelete.name 
         });
 
-        // Remove all players from the room
         roomToDelete.players.forEach(player => {
             const user = onlineUsers.get(player.id);
             if (user) {
@@ -2916,10 +2686,8 @@ io.on('connection', (socket) => {
             player.socket.leave(roomId);
         });
 
-        // Delete the room
         rooms.delete(roomId);
 
-        // Update room list for everyone
         io.emit('roomList', Array.from(rooms.values()).map(r => ({
             id: r.id,
             name: r.name,
@@ -2935,7 +2703,6 @@ io.on('connection', (socket) => {
         socket.emit('adminSuccess', { message: `Room "${roomToDelete.name}" has been deleted` });
     });
 
-    // Kick player (admin only)
     safeOn('adminKickPlayer', (data) => {
         if (!isAdmin(socket.id)) {
             socket.emit('adminError', { message: 'Unauthorized - Admin only' });
@@ -2946,7 +2713,6 @@ io.on('connection', (socket) => {
         let targetSocketId = null;
         let targetUser = null;
 
-        // Find player by username
         for (const [id, user] of onlineUsers.entries()) {
             if (user.username.toLowerCase() === username.toLowerCase()) {
                 targetSocketId = id;
@@ -2960,13 +2726,11 @@ io.on('connection', (socket) => {
             return;
         }
 
-        // Can't kick other admins
         if (targetUser.isAdmin) {
             socket.emit('adminError', { message: 'Cannot kick other admins' });
             return;
         }
 
-        // If player is in a room, remove them
         if (targetUser.room) {
             const room = rooms.get(targetUser.room);
             if (room) {
@@ -2992,19 +2756,16 @@ io.on('connection', (socket) => {
             }
         }
 
-        // Notify the kicked player
         io.to(targetSocketId).emit('kicked', { 
             reason: reason || 'Kicked by admin',
             by: onlineUsers.get(socket.id).username
         });
 
-        // Disconnect the player
         const targetSocket = io.sockets.sockets.get(targetSocketId);
         if (targetSocket) {
             targetSocket.disconnect(true);
         }
 
-        // Remove from online users
         onlineUsers.delete(targetSocketId);
         io.emit('onlineCount', onlineUsers.size);
         const onlineUsersList1 = Array.from(onlineUsers.values()).map(user => ({
@@ -3018,7 +2779,6 @@ io.on('connection', (socket) => {
         socket.emit('adminSuccess', { message: `Player "${username}" has been kicked` });
     });
 
-    // Get server info (admin only)
     socket.on('adminGetServerInfo', () => {
         if (!isAdmin(socket.id)) {
             socket.emit('adminError', { message: 'Unauthorized - Admin only' });
@@ -3048,7 +2808,6 @@ io.on('connection', (socket) => {
         socket.emit('adminServerInfo', serverInfo);
     });
 
-    // Broadcast message (admin only)
     safeOn('adminBroadcast', (data) => {
         if (!isAdmin(socket.id)) {
             socket.emit('adminError', { message: 'Unauthorized - Admin only' });
@@ -3058,7 +2817,6 @@ io.on('connection', (socket) => {
         const { message } = data;
         const adminName = onlineUsers.get(socket.id).username;
 
-        // Broadcast to all connected clients
         io.emit('adminBroadcast', {
             message: message,
             from: adminName,
@@ -3068,11 +2826,7 @@ io.on('connection', (socket) => {
         socket.emit('adminSuccess', { message: 'Broadcast sent successfully' });
     });
 
-    // ═══════════════════════════════════════════════════════════════════════
-    // SERVER SECTION - Kick and Ban (Admin only)
-    // ═══════════════════════════════════════════════════════════════════════
 
-    // Server Kick Player (admin only)
     safeOn('serverKickPlayer', (data) => {
         if (!isAdmin(socket.id)) {
             socket.emit('adminError', { message: 'Unauthorized - Admin only' });
@@ -3086,7 +2840,6 @@ io.on('connection', (socket) => {
             return;
         }
 
-        // Find the user
         let targetSocketId = null;
         for (const [id, user] of onlineUsers.entries()) {
             if (user.username.toLowerCase() === username.toLowerCase()) {
@@ -3100,14 +2853,12 @@ io.on('connection', (socket) => {
             return;
         }
 
-        // Cannot kick other admins
         const targetUser = onlineUsers.get(targetSocketId);
         if (targetUser.isAdmin) {
             socket.emit('adminError', { message: 'Cannot kick admin users' });
             return;
         }
 
-        // Send kick message to the player
         const targetSocket = io.sockets.sockets.get(targetSocketId);
         if (targetSocket) {
             targetSocket.emit('forceLogout', { 
@@ -3116,7 +2867,6 @@ io.on('connection', (socket) => {
             targetSocket.disconnect(true);
         }
 
-        // Remove from online users
         onlineUsers.delete(targetSocketId);
         io.emit('onlineCount', onlineUsers.size);
         
@@ -3131,7 +2881,6 @@ io.on('connection', (socket) => {
         socket.emit('adminSuccess', { message: `Player "${username}" has been kicked from the server` });
     });
 
-    // Server Ban Player (admin only)
     safeOn('serverBanPlayer', async (data) => {
         if (!isAdmin(socket.id)) {
             socket.emit('adminError', { message: 'Unauthorized - Admin only' });
@@ -3145,7 +2894,6 @@ io.on('connection', (socket) => {
             return;
         }
 
-        // Calculate expiry based on duration
         let expiryDate = null;
         let isPermanent = false;
         
@@ -3170,10 +2918,9 @@ io.on('connection', (socket) => {
                 expiryDate = null;
                 break;
             default:
-                expiryDate = new Date(Date.now() + 3600000); // Default 1 hour
+                expiryDate = new Date(Date.now() + 3600000);
         }
 
-        // Update user in database with server ban
         try {
             const { error } = await db.from('users').upsert({
                 username: username.toLowerCase(),
@@ -3188,7 +2935,6 @@ io.on('connection', (socket) => {
             console.error('[SERVER BAN] Error updating database:', error.message);
         }
 
-        // Find and disconnect the user if online
         let targetSocketId = null;
         for (const [id, user] of onlineUsers.entries()) {
             if (user.username.toLowerCase() === username.toLowerCase()) {
@@ -3200,7 +2946,6 @@ io.on('connection', (socket) => {
         if (targetSocketId) {
             const targetUser = onlineUsers.get(targetSocketId);
             
-            // Cannot ban other admins
             if (targetUser.isAdmin) {
                 socket.emit('adminError', { message: 'Cannot ban admin users' });
                 return;
@@ -3231,7 +2976,6 @@ io.on('connection', (socket) => {
         socket.emit('adminSuccess', { message: `Player "${username}" has been server banned ${durationText}` });
     });
 
-    // Server Unban Player (admin only)
     safeOn('serverUnbanPlayer', async (data) => {
         if (!isAdmin(socket.id)) {
             socket.emit('adminError', { message: 'Unauthorized - Admin only' });
@@ -3245,7 +2989,6 @@ io.on('connection', (socket) => {
             return;
         }
 
-        // Remove server ban from database
         try {
             const { data, error } = await db.from('users').update({
                 server_ban: false,
@@ -3268,7 +3011,6 @@ io.on('connection', (socket) => {
         }
     });
 
-    // Clear chat (admin only)
     safeOn('adminClearChat', (data) => {
         if (!isAdmin(socket.id)) {
             socket.emit('adminError', { message: 'Unauthorized - Admin only' });
@@ -3279,13 +3021,11 @@ io.on('connection', (socket) => {
         const adminName = onlineUsers.get(socket.id).username;
 
         if (type === 'lobby') {
-            // Clear lobby chat
             lobbyMessages = [];
             io.emit('lobbyChatUpdate', { messages: [] });
             io.emit('lobbyChatCleared', { by: adminName });
             socket.emit('adminSuccess', { message: 'Lobby chat cleared' });
         } else if (type === 'current' || type === 'room') {
-            // Clear current room chat
             const user = onlineUsers.get(socket.id);
             if (user && user.room) {
                 const room = rooms.get(user.room);
@@ -3304,18 +3044,13 @@ io.on('connection', (socket) => {
         }
     });
 
-    // ═══════════════════════════════════════════════════════════════════════
-    // USER DATABASE MANAGEMENT (Admin only)
-    // ═══════════════════════════════════════════════════════════════════════
 
-    // Get user database (admin only) - reloads from file first
     socket.on('adminGetUserDatabase', async () => {
         if (!isAdmin(socket.id)) {
             socket.emit('adminError', { message: 'Unauthorized - Admin only' });
             return;
         }
 
-        // Reload database from file to get any external edits
         await reloadUserDatabaseFromFile();
 
         const users = await getAllUsersInDatabase();
@@ -3325,7 +3060,6 @@ io.on('connection', (socket) => {
         });
     });
 
-    // Reload user database from file (admin only)
     socket.on('adminReloadUserDatabase', async () => {
         if (!isAdmin(socket.id)) {
             socket.emit('adminError', { message: 'Unauthorized - Admin only' });
@@ -3336,7 +3070,6 @@ io.on('connection', (socket) => {
         if (success) {
             socket.emit('adminSuccess', { message: 'User database reloaded from MongoDB' });
             
-            // Refresh the database view
             const users = await getAllUsersInDatabase();
             socket.emit('adminUserDatabase', { 
                 users: users, 
@@ -3347,7 +3080,6 @@ io.on('connection', (socket) => {
         }
     });
 
-    // Delete user from database (admin only)
     safeOn('adminDeleteUser', async (data) => {
         if (!isAdmin(socket.id)) {
             socket.emit('adminError', { message: 'Unauthorized - Admin only' });
@@ -3361,7 +3093,6 @@ io.on('connection', (socket) => {
             return;
         }
 
-        // Find the user in online users to notify them
         let targetSocketId = null;
         for (const [id, user] of onlineUsers.entries()) {
             if (user.username.toLowerCase() === username.toLowerCase()) {
@@ -3370,11 +3101,9 @@ io.on('connection', (socket) => {
             }
         }
 
-        // Delete from database (username only)
         const success = await deleteUser(username);
         
         if (success) {
-            // If user is online, notify them and clear their local data
             if (targetSocketId) {
                 io.to(targetSocketId).emit('userDataDeleted', { 
                     message: 'Your account data has been deleted by an admin',
@@ -3384,7 +3113,6 @@ io.on('connection', (socket) => {
             
             socket.emit('adminSuccess', { message: `User "${username}" has been deleted from database` });
             
-            // Refresh the database view for the admin
             const users = await getAllUsersInDatabase();
             socket.emit('adminUserDatabase', { 
                 users: users, 
@@ -3395,7 +3123,6 @@ io.on('connection', (socket) => {
         }
     });
 
-    // Edit user stats (admin only)
     safeOn('adminEditUserStats', async (data) => {
         if (!isAdmin(socket.id)) {
             socket.emit('adminError', { message: 'Unauthorized - Admin only' });
@@ -3409,11 +3136,9 @@ io.on('connection', (socket) => {
             return;
         }
 
-        // Update stats in database (username only)
         const success = await setUserStats(username, stats);
         
         if (success) {
-            // Find the user in online users to notify them of stat update
             let targetSocketId = null;
             for (const [id, user] of onlineUsers.entries()) {
                 if (user.username.toLowerCase() === username.toLowerCase()) {
@@ -3422,7 +3147,6 @@ io.on('connection', (socket) => {
                 }
             }
 
-            // If user is online, update their stats in memory and notify them
             if (targetSocketId) {
                 const user = onlineUsers.get(targetSocketId);
                 user.stats = {
@@ -3431,7 +3155,6 @@ io.on('connection', (socket) => {
                     gamesPlayed: parseInt(stats.gamesPlayed) || 0
                 };
                 
-                // Notify the user that their stats were updated
                 io.to(targetSocketId).emit('statsUpdated', { 
                     stats: user.stats,
                     by: onlineUsers.get(socket.id).username
@@ -3440,7 +3163,6 @@ io.on('connection', (socket) => {
             
             socket.emit('adminSuccess', { message: `Stats updated for "${username}"` });
             
-            // Refresh the database view for the admin
             const users = await getAllUsersInDatabase();
             socket.emit('adminUserDatabase', { 
                 users: users, 
@@ -3451,7 +3173,6 @@ io.on('connection', (socket) => {
         }
     });
 
-    // Delete all users from database (admin only)
     socket.on('adminDeleteAllUsers', async () => {
         if (!isAdmin(socket.id)) {
             socket.emit('adminError', { message: 'Unauthorized - Admin only' });
@@ -3460,7 +3181,6 @@ io.on('connection', (socket) => {
 
         const adminName = onlineUsers.get(socket.id).username;
         
-        // Notify all online users that their data has been deleted
         onlineUsers.forEach((user, userSocketId) => {
             if (!user.isAdmin) {
                 io.to(userSocketId).emit('allUserDataDeleted', { 
@@ -3470,12 +3190,10 @@ io.on('connection', (socket) => {
             }
         });
 
-        // Delete all users from database
         await deleteAllUsers();
         
         socket.emit('adminSuccess', { message: 'All users have been deleted from database' });
         
-        // Refresh the database view
         const users = await getAllUsersInDatabase();
         socket.emit('adminUserDatabase', { 
             users: users, 
@@ -3483,34 +3201,27 @@ io.on('connection', (socket) => {
         });
     });
 
-    // Handle avatar update
     safeOn('updateAvatar', async (data) => {
         const user = onlineUsers.get(socket.id);
         if (!user) return;
 
         const { avatar } = data;
         
-        // Update in database (username only)
         await updateUserAvatar(user.username, avatar);
         
-        // Update in memory
         user.avatar = avatar;
         
         socket.emit('avatarUpdated', { success: true, avatar });
     });
 
-    // Reload user stats from database (for live updates)
     socket.on('reloadUserStats', async () => {
         const user = onlineUsers.get(socket.id);
         if (!user) return;
 
-        // Reload fresh stats from database (username only)
         const freshStats = await reloadUserStats(user.username);
         if (freshStats) {
-            // Update in-memory stats
             user.stats = freshStats;
             
-            // Send updated stats to client
             socket.emit('statsReloaded', { 
                 success: true, 
                 stats: freshStats 
@@ -3518,25 +3229,21 @@ io.on('connection', (socket) => {
         }
     });
 
-    // Inspect user profile (any user can inspect any other user)
     safeOn('inspectUserProfile', async (data) => {
         const { username } = data;
         const inspector = onlineUsers.get(socket.id);
         
         if (!inspector || !username) return;
         
-        // Get user data from database
         const userData = await getUserData(username);
         if (!userData) {
             socket.emit('userProfileError', { message: 'User not found' });
             return;
         }
         
-        // Check if inspecting an admin
         const isTargetAdmin = username.toLowerCase() === 'admin';
         const isInspectorAdmin = inspector.isAdmin;
         
-        // Build profile data - use displayName if available, otherwise username
         const profileData = {
             username: userData.displayName || userData.username,
             avatar: userData.avatar,
@@ -3547,12 +3254,9 @@ io.on('connection', (socket) => {
             isInspectorAdmin: isInspectorAdmin
         };
         
-        // Show admin stats to everyone (removed restriction)
-        
         socket.emit('userProfileData', profileData);
     });
     
-    // Admin: Quick inspect user from online users dropdown
     safeOn('adminInspectUser', async (data) => {
         if (!isAdmin(socket.id)) {
             socket.emit('adminError', { message: 'Unauthorized - Admin only' });
@@ -3572,15 +3276,12 @@ io.on('connection', (socket) => {
             lastLogin: userData.lastLogin,
             isAdmin: username.toLowerCase() === 'admin',
             isInspectorAdmin: true,
-            // FIX: read the real serverBan* fields (banned/banExpiry/banReason
-            // don't exist on the model and always came back undefined)
             banned: !!(userData.serverBan && (!userData.serverBanExpiry || new Date(userData.serverBanExpiry) > new Date())),
             banExpiry: userData.serverBanExpiry || null,
             banReason: userData.serverBanReason || null
         });
     });
 
-    // Admin: Ban user
     safeOn('adminBanUser', async (data) => {
         if (!isAdmin(socket.id)) {
             socket.emit('adminError', { message: 'Unauthorized - Admin only' });
@@ -3594,20 +3295,17 @@ io.on('connection', (socket) => {
             return;
         }
 
-        // Can't ban other admins
         if (username.toLowerCase() === 'admin') {
             socket.emit('adminError', { message: 'Cannot ban other admins' });
             return;
         }
 
-        // Ban the user
         const success = await banUser(username, duration, reason);
         
         if (success) {
             const banStatus = await isUserBanned(username);
             const durationText = banStatus.isPermanent ? 'permanently' : `for ${duration} hour(s)`;
             
-            // Find the user in online users to kick them
             for (const [id, user] of onlineUsers.entries()) {
                 if (user.username.toLowerCase() === username.toLowerCase()) {
                     io.to(id).emit('banned', { 
@@ -3627,7 +3325,6 @@ io.on('connection', (socket) => {
             
             socket.emit('adminSuccess', { message: `User "${username}" has been banned ${durationText}` });
             
-            // Refresh database view
             await reloadUserDatabaseFromFile();
             const users = await getAllUsersInDatabase();
             socket.emit('adminUserDatabase', { 
@@ -3639,9 +3336,6 @@ io.on('connection', (socket) => {
         }
     });
 
-    // Admin: Unban user
-    // FIX: the client emits 'adminUnbanUser' but the server had no handler
-    // for it, so the Unban button in the admin database panel did nothing.
     safeOn('adminUnbanUser', async (data) => {
         if (!isAdmin(socket.id)) {
             socket.emit('adminError', { message: 'Unauthorized - Admin only' });
@@ -3666,7 +3360,6 @@ io.on('connection', (socket) => {
             }, { onConflict: 'username' });
             if (error) throw error;
 
-            // Also clear any in-memory fallback ban
             const memUser = inMemoryUsers.get(username.toLowerCase());
             if (memUser) {
                 memUser.serverBan = false;
@@ -3677,7 +3370,6 @@ io.on('connection', (socket) => {
 
             socket.emit('adminSuccess', { message: `User "${username}" has been unbanned` });
 
-            // Refresh database view
             const users = await getAllUsersInDatabase();
             socket.emit('adminUserDatabase', {
                 users: users,
@@ -3689,7 +3381,6 @@ io.on('connection', (socket) => {
         }
     });
 
-    // Admin: Toggle maintenance mode
     safeOn('adminToggleMaintenance', (data) => {
         if (!isAdmin(socket.id)) {
             socket.emit('adminError', { message: 'Unauthorized - Admin only' });
@@ -3705,13 +3396,11 @@ io.on('connection', (socket) => {
             maintenanceMessage: getMaintenanceMessage()
         });
         
-        // Notify all online users about maintenance mode
         if (result) {
             io.emit('maintenanceModeEnabled', { message: getMaintenanceMessage() });
         }
     });
 
-    // Admin: Get maintenance mode status
     socket.on('adminGetMaintenanceStatus', () => {
         if (!isAdmin(socket.id)) {
             socket.emit('adminError', { message: 'Unauthorized - Admin only' });
@@ -3724,7 +3413,6 @@ io.on('connection', (socket) => {
         });
     });
 
-    // Admin: Create database backup
     socket.on('adminCreateBackup', async () => {
         if (!isAdmin(socket.id)) {
             socket.emit('adminError', { message: 'Unauthorized - Admin only' });
@@ -3746,7 +3434,6 @@ io.on('connection', (socket) => {
         }
     });
 
-    // Admin: List all backups
     socket.on('adminListBackups', () => {
         if (!isAdmin(socket.id)) {
             socket.emit('adminError', { message: 'Unauthorized - Admin only' });
@@ -3757,7 +3444,6 @@ io.on('connection', (socket) => {
         socket.emit('adminBackupList', { backups });
     });
 
-    // Admin: Restore from backup
     safeOn('adminRestoreBackup', async (data) => {
         if (!isAdmin(socket.id)) {
             socket.emit('adminError', { message: 'Unauthorized - Admin only' });
@@ -3779,7 +3465,6 @@ io.on('connection', (socket) => {
                 userCount: result.userCount
             });
             
-            // Refresh database view
             const users = await getAllUsersInDatabase();
             socket.emit('adminUserDatabase', { 
                 users: users, 
@@ -3790,7 +3475,6 @@ io.on('connection', (socket) => {
         }
     });
 
-    // Admin: Delete backup
     safeOn('adminDeleteBackup', (data) => {
         if (!isAdmin(socket.id)) {
             socket.emit('adminError', { message: 'Unauthorized - Admin only' });
@@ -3809,7 +3493,6 @@ io.on('connection', (socket) => {
         if (result.success) {
             socket.emit('adminSuccess', { message: result.message });
             
-            // Refresh backup list
             const backups = getBackupList();
             socket.emit('adminBackupList', { backups });
         } else {
@@ -3818,12 +3501,8 @@ io.on('connection', (socket) => {
     });
 });
 
-// Render (and most PaaS hosts) provide the port via process.env.PORT.
-// The old hardcoded 12244 made the app unreachable on Render.
 const PORT = process.env.PORT || 12244;
 
-// Lightweight health endpoint for keep-alive pings (cron-job.org / GitHub
-// Actions / Render health checks). Cheaper than loading the full index.html.
 app.get('/health', (req, res) => {
     res.status(200).json({
         status: 'ok',
@@ -3837,7 +3516,57 @@ app.get('/health', (req, res) => {
     });
 });
 
+const randInt = (lo, hi) => lo + Math.floor(Math.random() * (hi - lo + 1));
+
+function startSelfPing() {
+    const base = (process.env.SELF_URL || process.env.RENDER_EXTERNAL_URL || '').replace(/\/$/, '');
+    if (!base) {
+        console.log('[KEEPALIVE] No RENDER_EXTERNAL_URL / SELF_URL set - Render self-ping disabled (fine for local dev)');
+        return;
+    }
+    const tick = async () => {
+        try {
+            const res = await fetch(`${base}/health`, { signal: AbortSignal.timeout(30000) });
+            console.log(`[KEEPALIVE] Render self-ping -> HTTP ${res.status}`);
+        } catch (err) {
+            console.error('[KEEPALIVE] Render self-ping failed:', err.message);
+        }
+        schedule();
+    };
+    const schedule = () => {
+        const secs = randInt(12 * 60, 14 * 60 + 50);
+        console.log(`[KEEPALIVE] Next Render self-ping in ${Math.floor(secs / 60)}m${String(secs % 60).padStart(2, '0')}s`);
+        setTimeout(tick, secs * 1000).unref();
+    };
+    schedule();
+}
+
+function startSupabasePing() {
+    if (!db) {
+        console.log('[KEEPALIVE] Supabase not configured - Supabase ping disabled');
+        return;
+    }
+    const tick = async () => {
+        try {
+            const { error } = await db.from('users').select('username').limit(1);
+            if (error) throw error;
+            console.log('[KEEPALIVE] Supabase ping OK');
+        } catch (err) {
+            console.error('[KEEPALIVE] Supabase ping failed:', err.message);
+        }
+        schedule();
+    };
+    const schedule = () => {
+        const secs = randInt(5 * 86400, 6 * 86400);
+        console.log(`[KEEPALIVE] Next Supabase ping in ${(secs / 86400).toFixed(2)} days`);
+        setTimeout(tick, secs * 1000).unref();
+    };
+    schedule();
+}
+
 server.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
     console.log(`Online users: ${onlineUsers.size}`);
+    startSelfPing();
+    startSupabasePing();
 });

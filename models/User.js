@@ -1,4 +1,3 @@
-// User Model for MongoDB
 const mongoose = require('mongoose');
 
 const userSchema = new mongoose.Schema({
@@ -54,7 +53,6 @@ const userSchema = new mongoose.Schema({
     timestamps: true
 });
 
-// Index for banned users (for faster ban checks)
 userSchema.index({ banned: 1 });
 
 const User = mongoose.model('User', userSchema);

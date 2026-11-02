@@ -1,18 +1,4 @@
-// ═══════════════════════════════════════════════════════════════════════
-// HANGMAN MULTIPLAYER GAME - CLIENT (CUSTOM WORD MODE) - BUG FIXES
-// Fixed: Turn management, hint count initialization, word display updates
-// ═══════════════════════════════════════════════════════════════════════
-
-// ── Configuration ──
 const CONFIG = {
-    // FIX: the old hardcoded 'http://217.160.3.69:12244' broke the app as
-    // soon as the backend moved (and mixed content when the frontend is on
-    // HTTPS, e.g. Vercel). The URL is now resolved in this order:
-    //   1. window.GAME_SERVER_URL  - set in index.html before script.js
-    //   2. BACKEND_URL search param - ...?backend=https://myapp.onrender.com
-    //   3. same origin              - works when server.js also serves the
-    //                                  frontend (Render single-service setup)
-    //   4. http://localhost:12244   - local development fallback
     get SERVER_URL() {
         if (typeof window !== 'undefined' && window.GAME_SERVER_URL) {
             return window.GAME_SERVER_URL;
@@ -30,12 +16,11 @@ const CONFIG = {
     MAX_USERNAME_LENGTH: 20,
     MAX_ROOM_NAME_LENGTH: 30,
     MAX_MESSAGE_LENGTH: 200,
-    MAX_AVATAR_SIZE: 5 * 1024 * 1024, // 5MB
+    MAX_AVATAR_SIZE: 5 * 1024 * 1024,
     RECONNECTION_ATTEMPTS: 5,
-    DEBUG: false // Set to false in production to hide console logs
+    DEBUG: false
 };
 
-// ── Global State ──
 let socket = null;
 let currentUser = null;
 let currentRoom = null;
@@ -64,22 +49,18 @@ let unreadCounts = {
     }
 };
 
-// NEW: Track player indices for turn management
 let myPlayerIndex = -1;
-let activePlayers = []; // Players who can guess (excluding word setter's team)
-let currentRoomFilter = 'all'; // Current room filter value
+let activePlayers = [];
+let currentRoomFilter = 'all';
 
-// ── User Stats (Cookie-based) ──
 let userStats = {
     wins: 0,
     losses: 0,
     totalGames: 0
 };
 
-// ─� User Avatar (LocalStorage) ──
 let userAvatar = null;
 
-// ── Leaderboard Functions (Global) ──
 function renderOnlineUsers(users) {
     const dropdownList = document.getElementById('onlineUsersList');
     if (!dropdownList) return;
@@ -148,13 +129,9 @@ function switchLeaderboardTab(tabName) {
     }
 }
 
-// ── DOM Elements ──
 let authScreen, gameScreen, authError;
 let lobbyView, roomView, gameView;
 
-// ═══════════════════════════════════════════════════════════════════════
-// UTILITY FUNCTIONS
-// ═══════════════════════════════════════════════════════════════════════
 
 function log(...args) {
     if (CONFIG.DEBUG) {
@@ -181,12 +158,8 @@ function showNotification(message, type = 'info', duration = 3000) {
     }, duration);
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// ADMIN FUNCTIONS
-// ═══════════════════════════════════════════════════════════════════════
 
 function showAdminIndicator() {
-    // Add admin badge to header
     const header = document.querySelector('.header-content');
     if (header) {
         const adminBadge = document.createElement('div');
@@ -200,7 +173,6 @@ function showAdminIndicator() {
         }
     }
 
-    // Show admin panel button for mobile/desktop
     const adminPanelBtn = document.getElementById('adminPanelBtn');
     if (adminPanelBtn) {
         adminPanelBtn.classList.remove('hidden');
@@ -216,7 +188,6 @@ function isAdmin() {
 function showAdminPanel() {
     if (!isAdmin()) return;
 
-    // Close existing panel if open
     const existingPanel = document.getElementById('adminPanel');
     if (existingPanel) {
         existingPanel.remove();
@@ -293,7 +264,6 @@ function closeAdminPanel() {
     }
 }
 
-// Maintenance Mode Modal
 function showMaintenanceModal() {
     if (!isAdmin()) return;
     
@@ -330,7 +300,6 @@ function showMaintenanceModal() {
     document.body.appendChild(modal);
     showModal('maintenanceModal');
     
-    // Get current status
     socket.emit('adminGetMaintenanceStatus');
 }
 
@@ -340,7 +309,6 @@ function toggleMaintenanceMode(enabled) {
     hideModal('maintenanceModal');
 }
 
-// Backup Management Modal
 function showBackupModal() {
     if (!isAdmin()) return;
     
@@ -441,7 +409,6 @@ function showUserDatabaseModal() {
 }
 
 function displayUserDatabase(users, total) {
-    // Remove existing modal if it exists to prevent duplicates
     const existingModal = document.getElementById('adminUserDatabaseModal');
     if (existingModal) {
         existingModal.remove();
@@ -615,7 +582,6 @@ function showEditUserStatsModal(username, currentWins, currentLosses, currentGam
     document.body.appendChild(modal);
     showModal('adminEditUserStatsModal');
     
-    // Add event listeners to recalculate games when wins or losses change
     const winsInput = document.getElementById('editStatsWins');
     const lossesInput = document.getElementById('editStatsLosses');
     const gamesInput = document.getElementById('editStatsGames');
@@ -769,9 +735,6 @@ function adminKickPlayer() {
     hideModal('adminKickPlayerModal');
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// SERVER SECTION - Kick and Ban Functions
-// ═══════════════════════════════════════════════════════════════════════
 
 function showServerKickModal() {
     if (!isAdmin()) return;
@@ -921,12 +884,8 @@ function serverUnbanPlayer() {
     hideModal('adminUnbanUserModal');
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// USER PROFILE INSPECTION
-// ═══════════════════════════════════════════════════════════════════════
 
 function displayUserProfileModal(data) {
-    // Close existing modal if open
     const existingModal = document.getElementById('userProfileInspectModal');
     if (existingModal) {
         existingModal.remove();
@@ -936,17 +895,14 @@ function displayUserProfileModal(data) {
     modal.className = 'modal';
     modal.id = 'userProfileInspectModal';
     
-    // Format dates
     const firstLogin = data.firstLogin !== 'Hidden' ? new Date(data.firstLogin).toLocaleDateString() : 'Hidden';
     const lastLogin = data.lastLogin !== 'Hidden' ? new Date(data.lastLogin).toLocaleDateString() : 'Hidden';
     
-    // Calculate win rate
     const wins = parseInt(data.stats.wins) || 0;
     const losses = parseInt(data.stats.losses) || 0;
     const gamesPlayed = parseInt(data.stats.gamesPlayed) || 0;
     const winRate = gamesPlayed > 0 ? Math.round((wins / gamesPlayed) * 100) : 0;
     
-    // Build admin buttons if inspector is admin
     let adminButtons = '';
     if (data.isInspectorAdmin && !data.isAdmin) {
         adminButtons = `
@@ -964,7 +920,6 @@ function displayUserProfileModal(data) {
         `;
     }
     
-    // Show admin stats to everyone (removed restriction)
     const hiddenMessage = '';
     const winRateDisplay = `<div style="font-size: 1.8rem; font-weight: bold; color: var(--warning);">${winRate}%</div>`;
     
@@ -1025,7 +980,6 @@ function displayUserProfileModal(data) {
     showModal('userProfileInspectModal');
 }
 
-// Admin: Clear all stats for a user
 function adminClearUserStats(username) {
     if (!isAdmin()) return;
     
@@ -1042,7 +996,6 @@ function adminClearUserStats(username) {
     showNotification(`All stats cleared for ${username}`, 'success');
 }
 
-// Admin: Edit stats for inspected user
 function adminEditInspectedUser(username, currentWins, currentLosses, currentGames) {
     hideModal('userProfileInspectModal');
     showEditUserStatsModal(username, currentWins, currentLosses, currentGames);
@@ -1186,7 +1139,6 @@ function displayAdminServerInfo(data) {
     showModal('adminServerInfoModal');
 }
 
-// Admin chat command handler
 function handleAdminCommand(message) {
     const parts = message.split(' ');
     const command = parts[0].toLowerCase();
@@ -1242,9 +1194,6 @@ function handleAdminCommand(message) {
     }
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// SESSION STORAGE FUNCTIONS
-// ═══════════════════════════════════════════════════════════════════════
 
 function saveSession(username) {
     sessionStorage.setItem('hangman_username', username);
@@ -1258,9 +1207,6 @@ function clearSession() {
     sessionStorage.removeItem('hangman_username');
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// COOKIE HELPER FUNCTIONS
-// ═══════════════════════════════════════════════════════════════════════
 
 function setCookie(name, value, days) {
     let expires = '';
@@ -1289,9 +1235,6 @@ function deleteCookie(name) {
     document.cookie = name + '=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// DEVICE ID MANAGEMENT
-// ═══════════════════════════════════════════════════════════════════════
 
 function getDeviceId() {
     let deviceId = getCookie('hangman_device_id');
@@ -1302,12 +1245,7 @@ function getDeviceId() {
     return deviceId;
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// STATS MANAGEMENT FUNCTIONS - SERVER DATABASE ONLY
-// ═══════════════════════════════════════════════════════════════════════
 
-// Stats are now loaded ONLY from server database
-// No local cookie storage for stats
 
 function setUserStats(stats) {
     userStats = {
@@ -1319,8 +1257,6 @@ function setUserStats(stats) {
 }
 
 function updateStats(result) {
-    // Stats are updated on server automatically when games end
-    // Just refresh the display
     displayUserStats();
 }
 
@@ -1358,16 +1294,11 @@ function displayUserStats() {
     }
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// AVATAR MANAGEMENT FUNCTIONS
-// ═══════════════════════════════════════════════════════════════════════
 
 function getAvatarStorageKey() {
-    // Use username instead of device ID for cross-device sync
     if (currentUser && currentUser.username) {
         return 'hangman_avatar_' + currentUser.username.toLowerCase();
     }
-    // Fallback to device ID if no user logged in yet
     const deviceId = getDeviceId();
     return 'hangman_avatar_' + deviceId;
 }
@@ -1478,7 +1409,6 @@ function compressImage(file, maxSizeKB, callback) {
 function handleAvatarUpload(file) {
     if (!file) return;
     
-    // Only allow JPG, JPEG, and PNG - explicitly block GIF
     const validTypes = ['image/jpeg', 'image/jpg', 'image/png'];
     if (!validTypes.includes(file.type)) {
         showNotification('Please select a valid image file (JPG, PNG only)', 'error');
@@ -1497,7 +1427,6 @@ function handleAvatarUpload(file) {
         displayUserAvatar();
         updateAvatarPreview();
         
-        // Also save to server database
         if (socket && socket.connected) {
             socket.emit('updateAvatar', { avatar: base64Image });
         }
@@ -1506,9 +1435,6 @@ function handleAvatarUpload(file) {
     });
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// SHARED AVATAR HELPER
-// ═══════════════════════════════════════════════════════════════════════
 
 function buildAvatarHTML(avatar, username, size = 28, clickable = true) {
     const avatarId = `avatar-${Math.random().toString(36).substr(2, 9)}`;
@@ -1521,23 +1447,17 @@ function buildAvatarHTML(avatar, username, size = 28, clickable = true) {
     return `<div id="${avatarId}" class="player-avatar message-avatar" ${clickHandler} style="width:${size}px;height:${size}px;font-size:${size * 0.4}px;margin:0;flex-shrink:0;${clickable ? 'cursor:pointer;' : ''}">${initial}</div>`;
 }
 
-// Inspect user profile when clicking on avatar
 function inspectUserProfile(username) {
     if (!socket || !socket.connected) return;
     if (!currentUser) return;
     
-    // Don't inspect yourself
     if (username === currentUser.username) return;
     
     socket.emit('inspectUserProfile', { username });
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// INITIALIZATION
-// ═══════════════════════════════════════════════════════════════════════
 
 document.addEventListener('DOMContentLoaded', () => {
-    // Hide loading screen after a short delay to ensure smooth transition
     setTimeout(() => {
         const loadingScreen = document.getElementById('loadingScreen');
         const authScreen = document.getElementById('authScreen');
@@ -1547,7 +1467,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (authScreen) {
             authScreen.style.display = 'flex';
         }
-    }, 2000); // Show loading animation for 2 seconds
+    }, 2000);
 
     authScreen = document.getElementById('authScreen');
     gameScreen = document.getElementById('gameScreen');
@@ -1556,17 +1476,12 @@ document.addEventListener('DOMContentLoaded', () => {
     roomView = document.getElementById('roomView');
     gameView = document.getElementById('gameView');
 
-    // Avatar will be loaded from server after authentication
-    // This ensures cross-device sync of profile pictures
-    
-    // FIX: Set default active state on hint count button
     document.querySelectorAll('.hint-count-btn').forEach(btn => {
         if (parseInt(btn.dataset.hintCount) === currentHintCount) {
             btn.classList.add('active');
         }
     });
 
-    // Load build number and version from server
     loadBuildNumber();
 
     const savedUsername = getSession();
@@ -1580,9 +1495,6 @@ document.addEventListener('DOMContentLoaded', () => {
     initEventListeners();
 });
 
-// ═══════════════════════════════════════════════════════════════════════
-// BUILD NUMBER & VERSION
-// ═══════════════════════════════════════════════════════════════════════
 
 async function loadBuildNumber() {
     try {
@@ -1603,9 +1515,6 @@ async function loadBuildNumber() {
     }
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// SERVER CONNECTION
-// ═══════════════════════════════════════════════════════════════════════
 
 function isServerConnected() {
     return socket && socket.connected;
@@ -1681,11 +1590,6 @@ function setupSocketListeners(username, connectionTimeout, adminPassword = null)
     });
     
     socket.on('connect_error', (error) => {
-        // FIX: the old handler immediately destroyed the session on ANY
-        // connection error. Behind proxies (Render / Vercel / Cloudflare)
-        // WebSocket upgrades get dropped all the time; socket.io retries
-        // automatically, so only give up once the retry budget is exhausted
-        // (socket.io sets connected=false and stops reconnecting then).
         log('Connection error:', error && error.message);
         clearTimeout(connectionTimeout);
 
@@ -1706,22 +1610,16 @@ function setupSocketListeners(username, connectionTimeout, adminPassword = null)
     socket.on('disconnect', (reason) => {
         log('Disconnected:', reason);
         if (reason === 'io server disconnect') {
-            // Server explicitly disconnected us (kick/ban) - the forceLogout
-            // handler deals with the message. Show the server-down screen
-            // only if we are not being logged out.
             if (!currentUser) {
                 showServerDownMessage();
             }
         } else if (reason === 'transport close' || reason === 'transport error' || reason === 'ping timeout') {
-            // FIX: don't slam the "server is down" modal over the game for
-            // transient drops - socket.io auto-reconnects. Show a soft toast.
             showNotification('Connection lost, reconnecting...', 'warning');
         }
     });
 
     socket.on('forceLogout', (data) => {
         showNotification(data.message || 'You have been logged out by an admin', 'error', 5000);
-        // Clear session and reload to login screen
         clearSession();
         currentUser = null;
         currentRoom = null;
@@ -1732,13 +1630,11 @@ function setupSocketListeners(username, connectionTimeout, adminPassword = null)
         onlineUsersData = [];
         globalUsersData = [];
 
-        // Reset UI
         const authScreen = document.getElementById('authScreen');
         const gameScreen = document.getElementById('gameScreen');
         if (authScreen) authScreen.classList.remove('hidden');
         if (gameScreen) gameScreen.classList.add('hidden');
 
-        // Reset form
         const usernameInput = document.getElementById('usernameInput');
         if (usernameInput) usernameInput.value = '';
 
@@ -1750,7 +1646,6 @@ function setupSocketListeners(username, connectionTimeout, adminPassword = null)
         showNotification('Reconnected to server!', 'success');
     });
 
-    // Admin response handlers
     socket.on('adminSuccess', (data) => {
         showNotification(data.message, 'success');
     });
@@ -1771,7 +1666,6 @@ function setupSocketListeners(username, connectionTimeout, adminPassword = null)
         displayUserDatabase(data.users, data.total);
     });
 
-    // Kicked handler
     socket.on('kicked', (data) => {
         showNotification(`You have been kicked by ${data.by}. Reason: ${data.reason}`, 'error', 5000);
         socket.disconnect();
@@ -1779,7 +1673,6 @@ function setupSocketListeners(username, connectionTimeout, adminPassword = null)
         setTimeout(() => location.reload(), 2000);
     });
 
-    // Room deleted handler
     socket.on('roomDeleted', (data) => {
         showNotification(`Room "${data.roomName}" has been deleted by an admin`, 'error', 5000);
         if (currentRoom) {
@@ -1787,7 +1680,6 @@ function setupSocketListeners(username, connectionTimeout, adminPassword = null)
         }
     });
 
-    // Banned handler
     socket.on('banned', (data) => {
         const durationText = data.duration === 0 ? 'permanently' : `for ${data.duration} hour(s)`;
         showNotification(`You have been banned ${durationText} by ${data.by}. Reason: ${data.reason}`, 'error', 8000);
@@ -1796,59 +1688,46 @@ function setupSocketListeners(username, connectionTimeout, adminPassword = null)
         setTimeout(() => location.reload(), 3000);
     });
 
-    // User data deleted handler (when admin deletes specific user)
     socket.on('userDataDeleted', (data) => {
         showNotification(`${data.message} by ${data.by}. Your stats and avatar have been reset.`, 'error', 5000);
         
-        // Clear local stats (server database deleted)
         userStats = { wins: 0, losses: 0, totalGames: 0 };
         
-        // Clear local avatar
         userAvatar = null;
         saveUserAvatar(null);
         
-        // Update UI
         displayUserStats();
         displayUserAvatar();
         
-        // Disconnect and reload
         socket.disconnect();
         clearSession();
         setTimeout(() => location.reload(), 3000);
     });
 
-    // All user data deleted handler (when admin deletes all users)
     socket.on('allUserDataDeleted', (data) => {
         showNotification(`${data.message} by ${data.by}. All user data has been reset.`, 'error', 5000);
         
-        // Clear local stats (server database deleted)
         userStats = { wins: 0, losses: 0, totalGames: 0 };
         
-        // Clear local avatar
         userAvatar = null;
         saveUserAvatar(null);
         
-        // Update UI
         displayUserStats();
         displayUserAvatar();
         
-        // Disconnect and reload
         socket.disconnect();
         clearSession();
         setTimeout(() => location.reload(), 3000);
     });
 
-    // Stats updated handler (when admin edits user stats)
     socket.on('statsUpdated', (data) => {
         showNotification(`Your stats have been updated by ${data.by}`, 'info', 3000);
         
-        // Update local stats from server
         if (data.stats) {
             setUserStats(data.stats);
         }
     });
 
-    // Stats reloaded handler (when refreshing from database)
     socket.on('statsReloaded', (data) => {
         if (data.success && data.stats) {
             setUserStats(data.stats);
@@ -1856,7 +1735,6 @@ function setupSocketListeners(username, connectionTimeout, adminPassword = null)
         }
     });
 
-    // Maintenance mode status
     socket.on('maintenanceStatus', (data) => {
         const input = document.getElementById('maintenanceMessageInput');
         if (input && data.message) {
@@ -1865,17 +1743,14 @@ function setupSocketListeners(username, connectionTimeout, adminPassword = null)
         log('Maintenance mode:', data.enabled ? 'ENABLED' : 'disabled');
     });
 
-    // Maintenance mode enabled notification
     socket.on('maintenanceModeEnabled', (data) => {
         showNotification(data.message, 'warning', 5000);
     });
 
-    // Backup list
     socket.on('adminBackupList', (data) => {
         displayBackupList(data.backups);
     });
 
-    // User profile inspection handler
     socket.on('userProfileData', (data) => {
         displayUserProfileModal(data);
     });
@@ -1884,7 +1759,6 @@ function setupSocketListeners(username, connectionTimeout, adminPassword = null)
         showNotification(data.message, 'error');
     });
 
-    // Chat cleared handler
     socket.on('lobbyChatCleared', (data) => {
         const lobbyChatMessages = document.getElementById('lobbyChatMessages');
         if (lobbyChatMessages) {
@@ -1904,7 +1778,6 @@ function setupSocketListeners(username, connectionTimeout, adminPassword = null)
     socket.on('authenticated', (data) => {
         log('Authenticated successfully');
         
-        // Reset loading button state on successful login
         const loginBtn = document.getElementById('loginBtn');
         if (loginBtn) {
             loginBtn.classList.remove('loading');
@@ -1914,14 +1787,12 @@ function setupSocketListeners(username, connectionTimeout, adminPassword = null)
         if (data && data.user) {
             currentUser = data.user;
             
-            // Load avatar from server if available
             if (currentUser.avatar) {
                 userAvatar = currentUser.avatar;
                 saveUserAvatar(userAvatar);
                 displayUserAvatar();
             }
             
-            // Load stats from server ONLY (no local cookie storage)
             if (currentUser.stats) {
                 setUserStats(currentUser.stats);
             }
@@ -1931,13 +1802,11 @@ function setupSocketListeners(username, connectionTimeout, adminPassword = null)
         loadLobby();
         socket.emit('getLobbyChat');
 
-        // Show admin indicator if user is admin
         if (currentUser && currentUser.isAdmin) {
             showAdminIndicator();
         }
     });
     
-    // Handle avatar update confirmation
     socket.on('avatarUpdated', (data) => {
         if (data.success) {
             log('Avatar saved to server database');
@@ -1954,12 +1823,10 @@ function setupSocketListeners(username, connectionTimeout, adminPassword = null)
         clearSession();
     });
     
-    // Handle username change responses
     socket.on('usernameChanged', (data) => {
         log('Username changed to:', data.username);
         currentUser.username = data.username;
         
-        // Update transferred stats and avatar
         if (data.stats) {
             currentUser.stats = data.stats;
             setUserStats(data.stats);
@@ -1972,16 +1839,13 @@ function setupSocketListeners(username, connectionTimeout, adminPassword = null)
             displayUserAvatar();
         }
         
-        // Update UI
         const currentUsernameEl = document.getElementById('currentUsername');
         if (currentUsernameEl) {
             currentUsernameEl.textContent = data.username;
         }
         
-        // Update session
         saveSession(data.username);
         
-        // Clear input and show success
         const newUsernameInput = document.getElementById('newUsernameInput');
         const usernameError = document.getElementById('usernameError');
         if (newUsernameInput) {
@@ -2085,11 +1949,9 @@ function setupSocketListeners(username, connectionTimeout, adminPassword = null)
             updateRoomControls();
             showNotification('You are now the host!', 'info');
         } else {
-            // Update the hostId in currentRoom
             currentRoom.hostId = data.newHostId;
         }
 
-        // Update all player cards to show new host
         document.querySelectorAll('.player-card').forEach(card => {
             card.classList.remove('host');
         });
@@ -2100,40 +1962,32 @@ function setupSocketListeners(username, connectionTimeout, adminPassword = null)
         }
     });
     
-    // Coin flip phase for custom word mode
     socket.on('coinFlipPhase', (data) => {
         showCoinFlipModal(data);
     });
     
-    // Coin side selected
     socket.on('coinSideSelected', (data) => {
-        // Store isTeamMode in coinFlipData if provided
         if (data.isTeamMode !== undefined && coinFlipData) {
             coinFlipData.isTeamMode = data.isTeamMode;
         }
         updateCoinFlipSelection(data);
     });
     
-    // Coin flip result
     socket.on('coinFlipResult', (data) => {
         showCoinFlipResult(data);
     });
     
-    // Coin flip error
     socket.on('coinFlipError', (data) => {
         showNotification(data.message, 'error');
     });
     
-    // Word selection phase for custom word mode
     socket.on('wordSelectionPhase', (data) => {
-        // Hide coin flip modal if it's still showing
         hideModal('coinFlipModal');
         
         isWordSetter = (data.wordSetter.id === mySocketId);
         hintsRemaining = data.hintCount || 5;
         
         if (isWordSetter) {
-            // Reset the word input and submit button for a fresh modal
             const wordInput = document.getElementById('customWord');
             const submitBtn = document.getElementById('submitWordBtn');
             if (wordInput) wordInput.value = '';
@@ -2150,13 +2004,11 @@ function setupSocketListeners(username, connectionTimeout, adminPassword = null)
         }
     });
     
-    // Word was accepted
     socket.on('wordAccepted', () => {
         hideModal('wordSelectionModal');
         showNotification('Word submitted successfully!', 'success');
     });
     
-    // Word submission error
     socket.on('wordSubmitError', (data) => {
         showModalError('wordSelectionError', data.message);
         const submitBtn = document.getElementById('submitWordBtn');
@@ -2169,10 +2021,8 @@ function setupSocketListeners(username, connectionTimeout, adminPassword = null)
     socket.on('gameStarted', (data) => {
         hideModal('waitingForWordModal');
 
-        // Store game data for after countdown
         const gameData = data;
 
-        // Show countdown before starting game
         showCountdown(() => {
             startGameAfterCountdown(gameData);
         });
@@ -2181,13 +2031,8 @@ function setupSocketListeners(username, connectionTimeout, adminPassword = null)
     function startGameAfterCountdown(data) {
         gameState = data.gameState;
 
-        // Store players array for turn lookups
-        // IMPORTANT: Must use the full players array from server, not filtered activePlayers
         gameState.players = data.players;
 
-        // FIX (anti-cheat): keep the masked word sent by the server. The old
-        // code set gameState.word = '' which silently broke the letter-box
-        // rendering once the server stopped leaking the raw word.
         if (Array.isArray(data.gameState.maskedWord)) {
             gameState.maskedWord = data.gameState.maskedWord;
         } else if (!gameState.word && gameState.wordLength) {
@@ -2197,7 +2042,6 @@ function setupSocketListeners(username, connectionTimeout, adminPassword = null)
         isWordSetter = (data.gameState.wordSetter === mySocketId);
         hintsRemaining = (data.gameState.hintsRemaining != null) ? data.gameState.hintsRemaining : 0;
 
-        // Build player team map
         playerTeamMap = {};
         isOnWordSetterTeam = false;
         
@@ -2207,31 +2051,23 @@ function setupSocketListeners(username, connectionTimeout, adminPassword = null)
             });
         }
         
-        // FIX: Determine if on word setter's team
-        // Only check team membership in actual team modes (2v2, 3v3, 4v4)
-        // In 1v1 mode, both players have team: null, so we must NOT check team equality
         const myTeam = playerTeamMap[mySocketId];
         const isTeamMode = data.mode === '2v2' || data.mode === '3v3' || data.mode === '4v4';
         
         if (isTeamMode && gameState.wordSetterTeam) {
             isOnWordSetterTeam = (myTeam === gameState.wordSetterTeam);
         } else {
-            // In 1v1 or when there's no wordSetterTeam, only the word setter is blocked
             isOnWordSetterTeam = false;
         }
         
-        // Build active players list (excluding word setter's team in custom mode)
-        // This is for display purposes only - server manages turns using full players array
         activePlayers = [];
         if (gameState.isCustomWord && gameState.wordSetterTeam) {
-            // Only include players NOT on word setter's team
             data.players.forEach((p) => {
                 if (p.team !== gameState.wordSetterTeam) {
                     activePlayers.push(p);
                 }
             });
         } else {
-            // All players can play
             activePlayers = [...data.players];
         }
 
@@ -2242,12 +2078,10 @@ function setupSocketListeners(username, connectionTimeout, adminPassword = null)
         updateGameState(data);
     });
     
-    // Hint request received (for word setter)
     socket.on('hintRequested', (data) => {
         showHintRequestModal(data.requesterName, data.question);
     });
 
-    // Hint provided (for all players)
     socket.on('hintProvided', (data) => {
         displayReceivedHint(data.hint, data.hintNumber, data.question);
         hintsRemaining = data.hintsRemaining;
@@ -2258,7 +2092,6 @@ function setupSocketListeners(username, connectionTimeout, adminPassword = null)
         }
     });
 
-    // Hint dismissed by word setter
     socket.on('hintDismissed', (data) => {
         const askHintBtn = document.getElementById('askHintBtn');
         if (askHintBtn && hintsRemaining > 0) {
@@ -2287,11 +2120,7 @@ function setupSocketListeners(username, connectionTimeout, adminPassword = null)
         showGameOverModal(data);
     });
 
-    // FIX: server emits this when a running game is aborted (e.g. the word
-    // setter left mid-game). Without a handler the remaining players were
-    // stuck on the game screen with no way back to the lobby.
     socket.on('gameAborted', (data) => {
-        // Hide any open modal (game over, hint request, word selection, ...)
         document.querySelectorAll('.modal.show').forEach(m => m.classList.remove('show'));
         gameState = null;
         isWordSetter = false;
@@ -2336,9 +2165,6 @@ function setupSocketListeners(username, connectionTimeout, adminPassword = null)
     });
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// AUTHENTICATION
-// ═══════════════════════════════════════════════════════════════════════
 
 function initAuth() {
     const usernameForm = document.getElementById('usernameForm');
@@ -2348,10 +2174,8 @@ function initAuth() {
     const joinButton = usernameForm?.querySelector('button[type="submit"]');
     
     if (usernameForm) {
-        // Handle form submission
         usernameForm.addEventListener('submit', handleJoinGame);
         
-        // Also handle button click directly for mobile
         if (joinButton) {
             joinButton.addEventListener('click', (e) => {
                 e.preventDefault();
@@ -2359,7 +2183,6 @@ function initAuth() {
                 handleJoinGame(e);
             });
             
-            // Handle touch events for mobile
             joinButton.addEventListener('touchend', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
@@ -2367,7 +2190,6 @@ function initAuth() {
             }, { passive: false });
         }
         
-        // Handle Enter key on input
         if (usernameInput) {
             usernameInput.addEventListener('keypress', (e) => {
                 if (e.key === 'Enter') {
@@ -2376,25 +2198,21 @@ function initAuth() {
                 }
             });
             
-            // Auto-focus on mobile after a short delay
             setTimeout(() => {
                 usernameInput.focus();
             }, 500);
         }
         
-        // Handle Admin password field visibility
         if (usernameInput && adminPasswordGroup) {
             usernameInput.addEventListener('input', (e) => {
                 const username = e.target.value.trim();
                 const lowerUsername = username.toLowerCase();
-                // Show password field for admin account or admin commands (case-insensitive)
                 const needsPassword = lowerUsername === 'admin' || 
                                       lowerUsername === 'everyonelogout' || 
                                       lowerUsername === 'adminlogout';
                 
                 if (needsPassword) {
                     adminPasswordGroup.classList.remove('hidden');
-                    // Focus on password field after a short delay
                     setTimeout(() => {
                         adminPasswordInput?.focus();
                     }, 100);
@@ -2407,7 +2225,6 @@ function initAuth() {
             });
         }
         
-        // Handle Enter key on password input
         if (adminPasswordInput) {
             adminPasswordInput.addEventListener('keypress', (e) => {
                 if (e.key === 'Enter') {
@@ -2417,7 +2234,6 @@ function initAuth() {
             });
         }
         
-        // Handle password visibility toggle
         const adminPasswordToggle = document.getElementById('adminPasswordToggle');
         if (adminPasswordToggle && adminPasswordInput) {
             adminPasswordToggle.addEventListener('click', () => {
@@ -2436,7 +2252,6 @@ function initAuth() {
 function handleJoinGame(e) {
     e.preventDefault();
     
-    // Show loading state on button
     const loginBtn = document.getElementById('loginBtn');
     if (loginBtn) {
         loginBtn.classList.add('loading');
@@ -2450,7 +2265,6 @@ function handleJoinGame(e) {
     const username = usernameInput.value.trim();
     const adminPassword = adminPasswordInput?.value.trim() || '';
     
-    // Check for banned usernames (excluding 'admin' which is handled separately)
     if (username.toLowerCase() !== 'admin') {
         const bannedVariations = ['shreyan', 'shreyn', 'shryn', 'shyn', 'sreyan', 'sreyn', 'sryan', 'sryn', 'shrayan', 'shrayn', 'shriyan', 'shriyn', 'shrian', 'shrien', 'shryen', 'shryan', 'shryon', 'shryun','samarth', 'samart', 'samarthh', 'samarath','samerth', 'samirth', 'somarth', 'sumarth', 'samurth','samrth', 'smarth', 'samarh', 'samath','samarat', 'samrat', 'samraat', 'samrath','samaryh', 'samaryth', 'samarht', 'samarthy','samrath', 'samarht', 'smaarth', 'saamarth','samrt', 'samr', 'samar','samarath', 'samarrth', 'samartht'];
         
@@ -2468,29 +2282,24 @@ function handleJoinGame(e) {
         return;
     }
     
-    // Admin account validation
     if (username.toLowerCase() === 'admin') {
         if (!adminPassword) {
             showAuthError('Password needed to login in the admin account');
             return;
         }
-        // Store admin info for authentication
         currentUser = { username, isAdmin: true, adminPassword };
         connectSocket(username, adminPassword);
         return;
     }
     
-    // Check for /help command before validation
     if (username === '/help') {
         showAuthError('📋 Available Commands:\n• /help - Show this message\n• EveryoneLogout - Logout all users (admin only)\n• AdminLogout - Logout only admins (admin only)', 'info');
         return;
     }
 
-    // Allow reserved commands to pass through (they need password validation on server)
     const isAdminCommand = ['everyonelogout', 'adminlogout'].includes(username.toLowerCase());
     
     if (isAdminCommand) {
-        // Admin commands require password - check if provided
         const adminPasswordInput = document.getElementById('adminPasswordInput');
         const adminPassword = adminPasswordInput?.value.trim();
         
@@ -2499,7 +2308,6 @@ function handleJoinGame(e) {
             return;
         }
         
-        // Send command with password
         currentUser = { username, isAdmin: true, adminPassword };
         connectSocket(username, adminPassword);
         return;
@@ -2543,7 +2351,6 @@ function showAuthError(message, type = 'error') {
         authError.classList.add('success');
     }
     
-    // Reset loading button state on error
     const loginBtn = document.getElementById('loginBtn');
     if (loginBtn && type !== 'success') {
         loginBtn.classList.remove('loading', 'slow');
@@ -2569,16 +2376,12 @@ function showModalError(elementId, message) {
     }
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// UI FUNCTIONS
-// ═══════════════════════════════════════════════════════════════════════
 
 function showGameScreen() {
     authScreen.classList.add('hidden');
     gameScreen.classList.remove('hidden');
     document.getElementById('currentUsername').textContent = currentUser.username;
     
-    // Stats are loaded from server on authentication, not from cookies
     displayUserStats();
     displayUserAvatar();
 }
@@ -2606,9 +2409,6 @@ function hideModal(modalId) {
     if (modal) modal.classList.remove('show');
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// ROOM MANAGEMENT
-// ═══════════════════════════════════════════════════════════════════════
 
 function updateRoomsList(rooms) {
     const roomsList = document.getElementById('roomsList');
@@ -2639,13 +2439,11 @@ function createRoomCard(room) {
     
     const lockIcon = room.hasPassword ? '<i class="fas fa-lock room-lock"></i>' : '';
     
-    // Show selected game mode in waiting rooms with color coding
     let gameModeDisplay = '';
     if (room.status === 'waiting' && room.selectedGameMode) {
         const modeClass = `mode-${room.selectedGameMode.toLowerCase()}`;
         let modeText = room.selectedGameMode;
         
-        // Show hint count for custom mode
         if (room.selectedGameMode === 'custom' && room.selectedHintCount) {
             modeText += ` • ${room.selectedHintCount} hints`;
         }
@@ -2733,15 +2531,11 @@ function startGame() {
         }
     }
     
-    // Server will use stored difficulty and hint count from room creation
     socket.emit('startGame', { 
         roomId: currentRoom.roomId
     });
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// ROOM VIEW
-// ═══════════════════════════════════════════════════════════════════════
 
 function showRoomView(data) {
     showView('roomView');
@@ -2948,9 +2742,6 @@ function updateRoomControls() {
     }
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// WORD SELECTION MODAL (CUSTOM WORD MODE)
-// ═══════════════════════════════════════════════════════════════════════
 
 function showWaitingForWordModal(wordSetterName) {
     const modal = document.getElementById('waitingForWordModal');
@@ -2978,14 +2769,12 @@ function showCoinFlipModal(data) {
     const statusDiv = document.getElementById('coinFlipStatus');
     const yourChoiceDiv = document.getElementById('coinFlipYourChoice');
     
-    // Reset display
     if (selectionDiv) selectionDiv.classList.remove('hidden');
     if (animationDiv) animationDiv.classList.add('hidden');
     if (winnerDiv) winnerDiv.classList.add('hidden');
     if (buttonsDiv) buttonsDiv.classList.remove('hidden');
     if (yourChoiceDiv) yourChoiceDiv.style.display = 'none';
     
-    // Update player names
     const player1Name = document.getElementById('coinFlipPlayer1Name');
     const player2Name = document.getElementById('coinFlipPlayer2Name');
     const player1Choice = document.getElementById('coinFlipPlayer1Choice');
@@ -3008,7 +2797,6 @@ function showCoinFlipModal(data) {
         player2Choice.className = 'player-choice';
     }
     
-    // Check if current user is a participant (only team leaders can choose)
     const isPlayer1 = data.player1?.id === mySocketId;
     const isPlayer2 = data.player2?.id === mySocketId;
     const isParticipant = isPlayer1 || isPlayer2;
@@ -3041,11 +2829,9 @@ function selectCoinSide(side) {
     
     hasSelectedCoinSide = true;
     
-    // Disable buttons immediately
     const buttons = document.querySelectorAll('.coin-btn');
     buttons.forEach(btn => btn.disabled = true);
     
-    // Show "You chose X" message above buttons
     const yourChoiceDiv = document.getElementById('coinFlipYourChoice');
     const yourChoiceText = document.getElementById('coinFlipYourChoiceText');
     if (yourChoiceDiv && yourChoiceText) {
@@ -3076,7 +2862,6 @@ function updateCoinFlipSelection(data) {
     const statusDiv = document.getElementById('coinFlipStatus');
     const buttonsDiv = document.getElementById('coinFlipButtons');
     
-    // Update both players' choices at once
     if (data.player1Choice && player1Choice) {
         player1Choice.textContent = data.player1Choice === 'heads' ? 'Heads' : 'Tails';
         player1Choice.className = `player-choice ${data.player1Choice}`;
@@ -3089,7 +2874,6 @@ function updateCoinFlipSelection(data) {
         if (player2Div) player2Div.classList.add('chosen');
     }
     
-    // Disable buttons for both players once either has chosen
     if (buttonsDiv && (data.player1Choice || data.player2Choice)) {
         const buttons = buttonsDiv.querySelectorAll('.coin-btn');
         buttons.forEach(btn => {
@@ -3107,7 +2891,6 @@ function updateCoinFlipSelection(data) {
         if (p1Chosen && p2Chosen) {
             statusDiv.textContent = isTeamMode ? 'Both Team Leaders chose! Flipping coin...' : 'Both players chose! Flipping coin...';
         } else if (p1Chosen || p2Chosen) {
-            // Show waiting message when one player has chosen
             const currentUserId = mySocketId;
             const isCurrentUserPlayer1 = currentUserId === data.player1Id;
             const isCurrentUserPlayer2 = currentUserId === data.player2Id;
@@ -3151,7 +2934,6 @@ function showCoinFlipResult(data) {
     const maxWinIndex = 45;
     const winningIndex = minWinIndex + Math.floor(Math.random() * (maxWinIndex - minWinIndex));
     
-    // Create items with better randomization
     let lastWasHeads = null;
     for (let i = 0; i < totalItems; i++) {
         const item = document.createElement('div');
@@ -3164,12 +2946,10 @@ function showCoinFlipResult(data) {
             displayText = data.result.toUpperCase();
             resultClass = data.result;
         } else {
-            // Ensure better randomization - prevent long streaks
             let isHeads;
             if (lastWasHeads === null) {
                 isHeads = Math.random() > 0.5;
             } else {
-                // 70% chance to switch from last value for more alternation
                 isHeads = Math.random() > 0.3 ? !lastWasHeads : lastWasHeads;
             }
             lastWasHeads = isHeads;
@@ -3262,9 +3042,6 @@ function submitCustomWord() {
     });
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// HINT SYSTEM
-// ═══════════════════════════════════════════════════════════════════════
 
 function requestHint() {
     if (!currentRoom || !socket) return;
@@ -3283,7 +3060,6 @@ function requestHint() {
         return;
     }
 
-    // Show the question modal instead of directly requesting
     const questionInput = document.getElementById('questionInput');
     if (questionInput) {
         questionInput.value = '';
@@ -3302,7 +3078,6 @@ function submitQuestion() {
 
     if (!checkServerAndShowError()) return;
 
-    // Disable the ask hint button while waiting for response
     const askHintBtn = document.getElementById('askHintBtn');
     if (askHintBtn) {
         askHintBtn.disabled = true;
@@ -3380,7 +3155,6 @@ function displayReceivedHint(hint, hintNumber, question) {
 
     hintsList.appendChild(hintItem);
 
-    // Scroll to the new hint
     hintsList.scrollTop = hintsList.scrollHeight;
 }
 
@@ -3402,12 +3176,8 @@ function updateHintsDisplay() {
     }
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// COUNTDOWN
-// ═══════════════════════════════════════════════════════════════════════
 
 function showCountdown(callback) {
-    // Create countdown overlay
     const overlay = document.createElement('div');
     overlay.id = 'countdownOverlay';
     overlay.className = 'countdown-overlay';
@@ -3428,7 +3198,7 @@ function showCountdown(callback) {
         if (count > 0) {
             numberEl.textContent = count;
             numberEl.classList.remove('animate');
-            void numberEl.offsetWidth; // Trigger reflow
+            void numberEl.offsetWidth;
             numberEl.classList.add('animate');
         } else if (count === 0) {
             numberEl.textContent = 'GO!';
@@ -3443,15 +3213,11 @@ function showCountdown(callback) {
         }
     }, 1000);
 
-    // Initial animation
     setTimeout(() => {
         numberEl.classList.add('animate');
     }, 100);
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// GAME VIEW
-// ═══════════════════════════════════════════════════════════════════════
 
 function showGameView(data) {
     showView('gameView');
@@ -3567,7 +3333,6 @@ function setupGameUI(data) {
         }
     }
     
-    // FIX: Use player lookup for initial turn indicator
     const initialPlayers = data.players || activePlayers;
     const currentPlayer = initialPlayers[data.gameState.currentTurn];
     updateTurnIndicator(currentPlayer || data.players[0]);
@@ -3596,12 +3361,10 @@ function createKeyboard() {
     });
 }
 
-// FIX: Improved turn validation for custom word mode
 function makeGuess(letter) {
     if (!gameState || !socket || !currentRoom) return;
     if (!checkServerAndShowError()) return;
     
-    // Block word setter and word setter's team from guessing
     if (isWordSetter) {
         showNotification('You are the word setter — you cannot guess!', 'warning');
         return;
@@ -3612,11 +3375,8 @@ function makeGuess(letter) {
         return;
     }
 
-    // FIX: Check turn by looking up current player ID instead of using indices
-    // The server sends currentTurn as an index into the full players array
     const allPlayers = gameState.players;
     
-    // Safety check - ensure players array exists
     if (!allPlayers || !Array.isArray(allPlayers) || allPlayers.length === 0) {
         showNotification('Game error - please refresh', 'error');
         return;
@@ -3634,9 +3394,6 @@ function makeGuess(letter) {
 }
 
 function updateGameState(data) {
-    // FIX (anti-cheat): the server now only ever sends maskedWord (array of
-    // revealed letters / nulls) - never the raw word. The old client stored
-    // the full word from the server, which made it readable in DevTools.
     if (Array.isArray(data.maskedWord)) {
         gameState.maskedWord = data.maskedWord;
     }
@@ -3644,13 +3401,11 @@ function updateGameState(data) {
     gameState.guessedLetters = data.guessedLetters;
     gameState.currentTurn = data.currentTurn;
 
-    // Update players array if sent from server
     if (data.players) {
         gameState.players = data.players;
         log('Updated players array from guessResult, count:', data.players.length);
     }
 
-    // Update letter boxes from the masked word
     const boxes = document.querySelectorAll('.letter-box');
     if (Array.isArray(gameState.maskedWord)) {
         boxes.forEach((box, index) => {
@@ -3661,7 +3416,6 @@ function updateGameState(data) {
             }
         });
     } else if (gameState.word) {
-        // Fallback for servers that still send the raw word
         boxes.forEach((box, index) => {
             const letter = gameState.word[index];
             if (letter && data.guessedLetters.includes(letter) && !box.classList.contains('filled')) {
@@ -3695,12 +3449,10 @@ function updateGameState(data) {
         if (key) { key.classList.add('wrong'); key.disabled = true; }
     });
     
-    // Only update scores if not in custom word mode
     if (!gameState.isCustomWord) {
         updateScoresList(data.scores);
     }
     
-    // FIX: Update turn indicator using player ID lookup
     const allPlayers = gameState.players || activePlayers;
     const currentPlayer = allPlayers[data.currentTurn];
     if (currentPlayer) {
@@ -3766,9 +3518,6 @@ function updateTurnIndicator(player) {
     `;
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// CHAT FUNCTIONS
-// ═══════════════════════════════════════════════════════════════════════
 
 function filterChatMessages(containerId, chatType) {
     const container = document.getElementById(containerId);
@@ -3863,7 +3612,6 @@ function sendLobbyChatMessage() {
     if (!message) return;
     if (!checkServerAndShowError()) return;
 
-    // Check for admin commands
     if (isAdmin() && message.startsWith('/')) {
         const handled = handleAdminCommand(message);
         if (handled) {
@@ -3945,7 +3693,6 @@ function sendChatMessage() {
     if (!message || !currentRoom) return;
     if (!checkServerAndShowError()) return;
 
-    // Check for admin commands
     if (isAdmin() && message.startsWith('/')) {
         const handled = handleAdminCommand(message);
         if (handled) {
@@ -3968,9 +3715,6 @@ function sendMiniChatMessage() {
     input.value = '';
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// GAME OVER
-// ═══════════════════════════════════════════════════════════════════════
 
 function showGameOverModal(data) {
     const modal = document.getElementById('gameOverModal');
@@ -3980,7 +3724,6 @@ function showGameOverModal(data) {
     const modalIcon = document.getElementById('modalIcon');
     const finalScores = document.getElementById('finalScores');
     
-    // Reset word setter states for next game
     isWordSetter = false;
     isOnWordSetterTeam = false;
     
@@ -4031,9 +3774,6 @@ function createConfetti() {
     }
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// EVENT LISTENERS
-// ═══════════════════════════════════════════════════════════════════════
 
 function initEventListeners() {
     const logoutBtn = document.getElementById('logoutBtn');
@@ -4048,7 +3788,6 @@ function initEventListeners() {
     const settingsBtn = document.getElementById('settingsBtn');
     if (settingsBtn) settingsBtn.addEventListener('click', () => { 
         updateAvatarPreview();
-        // Hide username change section for admin users
         const usernameSettingsSection = document.getElementById('usernameSettingsSection');
         if (usernameSettingsSection) {
             usernameSettingsSection.style.display = isAdmin() ? 'none' : 'block';
@@ -4056,7 +3795,6 @@ function initEventListeners() {
         showModal('settingsModal'); 
     });
 
-    // Admin Panel Button
     const adminPanelBtn = document.getElementById('adminPanelBtn');
     if (adminPanelBtn) {
         adminPanelBtn.addEventListener('click', () => {
@@ -4077,7 +3815,6 @@ function initEventListeners() {
         });
     }
     
-    // Username change handler
     const changeUsernameBtn = document.getElementById('changeUsernameBtn');
     const newUsernameInput = document.getElementById('newUsernameInput');
     const usernameError = document.getElementById('usernameError');
@@ -4094,7 +3831,6 @@ function initEventListeners() {
                 return;
             }
             
-            // Validate username format
             if (newUsername.includes(' ')) {
                 if (usernameError) {
                     usernameError.textContent = 'Username cannot contain spaces';
@@ -4120,7 +3856,6 @@ function initEventListeners() {
                 return;
             }
             
-            // Check banned variations
             const bannedVariations = ['shreyan', 'shreyn', 'shryn', 'shyn', 'sreyan', 'sreyn', 'sryan', 'sryn', 'shrayan', 'shrayn', 'shriyan', 'shriyn', 'shrian', 'shrien', 'shryen', 'shryan', 'shryon', 'shryun','samarth', 'samart', 'samarthh', 'samarath','samerth', 'samirth', 'somarth', 'sumarth', 'samurth','samrth', 'smarth', 'samarh', 'samath','samarat', 'samrat', 'samraat', 'samrath','samaryh', 'samaryth', 'samarht', 'samarthy','samrath', 'samarht', 'smaarth', 'saamarth','samrt', 'samr', 'samar','samarath', 'samarrth', 'samartht'];
             const usernameLower = newUsername.toLowerCase();
             for (const variation of bannedVariations) {
@@ -4133,7 +3868,6 @@ function initEventListeners() {
                 }
             }
             
-            // Check if trying to change to "admin"
             if (usernameLower === 'admin') {
                 if (usernameError) {
                     usernameError.textContent = 'This username is reserved and cannot be used';
@@ -4142,7 +3876,6 @@ function initEventListeners() {
                 return;
             }
 
-            // Check reserved commands
             const reservedCommands = ['everyonelogout', 'adminlogout', '/help'];
             if (reservedCommands.includes(usernameLower)) {
                 if (usernameError) {
@@ -4152,25 +3885,21 @@ function initEventListeners() {
                 return;
             }
 
-            // Check if /help command
             if (newUsername === '/help') {
                 showNotification('Available commands: /help, EveryoneLogout (admin only), AdminLogout (admin only)', 'info', 8000);
                 newUsernameInput.value = '';
                 return;
             }
 
-            // Clear error
             if (usernameError) {
                 usernameError.style.display = 'none';
             }
             
-            // Send request to server
             if (socket) {
                 socket.emit('changeUsername', { newUsername });
             }
         });
         
-        // Clear error when typing
         newUsernameInput.addEventListener('input', () => {
             if (usernameError) {
                 usernameError.style.display = 'none';
@@ -4211,13 +3940,11 @@ function initEventListeners() {
             onlineStatusBtn.classList.toggle('active');
             onlineUsersDropdown.classList.toggle('hidden');
             
-            // Reset to server tab when opening dropdown
             if (!onlineUsersDropdown.classList.contains('hidden')) {
                 switchLeaderboardTab('server');
             }
         });
         
-        // Close dropdown when clicking outside
         document.addEventListener('click', (e) => {
             if (!onlineStatusBtn.contains(e.target) && !onlineUsersDropdown.contains(e.target)) {
                 onlineStatusBtn.classList.remove('active');
@@ -4225,7 +3952,6 @@ function initEventListeners() {
             }
         });
         
-        // Tab click handlers
         document.querySelectorAll('.dropdown-tab-inline').forEach(tab => {
             tab.addEventListener('click', (e) => {
                 e.stopPropagation();
@@ -4235,7 +3961,6 @@ function initEventListeners() {
         });
     }
     
-    // Create room form with difficulty and hint count
     let selectedDifficulty = 'easy';
     let selectedHintCount = 5;
     
@@ -4253,20 +3978,16 @@ function initEventListeners() {
         createRoom(name, gameMode, document.getElementById('newRoomPassword').value, difficulty, hintCount);
     });
     
-    // Game mode selection (solo, 1v1, 2v2, etc.)
     document.querySelectorAll('.mode-btn').forEach(btn => {
         btn.addEventListener('click', () => { 
             document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active')); 
             btn.classList.add('active');
             
-            // Show/hide custom difficulty option based on game mode
             const customBtn = document.getElementById('customDifficultyBtn');
             const hintSection = document.getElementById('hintCountSection');
             
             if (btn.dataset.mode === 'solo') {
-                // Hide custom option for solo mode
                 customBtn.classList.add('hidden');
-                // If custom was selected, switch to easy
                 if (customBtn.classList.contains('active')) {
                     customBtn.classList.remove('active');
                     document.querySelector('[data-difficulty="easy"]').classList.add('active');
@@ -4274,20 +3995,17 @@ function initEventListeners() {
                     hintSection.classList.add('hidden');
                 }
             } else {
-                // Show custom option for other modes
                 customBtn.classList.remove('hidden');
             }
         });
     });
     
-    // Difficulty mode selection (easy, medium, hard, custom)
     document.querySelectorAll('.difficulty-btn').forEach(btn => {
         btn.addEventListener('click', () => { 
             document.querySelectorAll('.difficulty-btn').forEach(b => b.classList.remove('active')); 
             btn.classList.add('active');
             selectedDifficulty = btn.dataset.difficulty;
             
-            // Show/hide hint count section
             const hintSection = document.getElementById('hintCountSection');
             if (btn.dataset.difficulty === 'custom') {
                 hintSection.classList.remove('hidden');
@@ -4297,7 +4015,6 @@ function initEventListeners() {
         });
     });
     
-    // Hint count selection (5 or 7)
     document.querySelectorAll('.hint-btn').forEach(btn => {
         btn.addEventListener('click', () => { 
             document.querySelectorAll('.hint-btn').forEach(b => b.classList.remove('active')); 
@@ -4335,44 +4052,35 @@ function initEventListeners() {
         if (checkServerAndShowError()) socket.emit('getRooms'); 
     });
     
-    // Custom Dropdown functionality for room filter
     const roomFilterDropdown = document.getElementById('roomFilterDropdown');
     const roomFilterTrigger = document.getElementById('roomFilterTrigger');
     const roomFilterMenu = document.getElementById('roomFilterMenu');
     
     if (roomFilterDropdown && roomFilterTrigger && roomFilterMenu) {
-        // Toggle dropdown on trigger click
         roomFilterTrigger.addEventListener('click', (e) => {
             e.stopPropagation();
             roomFilterDropdown.classList.toggle('open');
         });
         
-        // Handle item selection
         roomFilterMenu.querySelectorAll('.custom-dropdown-item').forEach(item => {
             item.addEventListener('click', (e) => {
                 e.stopPropagation();
                 const value = item.dataset.value;
                 const label = item.textContent;
                 
-                // Update active state
                 roomFilterMenu.querySelectorAll('.custom-dropdown-item').forEach(i => i.classList.remove('active'));
                 item.classList.add('active');
                 
-                // Update trigger text
                 roomFilterTrigger.querySelector('span').textContent = label;
                 
-                // Update filter value
                 currentRoomFilter = value;
                 
-                // Close dropdown
                 roomFilterDropdown.classList.remove('open');
                 
-                // Trigger room refresh
                 if (checkServerAndShowError()) socket.emit('getRooms');
             });
         });
         
-        // Close dropdown when clicking outside
         document.addEventListener('click', () => {
             roomFilterDropdown.classList.remove('open');
         });
@@ -4408,7 +4116,6 @@ function initEventListeners() {
         askHintBtn.addEventListener('click', requestHint);
     }
 
-    // Ask Question modal handlers
     const askQuestionForm = document.getElementById('askQuestionForm');
     if (askQuestionForm) {
         askQuestionForm.addEventListener('submit', (e) => {
@@ -4458,7 +4165,6 @@ function initEventListeners() {
     });
     
     document.addEventListener('keydown', (e) => {
-        // Admin panel shortcut (Ctrl+Shift+A)
         if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'a') {
             e.preventDefault();
             if (isAdmin()) {
@@ -4487,64 +4193,47 @@ window.addEventListener('beforeunload', () => {
     });
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// MOBILE APP INITIALIZATION (Capacitor)
-// ═══════════════════════════════════════════════════════════════════════
 
-// Initialize Capacitor plugins when running as mobile app
 document.addEventListener('DOMContentLoaded', async () => {
-    // Check if running in Capacitor environment
     if (window.Capacitor && window.Capacitor.isNativePlatform()) {
         log('Running in Capacitor mobile app');
         
         try {
-            // Dynamically import Capacitor plugins
             const { App } = await import('@capacitor/app');
             const { Keyboard } = await import('@capacitor/keyboard');
             const { StatusBar } = await import('@capacitor/status-bar');
             const { SplashScreen } = await import('@capacitor/splash-screen');
             
-            // Handle app state changes
             App.addListener('appStateChange', ({ isActive }) => {
                 log('App state changed. Is active:', isActive);
                 if (!isActive && socket) {
-                    // App went to background - could optionally disconnect here
-                    // socket.disconnect();
                 }
             });
             
-            // Handle back button
             App.addListener('backButton', ({ canGoBack }) => {
                 if (!canGoBack) {
-                    // Show exit confirmation or minimize app
                     App.minimizeApp();
                 } else {
                     window.history.back();
                 }
             });
             
-            // Configure keyboard
             Keyboard.setAccessoryBarVisible({ isVisible: true });
             
-            // Configure status bar
             StatusBar.setBackgroundColor({ color: '#0a0a0a' });
             StatusBar.setStyle({ style: 'DARK' });
             
-            // Hide splash screen after app is ready
             setTimeout(() => {
                 SplashScreen.hide({ fadeOutDuration: 500 });
             }, 2000);
             
-            // Mobile-specific UI adjustments
             document.body.classList.add('mobile-app');
             
-            // Adjust viewport for mobile
             const viewportMeta = document.querySelector('meta[name="viewport"]');
             if (viewportMeta) {
                 viewportMeta.setAttribute('content', 'width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no');
             }
             
-            // Prevent zoom on double tap
             let lastTouchEnd = 0;
             document.addEventListener('touchend', (e) => {
                 const now = Date.now();
@@ -4554,7 +4243,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                 lastTouchEnd = now;
             }, false);
             
-            // Handle keyboard show/hide
             Keyboard.addListener('keyboardWillShow', (info) => {
                 document.body.classList.add('keyboard-open');
             });

@@ -1,9 +1,3 @@
-/* ═══════════════════════════════════════════════════════════════════════
-   HANGMAN MULTIPLAYER - ENHANCED STYLES (FIXED VERSION)
-   Modern, Animated, Mobile-Friendly Design
-   ═══════════════════════════════════════════════════════════════════════ */
-
-/* ── Reset & Base ── */
 * {
     margin: 0;
     padding: 0;
@@ -14,7 +8,6 @@
     -ms-user-select: none;
 }
 
-/* Allow text selection in inputs and contenteditable elements */
 input,
 textarea,
 [contenteditable] {
@@ -24,9 +17,6 @@ textarea,
     -ms-user-select: text;
 }
 
-/* ═══════════════════════════════════════════════════════════════════════
-   LOADING SCREEN ANIMATION
-   ═══════════════════════════════════════════════════════════════════════ */
 
 .loading-screen {
     position: fixed;
@@ -54,7 +44,6 @@ textarea,
     gap: 2rem;
 }
 
-/* Loading Spinner */
 .loading-spinner {
     width: 60px;
     height: 60px;
@@ -146,7 +135,6 @@ textarea,
 }
 
 :root {
-    /* Colors */
     --primary: #1a1a1a;
     --primary-dark: #000000;
     --secondary: #2a2a2a;
@@ -156,18 +144,15 @@ textarea,
     --warning: #fbbf24;
     --info: #60a5fa;
     
-    /* Backgrounds */
     --bg-dark: #0a0a0a;
     --bg-card: #1a1a1a;
     --bg-input: rgba(255, 255, 255, 0.05);
     --bg-hover: rgba(255, 255, 255, 0.08);
     
-    /* Text */
     --text-primary: #ffffff;
     --text-secondary: #a0a0a0;
     --text-muted: #666666;
     
-    /* Borders & Shadows */
     --border-color: rgba(255, 255, 255, 0.15);
     --border-color-light: rgba(255, 255, 255, 0.1);
     --shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
@@ -175,13 +160,11 @@ textarea,
     --shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.3);
     --glow-primary: 0 0 20px rgba(255, 255, 255, 0.3);
     
-    /* Transitions */
     --transition-fast: 0.2s ease;
     --transition-normal: 0.3s ease;
     --transition-slow: 0.5s ease;
 }
 
-/* ── Body & Container ── */
 body {
     font-family: 'Poppins', sans-serif;
     background: #000000;
@@ -231,9 +214,6 @@ body::before {
     display: block;
 }
 
-/* ═══════════════════════════════════════════════════════════════════════
-   AUTH SCREEN
-   ═══════════════════════════════════════════════════════════════════════ */
 
 .auth-screen {
     position: fixed;
@@ -328,7 +308,6 @@ body::before {
     fill: none;
 }
 
-/* Title hangman - draw once and stay visible */
 .title-draw-part {
     stroke-dasharray: 100;
     stroke-dashoffset: 100;
@@ -340,13 +319,11 @@ body::before {
     animation: showTitlePart 0.5s ease forwards;
 }
 
-/* Gallows parts */
 .title-part-1 { animation-delay: 0.1s; }
 .title-part-2 { animation-delay: 0.2s; }
 .title-part-3 { animation-delay: 0.3s; }
 .title-part-4 { animation-delay: 0.4s; }
 
-/* Man parts */
 .title-part-5 {animation-delay: 0.5s; }
 .title-part-6 { animation-delay: 0.6s; }
 .title-part-7 { animation-delay: 0.7s; }
@@ -407,7 +384,7 @@ body::before {
     border: 3px solid var(--border-color);
     border-radius: 20px;
     color: var(--text-primary);
-    font-size: 16px; /* Prevent iOS zoom on focus */
+    font-size: 16px;
     font-family: 'Poppins', sans-serif;
     text-align: center;
     transition: all var(--transition-normal);
@@ -437,7 +414,6 @@ body::before {
     text-align: center;
 }
 
-/* Admin Password Field */
 .admin-password-group {
     width: 100%;
     max-width: 500px;
@@ -517,7 +493,6 @@ body::before {
     outline: none;
 }
 
-/* Admin Panel */
 .admin-panel {
     position: fixed;
     top: 80px;
@@ -608,7 +583,6 @@ body::before {
     transform: translateY(-2px);
 }
 
-/* Special admin button styles */
 .admin-btn[style*="color: #4ade80"]:hover {
     background: var(--success) !important;
     color: #000 !important;
@@ -619,7 +593,6 @@ body::before {
     color: #fff !important;
 }
 
-/* Admin Modal */
 .admin-modal .modal-icon {
     color: var(--warning);
     font-size: 3rem;
@@ -643,7 +616,6 @@ body::before {
     background: #d97706;
 }
 
-/* Admin Panel Button in Header */
 .admin-panel-btn {
     background: #f59e0b !important;
     color: #000 !important;
@@ -672,7 +644,6 @@ body::before {
     }
 }
 
-/* Admin Badge in Scoreboard */
 .score-player-name .admin-badge-inline {
     color: var(--warning);
     font-size: 0.65rem;
@@ -680,7 +651,6 @@ body::before {
     margin-left: 5px;
 }
 
-/* Ban/Broadcast Modal Styles */
 .admin-modal textarea {
     width: 100%;
     min-height: 100px;
@@ -707,7 +677,6 @@ body::before {
     padding-right: 30px;
 }
 
-/* Countdown Overlay */
 .countdown-overlay {
     position: fixed;
     top: 0;
@@ -780,7 +749,6 @@ body::before {
     }
 }
 
-/* Mobile countdown adjustments */
 @media (max-width: 768px) {
     .countdown-number {
         font-size: 8rem;
@@ -791,7 +759,6 @@ body::before {
     }
 }
 
-/* Admin Info Display */
 .admin-info-section {
     margin-bottom: 25px;
     padding: 15px;
@@ -821,7 +788,6 @@ body::before {
     margin-bottom: 0;
 }
 
-/* User Database Edit Styles */
 .user-db-item {
     transition: all 0.2s ease;
 }
@@ -855,7 +821,6 @@ body::before {
     box-shadow: 0 0 15px rgba(96, 165, 250, 0.3);
 }
 
-/* User Profile Inspection Modal */
 .user-profile-modal {
     position: relative;
     animation: slideUp 0.3s ease;
@@ -890,7 +855,6 @@ body::before {
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
-/* Clickable Avatars in Chat */
 #chatMessages .message-avatar,
 #miniChatMessages .message-avatar,
 #lobbyChatMessages .message-avatar {
@@ -905,7 +869,6 @@ body::before {
     box-shadow: 0 0 15px rgba(255, 255, 255, 0.3);
 }
 
-/* Player card avatars clickable */
 .player-card .player-avatar,
 .player-card img[src*="avatar"] {
     cursor: pointer;
@@ -918,7 +881,6 @@ body::before {
     box-shadow: 0 0 15px rgba(255, 255, 255, 0.3);
 }
 
-/* Banned user styling */
 .user-db-item.banned {
     border-left-color: var(--error);
     background: rgba(239, 68, 68, 0.1);
@@ -929,7 +891,6 @@ body::before {
     font-weight: 700;
 }
 
-/* Ban/Unban button styling */
 #adminBanUserModal .btn-danger {
     background: var(--error);
     color: white;
@@ -1072,9 +1033,6 @@ body::before {
     border: none;
 }
 
-/* ═══════════════════════════════════════════════════════════════════════
-   GAME HEADER
-   ═══════════════════════════════════════════════════════════════════════ */
 
 .game-screen {
     width: 100%;
@@ -1226,7 +1184,6 @@ body::before {
     font-size: 0.85rem;
 }
 
-/* Legacy styles - keeping for compatibility */
 .dropdown-tabs {
     display: flex;
     border-bottom: 1px solid var(--border-color);
@@ -1370,7 +1327,6 @@ body::before {
     justify-self: end;
 }
 
-/* Build Info */
 .build-info {
     font-size: 0.75rem;
     color: #878787;
@@ -1386,7 +1342,6 @@ body::before {
     transition: opacity var(--transition-fast);
 }
 
-/* Build info in game screen header (if still used elsewhere) */
 .game-header .build-info,
 header .build-info {
     position: absolute;
@@ -1481,9 +1436,6 @@ header .build-info {
     line-height: 1;
 }
 
-/* ═══════════════════════════════════════════════════════════════════════
-   BUTTONS & FORM ELEMENTS
-   ═══════════════════════════════════════════════════════════════════════ */
 
 .btn {
     padding: 10px 20px;
@@ -1609,7 +1561,6 @@ select:focus {
     border-color: #ffffff;
 }
 
-/* Custom Dropdown */
 .custom-dropdown {
     position: relative;
     display: inline-block;
@@ -1764,9 +1715,6 @@ select:focus {
     animation: shake 0.5s ease;
 }
 
-/* ═══════════════════════════════════════════════════════════════════════
-   LOBBY - FIXED
-   ═══════════════════════════════════════════════════════════════════════ */
 
 .lobby-container {
     display: grid;
@@ -1838,7 +1786,6 @@ select:focus {
     letter-spacing: 0.5px;
 }
 
-/* FIXED: Better height and scrolling for Global Chat */
 .lobby-chat-section {
     background: rgba(26, 26, 26, 0.7);
     backdrop-filter: blur(20px);
@@ -1968,7 +1915,6 @@ select:focus {
     overflow-y: auto;
 }
 
-/* FIXED: Better "No rooms available" styling */
 .no-rooms {
     text-align: center;
     padding: 80px 40px;
@@ -2114,9 +2060,6 @@ select:focus {
     color: #8B5CF6;
 }
 
-/* ═══════════════════════════════════════════════════════════════════════
-   ROOM VIEW
-   ═══════════════════════════════════════════════════════════════════════ */
 
 .room-container {
     background: rgba(26, 26, 26, 0.7);
@@ -2236,7 +2179,6 @@ select:focus {
     line-height: 1;
 }
 
-/* Admin badge for player cards */
 .player-card.admin {
     border-color: #f59e0b;
     position: relative;
@@ -2259,7 +2201,6 @@ select:focus {
     line-height: 1;
 }
 
-/* Mobile adjustments for overlapping badges */
 @media (max-width: 768px) {
     .player-card.admin::before,
     .player-card.host::after {
@@ -2305,7 +2246,6 @@ select:focus {
     font-size: 0.95rem;
 }
 
-/* Teams Section */
 .teams-section {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -2432,7 +2372,6 @@ select:focus {
     box-shadow: none;
 }
 
-/* Room Actions */
 .room-actions {
     display: flex;
     flex-direction: column;
@@ -2460,7 +2399,6 @@ select:focus {
     gap: 10px;
 }
 
-/* FIXED: Better styling for game mode buttons */
 .game-mode-btn {
     padding: 15px 20px;
     background: var(--bg-input);
@@ -2545,9 +2483,6 @@ select:focus {
     font-size: 1.1rem;
 }
 
-/* ═══════════════════════════════════════════════════════════════════════
-   CHAT SYSTEM
-   ═══════════════════════════════════════════════════════════════════════ */
 
 .chat-section {
     background: var(--bg-input);
@@ -2836,9 +2771,6 @@ select:focus {
     box-shadow: 0 4px 15px rgba(255, 255, 255, 0.3);
 }
 
-/* ═══════════════════════════════════════════════════════════════════════
-   GAME VIEW
-   ═══════════════════════════════════════════════════════════════════════ */
 
 .multiplayer-game {
     background: rgba(26, 26, 26, 0.7);
@@ -2926,7 +2858,6 @@ select:focus {
     gap: 20px;
 }
 
-/* Current Players - FIXED */
 .current-players {
     background: var(--bg-input);
     border-radius: 15px;
@@ -2977,7 +2908,6 @@ select:focus {
     color: var(--text-primary);
 }
 
-/* Scoreboard */
 .scoreboard {
     background: var(--bg-input);
     border-radius: 15px;
@@ -3043,7 +2973,6 @@ select:focus {
     color: #ffffff;
 }
 
-/* Mini Chat - FIXED */
 .mini-chat {
     background: var(--bg-input);
     border-radius: 15px;
@@ -3099,7 +3028,6 @@ select:focus {
     gap: 8px;
 }
 
-/* Hangman SVG */
 .hangman-container {
     display: flex;
     justify-content: center;
@@ -3158,7 +3086,6 @@ select:focus {
     }
 }
 
-/* Word Display */
 .word-container {
     text-align: center;
 }
@@ -3212,7 +3139,6 @@ select:focus {
     margin-bottom: 15px;
 }
 
-/* Wrong Letters */
 .wrong-letters-container {
     text-align: center;
     margin-top: 25px;
@@ -3250,7 +3176,6 @@ select:focus {
     animation: shake 0.5s ease;
 }
 
-/* Keyboard */
 .keyboard {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(45px, 1fr));
@@ -3314,7 +3239,6 @@ select:focus {
     animation: shake 0.5s ease;
 }
 
-/* Hint System */
 .ask-hint-section {
     text-align: center;
     margin-top: 25px;
@@ -3421,7 +3345,6 @@ select:focus {
     font-weight: 500;
 }
 
-/* Player Question Box in Hint Request Modal */
 .player-question-box {
     background: var(--bg-secondary);
     padding: 15px;
@@ -3435,9 +3358,6 @@ select:focus {
     margin: 0;
 }
 
-/* ═══════════════════════════════════════════════════════════════════════
-   MODALS - FIXED
-   ═══════════════════════════════════════════════════════════════════════ */
 
 .modal {
     position: fixed;
@@ -3485,7 +3405,6 @@ select:focus {
     overflow-x: hidden;
 }
 
-/* Custom scrollbar for modals */
 .modal-content::-webkit-scrollbar {
     width: 0px;
 }
@@ -3570,7 +3489,6 @@ select:focus {
     padding: 10px;
 }
 
-/* FIXED: Better mode selector button styling */
 .mode-selector {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
@@ -3613,7 +3531,6 @@ select:focus {
     background: var(--bg-hover);
 }
 
-/* Difficulty selector styling */
 .difficulty-selector {
     display: grid;
     gap: 10px;
@@ -3657,7 +3574,6 @@ select:focus {
     display: none;
 }
 
-/* Hint selector styling */
 .hint-selector {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
@@ -3697,7 +3613,6 @@ select:focus {
     background: var(--bg-hover);
 }
 
-/* Settings Modal - FIXED */
 .settings-modal {
     max-width: 500px;
 }
@@ -3719,7 +3634,6 @@ select:focus {
     letter-spacing: 0.5px;
 }
 
-/* Username change container */
 .username-change-container {
     display: flex;
     flex-direction: column;
@@ -3758,7 +3672,6 @@ select:focus {
     display: block;
 }
 
-/* FIXED: Better avatar upload container styling */
 .avatar-upload-container {
     display: flex;
     flex-direction: column;
@@ -3815,7 +3728,6 @@ select:focus {
     line-height: 1.4;
 }
 
-/* Final Scores */
 .final-scores {
     background: var(--bg-input);
     border-radius: 15px;
@@ -3850,9 +3762,6 @@ select:focus {
     box-shadow: 0 0 15px rgba(74, 222, 128, 0.3);
 }
 
-/* ═══════════════════════════════════════════════════════════════════════
-   NOTIFICATION TOAST
-   ═══════════════════════════════════════════════════════════════════════ */
 
 .notification-toast {
     position: fixed;
@@ -3888,9 +3797,6 @@ select:focus {
     border-color: var(--info);
 }
 
-/* ═══════════════════════════════════════════════════════════════════════
-   ANIMATIONS
-   ═══════════════════════════════════════════════════════════════════════ */
 
 @keyframes fadeIn {
     from {
@@ -4000,9 +3906,6 @@ select:focus {
     }
 }
 
-/* ═══════════════════════════════════════════════════════════════════════
-   CONFETTI & PARTICLES
-   ═══════════════════════════════════════════════════════════════════════ */
 
 .confetti {
     position: fixed;
@@ -4029,9 +3932,6 @@ select:focus {
     }
 }
 
-/* ═══════════════════════════════════════════════════════════════════════
-   SCROLLBAR
-   ═══════════════════════════════════════════════════════════════════════ */
 
 ::-webkit-scrollbar {
   width: 0px;
@@ -4054,11 +3954,7 @@ select:focus {
   background-clip: padding-box;
 }
 
-/* ═══════════════════════════════════════════════════════════════════════
-   RESPONSIVE DESIGN
-   ═══════════════════════════════════════════════════════════════════════ */
 
-/* Touch Device Optimizations */
 @media (hover: none) and (pointer: coarse) {
     .key {
         min-height: 44px;
@@ -4377,7 +4273,7 @@ select:focus {
 
     .word-display {
         gap: 10px;
-        padding: 0 8px;  /* ADD THIS */
+        padding: 0 8px;
     }
     
     .multiplayer-game,
@@ -4482,12 +4378,12 @@ select:focus {
         grid-template-columns: repeat(6, auto);
         gap: 5px;
         margin-top: 0px;
-        padding: 0 5px;  /* ADD THIS */
+        padding: 0 5px;
     }
     
     .key {
-        min-height: 40px;  /* CHANGE from 38px */
-        font-size: 0.9rem;  /* CHANGE from 0.85rem */
+        min-height: 40px;
+        font-size: 0.9rem;
         border-radius: 8px;
     }
     
@@ -4766,9 +4662,6 @@ select:focus {
     }
 }
 
-/* ═══════════════════════════════════════════════════════════════════════
-   ACCESSIBILITY
-   ═══════════════════════════════════════════════════════════════════════ */
 
 @media (prefers-reduced-motion: reduce) {
     *,
@@ -4780,7 +4673,6 @@ select:focus {
     }
 }
 
-/* Focus styles for accessibility */
 button:focus-visible,
 input:focus-visible,
 select:focus-visible,
@@ -4789,7 +4681,6 @@ textarea:focus-visible {
     outline-offset: 2px;
 }
 
-/* High contrast mode support */
 @media (prefers-contrast: high) {
     :root {
         --border-color: rgba(255, 255, 255, 0.5);
@@ -4797,11 +4688,7 @@ textarea:focus-visible {
     }
 }
 
-/* ═══════════════════════════════════════════════════════════════════════
-   MOBILE TOUCH IMPROVEMENTS
-   ═══════════════════════════════════════════════════════════════════════ */
 
-/* Touch-friendly button sizes */
 @media (hover: none) and (pointer: coarse) {
     .btn,
     .mode-btn,
@@ -4821,18 +4708,15 @@ textarea:focus-visible {
     }
 }
 
-/* Smooth scrolling for iOS */
 html {
     -webkit-overflow-scrolling: touch;
 }
 
-/* Prevent text size adjustment on orientation change */
 html {
     -webkit-text-size-adjust: 100%;
     -ms-text-size-adjust: 100%;
 }
 
-/* Safe area insets for notched phones */
 @supports (padding-top: env(safe-area-inset-top)) {
     .game-header {
         padding-top: max(15px, env(safe-area-inset-top));
@@ -4846,9 +4730,6 @@ html {
     }
 }
 
-/* ═══════════════════════════════════════════════════════════════════════
-   COIN FLIP MODAL STYLES
-   ═══════════════════════════════════════════════════════════════════════ */
 
 .coin-flip-modal {
     max-width: 500px;
@@ -4955,7 +4836,6 @@ html {
     border-radius: 8px;
 }
 
-/* Coin Flip Animation - Sol's RNG Style */
 .coin-flip-animation {
     padding: 30px 0;
 }
@@ -5070,7 +4950,6 @@ html {
     min-height: 40px;
 }
 
-/* CS:GO Style Roulette Animation - Clean Text Version */
 .csgo-roulette-container {
     position: relative;
     width: 100%;
@@ -5183,7 +5062,6 @@ html {
     color: var(--warning);
 }
 
-/* Team mode specific styles */
 .coin-flip-team {
     display: flex;
     flex-direction: column;
@@ -5209,9 +5087,6 @@ html {
     color: #f87171;
 }
 
-/* ═══════════════════════════════════════════════════════════════════════
-   THEME v2 - flat colours only. Loaded last so it wins.
-   ═══════════════════════════════════════════════════════════════════════ */
 :root {
     --bg-dark: #13161b;
     --bg-card: #1b2027;
@@ -5251,7 +5126,6 @@ input:focus, textarea:focus, select:focus {
     outline: none; border-color: var(--amber); box-shadow: 0 0 0 3px rgba(233, 180, 76, 0.22);
 }
 
-/* Buttons */
 .btn-large, .btn-primary {
     background: var(--amber); color: var(--amber-ink); border: 0;
     border-radius: 12px; font-weight: 700; box-shadow: none;
@@ -5262,7 +5136,6 @@ input:focus, textarea:focus, select:focus {
 .btn-secondary { background: var(--raised); border: 1px solid var(--border-color); color: var(--text-primary); }
 .btn-danger { background: rgba(240, 106, 90, 0.14); border: 1px solid var(--error); color: var(--error); }
 
-/* Surfaces */
 .room-card, .user-stats-card, .chat-section, .players-section, .scoreboard, .teams-section,
 .hints-container, .player-card, .lobby-chat-section, .modal-content {
     background: var(--bg-card); border: 1px solid var(--border-color-light);
@@ -5275,7 +5148,6 @@ input:focus, textarea:focus, select:focus {
 .notification-toast { background: var(--raised); border: 1px solid var(--border-color); border-radius: 12px; box-shadow: var(--shadow); }
 .csgo-roulette-window::before, .csgo-roulette-window::after { background: transparent; }
 
-/* The word: the one memorable element */
 .word-display { gap: 0.5rem; flex-wrap: wrap; justify-content: center; }
 .letter-box {
     width: clamp(34px, 9vw, 56px); height: clamp(48px, 12vw, 72px);
@@ -5287,11 +5159,9 @@ input:focus, textarea:focus, select:focus {
 .letter-box.space { border-bottom-color: transparent; width: clamp(14px, 4vw, 28px); }
 @keyframes letterDrop { from { transform: translateY(-14px); opacity: 0; } to { transform: none; opacity: 1; } }
 
-/* Gallows */
 .draw-part { stroke: var(--text-secondary); stroke-linecap: round; }
 .man-part { stroke: var(--error); stroke-linecap: round; }
 
-/* Keyboard */
 .keyboard { gap: 6px; }
 .key {
     min-height: 52px; background: var(--raised); border: 1px solid var(--border-color-light);
@@ -5303,11 +5173,9 @@ input:focus, textarea:focus, select:focus {
 .key.wrong { background: rgba(240, 106, 90, 0.12); border-color: var(--error); color: var(--error); opacity: 0.55; text-decoration: line-through; }
 .key:disabled { cursor: not-allowed; }
 
-/* Turn + status */
 .turn-indicator { border: 1px solid var(--border-color); border-radius: 999px; background: var(--bg-input); transition: border-color 0.2s, background 0.2s; }
 .turn-indicator.my-turn, .turn-indicator.your-turn { border-color: var(--amber); background: rgba(233, 180, 76, 0.14); color: var(--amber); }
 
-/* QOL additions (see qol.js) */
 .guesses-left { text-align: center; font-weight: 600; color: var(--text-secondary); margin: 0.25rem 0 0.5rem; }
 .guesses-left.danger { color: var(--error); }
 .shake { animation: shake 0.35s; }
@@ -5325,11 +5193,7 @@ input:focus, textarea:focus, select:focus {
 }
 
 
-/* ═══════════════════════════════════════════════════════════════════════
-   THEME v3 - flat colours only (no gradients). Loaded last so it wins.
-   ═══════════════════════════════════════════════════════════════════════ */
 
-/* 1. Login button: spinner + label while connecting */
 .btn-large .btn-loading { display: none; align-items: center; justify-content: center; gap: 10px; }
 .btn-large.loading .btn-text { display: none; }
 .btn-large.loading .btn-loading { display: inline-flex; }
@@ -5346,13 +5210,11 @@ input:focus, textarea:focus, select:focus {
 .btn-large.slow .btn-slow-label { display: inline; }
 .btn-large { text-transform: none; letter-spacing: 0.2px; font-size: 1.05rem; padding: 16px 40px; min-height: 54px; }
 
-/* 2. Settings / any modal: lock the page behind it */
 html { scrollbar-gutter: stable; }
 html:has(.modal.show), body:has(.modal.show), html.modal-open, body.modal-open { overflow: hidden; }
 .modal { overscroll-behavior: contain; }
 .modal-content { overscroll-behavior: contain; max-height: calc(100dvh - 40px); -webkit-overflow-scrolling: touch; }
 
-/* 3. No glows, one consistent surface/border/radius system */
 * { text-shadow: none !important; }
 :root { --radius: 14px; --radius-sm: 10px; --surface-2: #20262e; }
 
@@ -5370,7 +5232,6 @@ html:has(.modal.show), body:has(.modal.show), html.modal-open, body.modal-open {
 .auth-error { border-radius: var(--radius-sm); }
 .build-info { background: transparent; border: 0; color: var(--text-muted); }
 
-/* Header + panels */
 .game-header, .header { background: var(--bg-card); border: 1px solid var(--border-color-light); border-radius: var(--radius); box-shadow: none; backdrop-filter: none; }
 .chat-header, .chat-section h3, .lobby-chat-section .chat-header { background: var(--surface-2); border-bottom: 1px solid var(--border-color-light); }
 .chat-messages, .mini-chat-messages { background: transparent; }
@@ -5386,7 +5247,6 @@ html:has(.modal.show), body:has(.modal.show), html.modal-open, body.modal-open {
 .chat-input-area button:hover, .mini-chat-input button:hover { transform: none; box-shadow: none; background: #f2c466; }
 .chat-message.own .message-content { background: var(--amber); color: var(--amber-ink); }
 
-/* Buttons + controls */
 .btn, .btn-icon { border-radius: var(--radius-sm); box-shadow: none; transition: background 0.15s, border-color 0.15s, transform 0.1s; }
 .btn:hover:not(:disabled), .btn-icon:hover:not(:disabled) { transform: none; box-shadow: none; }
 .btn:active:not(:disabled), .btn-icon:active:not(:disabled) { transform: scale(0.97); }
@@ -5398,7 +5258,6 @@ html:has(.modal.show), body:has(.modal.show), html.modal-open, body.modal-open {
 .mode-btn.active, .difficulty-btn.active, .hint-btn.active { background: var(--amber); color: var(--amber-ink); border-color: var(--amber); }
 .chat-tab.active { border-color: var(--amber); color: var(--amber); }
 
-/* Modals */
 .modal-content { background: var(--bg-card); padding: 28px; transform: none; }
 .modal-content h2 { margin-bottom: 18px; }
 .settings-section { margin: 0 0 22px; padding-bottom: 22px; border-bottom: 1px solid var(--border-color-light); }
@@ -5406,7 +5265,6 @@ html:has(.modal.show), body:has(.modal.show), html.modal-open, body.modal-open {
 .modal-actions { display: flex; gap: 10px; justify-content: flex-end; }
 .form-group label { color: var(--text-secondary); font-size: 0.85rem; font-weight: 600; }
 
-/* Room list + cards */
 .rooms-list:empty::before, .no-rooms { color: var(--text-muted); }
 .room-card { background: var(--surface-2); border: 1px solid var(--border-color-light); border-radius: var(--radius); }
 .room-card:hover { border-color: var(--amber); background: var(--surface-2); }
@@ -5417,7 +5275,6 @@ html:has(.modal.show), body:has(.modal.show), html.modal-open, body.modal-open {
     .modal-content { padding: 22px 18px; }
 }
 
-/* v3 tweaks: keep the logo inside the card, full-width primary action */
 .username-container { max-width: 480px; }
 .game-logo { font-size: clamp(2rem, 7vw, 2.8rem); gap: 12px; }
 .username-form .btn-large { width: 100%; }

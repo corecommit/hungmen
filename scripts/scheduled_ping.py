@@ -53,7 +53,7 @@ def ping(url, headers, tries=3):
                 return True
         except urllib.error.HTTPError as e:
             print(f"HTTP {e.code} (attempt {attempt}/{tries})")
-        except Exception as e:  # network error, timeout, cold start...
+        except Exception as e:
             print(f"{type(e).__name__}: {e} (attempt {attempt}/{tries})")
         if attempt < tries:
             time.sleep(20)

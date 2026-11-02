@@ -1,4 +1,3 @@
-/* QOL layer - loaded after script.js. Only touches the DOM; no game logic. */
 (function () {
     'use strict';
     const $ = (id) => document.getElementById(id);
@@ -7,7 +6,6 @@
         set: (k, v) => { try { localStorage.setItem(k, v); } catch (_) {} }
     };
 
-    // 1. Remember the last username (never admin) and focus the field on desktop.
     const nameInput = $('usernameInput');
     if (nameInput) {
         const saved = store.get('hangman:lastUser');
@@ -19,7 +17,6 @@
         }, true);
     }
 
-    // 2. Ask before leaving a running game by accident.
     document.addEventListener('click', (e) => {
         if (e.target.closest && e.target.closest('#leaveGameBtn') &&
             !confirm('Leave this game? Your progress in this round will be lost.')) {
@@ -28,7 +25,6 @@
         }
     }, true);
 
-    // 3. Esc closes dialogs that have a cancel/close button.
     document.addEventListener('keydown', (e) => {
         if (e.key !== 'Escape') return;
         for (const id of ['cancelCreateRoom', 'cancelJoinRoom', 'cancelAskQuestion', 'closeSettings']) {
@@ -37,7 +33,6 @@
         }
     });
 
-    // 4. "N guesses left" counter under the wrong letters.
     const wrong = $('wrongLetters');
     if (wrong && wrong.parentNode) {
         const counter = document.createElement('div');
@@ -52,7 +47,6 @@
         }).observe(wrong, { childList: true });
     }
 
-    // 5. Haptics + shake when a key turns correct / wrong.
     const kb = $('keyboard');
     if (kb) {
         const seen = new WeakSet();
@@ -73,7 +67,6 @@
         }).observe(kb, { attributes: true, attributeFilter: ['class'], subtree: true });
     }
 
-    // 6. Highlight "your turn" and flag it in the tab title when the tab is hidden.
     const turn = $('turnIndicator');
     const baseTitle = document.title;
     if (turn) {
@@ -86,7 +79,6 @@
         document.addEventListener('visibilitychange', check);
     }
 
-    // 7. Offline pill.
     const pill = document.createElement('div');
     pill.className = 'offline-pill';
     pill.textContent = 'You are offline. Reconnecting...';
@@ -97,7 +89,6 @@
     addEventListener('offline', syncPill);
     syncPill();
 
-    // 8. Keep the screen awake during a game (mobile).
     const gv = $('gameView');
     let lock = null;
     const wake = async () => {
@@ -113,7 +104,6 @@
         new MutationObserver(wake).observe(gv, { attributes: true, attributeFilter: ['class'] });
         document.addEventListener('visibilitychange', wake);
     }
-    // 6. Lock page scroll while any dialog is open (fallback for browsers without :has()).
     (function () {
         const root = document.documentElement;
         const sync = () => {

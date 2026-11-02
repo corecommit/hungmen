@@ -16,7 +16,6 @@
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <!-- Loading Screen -->
     <div id="loadingScreen" class="loading-screen">
         <div class="loading-content">
             <div class="loading-spinner">
@@ -26,7 +25,6 @@
         </div>
     </div>
 
-    <!-- Auth Screen -->
     <div id="authScreen" class="auth-screen" style="display: none;">
         <div class="username-container">
             <div class="game-logo">
@@ -40,22 +38,15 @@
                     <span class="title-letter title-part-text-7">N</span>
                     <span class="title-hangman-inline">
                         <svg class="title-hangman-svg" viewBox="0 0 100 120">
-                            <!-- Gallows -->
                             <line class="title-draw-part title-part-1" x1="10" y1="110" x2="90" y2="110" />
                             <line class="title-draw-part title-part-2" x1="30" y1="110" x2="30" y2="10" />
                             <line class="title-draw-part title-part-3" x1="30" y1="10" x2="70" y2="10" />
                             <line class="title-draw-part title-part-4" x1="70" y1="10" x2="70" y2="25" />
-                            <!-- Head -->
                             <circle class="title-man-part title-part-5" cx="70" cy="35" r="10" />
-                            <!-- Body -->
                             <line class="title-man-part title-part-6" x1="70" y1="45" x2="70" y2="75" />
-                            <!-- Left Arm -->
                             <line class="title-man-part title-part-7" x1="70" y1="55" x2="55" y2="65" />
-                            <!-- Right Arm -->
                             <line class="title-man-part title-part-8" x1="70" y1="55" x2="85" y2="65" />
-                            <!-- Left Leg -->
                             <line class="title-man-part title-part-9" x1="70" y1="75" x2="55" y2="95" />
-                            <!-- Right Leg -->
                             <line class="title-man-part title-part-10" x1="70" y1="75" x2="85" y2="95" />
                         </svg>
                     </span>
@@ -75,7 +66,6 @@
                     <p class="username-hint">2-20 characters, letters, numbers, dots, hyphens, and underscores only</p>
                 </div>
                 
-                <!-- Admin Password Field (hidden by default) -->
                 <div id="adminPasswordGroup" class="admin-password-group hidden">
                     <div class="password-input-wrapper">
                         <input 
@@ -114,10 +104,8 @@
         </div>
     </div>
 
-    <!-- Game Screen -->
     <div id="gameScreen" class="game-screen hidden">
         <div class="container">
-            <!-- Header -->
             <header class="game-header">
                 <div class="header-left">
                     <h1 class="title">
@@ -146,14 +134,12 @@
                             </div>
                         </div>
                         <div class="dropdown-content" id="onlineUsersList">
-                            <!-- Online users will be populated here -->
                         </div>
                     </div>
                 </div>
                 <div class="header-right">
                     <div class="user-menu">
                         <span id="currentUsername">Player</span>
-                        <!-- Admin Panel Button (hidden by default, shown for admin) -->
                         <button class="btn-icon admin-panel-btn hidden" id="adminPanelBtn" title="Admin Panel">
                             <i class="fas fa-shield-alt"></i>
                         </button>
@@ -168,16 +154,12 @@
                 </div>
             </header>
 
-            <!-- Lobby View -->
             <div id="lobbyView" class="view active">
                 <div class="lobby-container">
-                    <!-- Sidebar -->
                     <aside class="lobby-sidebar">
                         <div id="userStatsContainer">
-                            <!-- User stats will be populated here -->
                         </div>
 
-                        <!-- Global Lobby Chat -->
                         <div class="lobby-chat-section">
                             <div class="chat-header">
                                 <h3><i class="fas fa-globe"></i> Global Chat</h3>
@@ -193,7 +175,6 @@
                         </div>
                     </aside>
 
-                    <!-- Main Content -->
                     <main class="lobby-main">
                         <div class="rooms-header">
                             <h2>Available Rooms</h2>
@@ -222,13 +203,11 @@
                             </div>
                         </div>
                         <div id="roomsList" class="rooms-list">
-                            <!-- Rooms will be populated here -->
                         </div>
                     </main>
                 </div>
             </div>
 
-            <!-- Room View -->
             <div id="roomView" class="view">
                 <div class="room-container">
                     <div class="room-header">
@@ -252,10 +231,8 @@
                         <div class="players-section">
                             <h3>Players</h3>
                             <div id="playersList" class="players-list">
-                                <!-- Players will be populated here -->
                             </div>
 
-                            <!-- Teams Section -->
                             <div id="teamsSection" class="teams-section hidden">
                                 <div class="team team-1">
                                     <div class="team-header">
@@ -263,7 +240,6 @@
                                         <span id="team1Count" class="team-count">0</span>
                                     </div>
                                     <div id="team1Players" class="team-players">
-                                        <!-- Team 1 players will be populated here -->
                                     </div>
                                 </div>
                                 <div class="team team-2">
@@ -272,7 +248,6 @@
                                         <span id="team2Count" class="team-count">0</span>
                                     </div>
                                     <div id="team2Players" class="team-players">
-                                        <!-- Team 2 players will be populated here -->
                                     </div>
                                 </div>
                                 
@@ -285,7 +260,6 @@
                                 </div>
                             </div>
 
-                            <!-- Room Actions (Host Only) -->
                             <div id="roomActions" class="room-actions hidden">
                                 <button id="startGameBtn" class="btn btn-primary btn-full">
                                     <i class="fas fa-play"></i>
@@ -297,7 +271,6 @@
                             </div>
                         </div>
 
-                        <!-- Chat Section -->
                         <div class="chat-section">
                             <div class="chat-header">
                                 <h3><i class="fas fa-comments"></i> Chat</h3>
@@ -313,7 +286,6 @@
                                 </div>
                             </div>
                             <div id="chatMessages" class="chat-messages">
-                                <!-- Messages will be populated here -->
                             </div>
                             <div class="chat-input-area">
                                 <input type="text" id="chatInput" placeholder="Type a message..." maxlength="200">
@@ -326,7 +298,6 @@
                 </div>
             </div>
 
-            <!-- Game View -->
             <div id="gameView" class="view">
                 <div class="multiplayer-game">
                     <div class="game-top-bar">
@@ -343,45 +314,32 @@
 
                     <div class="game-main-area">
                         <div class="game-left">
-                            <!-- Current Player -->
                             <div class="current-players">
                                 <h3>Current Turn</h3>
                                 <div id="currentPlayer" class="current-player">
-                                    <!-- Current player will be shown here -->
                                 </div>
                             </div>
 
-                            <!-- Hangman -->
                             <div class="hangman-container">
                                 <svg class="hangman-svg" viewBox="0 0 200 250">
-                                    <!-- Gallows -->
                                     <line class="draw-part" x1="20" y1="230" x2="180" y2="230" />
                                     <line class="draw-part" x1="60" y1="230" x2="60" y2="20" />
                                     <line class="draw-part" x1="60" y1="20" x2="140" y2="20" />
                                     <line class="draw-part" x1="140" y1="20" x2="140" y2="50" />
-                                    <!-- Head -->
                                     <circle class="man-part part-1" cx="140" cy="70" r="20" />
-                                    <!-- Body -->
                                     <line class="man-part part-2" x1="140" y1="90" x2="140" y2="150" />
-                                    <!-- Left Arm -->
                                     <line class="man-part part-3" x1="140" y1="110" x2="110" y2="130" />
-                                    <!-- Right Arm -->
                                     <line class="man-part part-4" x1="140" y1="110" x2="170" y2="130" />
-                                    <!-- Left Leg -->
                                     <line class="man-part part-5" x1="140" y1="150" x2="110" y2="190" />
-                                    <!-- Right Leg -->
                                     <line class="man-part part-6" x1="140" y1="150" x2="170" y2="190" />
                                 </svg>
                             </div>
 
-                            <!-- Word Display -->
                             <div class="word-container">
                                 <div id="wordDisplay" class="word-display">
-                                    <!-- Letter boxes will be populated here -->
                                 </div>
                                 <p id="wordHint" class="word-hint">Hint: Loading...</p>
                                 
-                                <!-- Ask Hint Button (For Players) -->
                                 <div id="askHintSection" class="ask-hint-section hidden">
                                     <button id="askHintBtn" class="btn btn-hint-request">
                                         <i class="fas fa-question-circle"></i>
@@ -389,39 +347,30 @@
                                     </button>
                                 </div>
                                 
-                                <!-- Received Hints Display -->
                                 <div id="receivedHints" class="received-hints hidden">
                                     <h4>Hints Received:</h4>
                                     <div id="hintsList" class="hints-list">
-                                        <!-- Hints will appear here -->
                                     </div>
                                 </div>
                             </div>
 
-                            <!-- Wrong Letters -->
                             <div class="wrong-letters-container">
                                 <p class="wrong-letters-label">Wrong Letters</p>
                                 <div id="wrongLetters" class="wrong-letters">
-                                    <!-- Wrong letters will be populated here -->
                                 </div>
                             </div>
 
-                            <!-- Keyboard -->
                             <div id="keyboard" class="keyboard">
-                                <!-- Keys will be populated here -->
                             </div>
                         </div>
 
                         <div class="game-right">
-                            <!-- Scoreboard -->
                             <div class="scoreboard" id="scoreboard">
                                 <h3>Scores</h3>
                                 <div id="scoresList" class="scores-list">
-                                    <!-- Scores will be populated here -->
                                 </div>
                             </div>
 
-                            <!-- Mini Chat -->
                             <div class="mini-chat">
                                 <div id="miniChatTabs" class="mini-chat-tabs">
                                     <button class="chat-tab active" data-chat-type="global">
@@ -434,7 +383,6 @@
                                     </button>
                                 </div>
                                 <div id="miniChatMessages" class="mini-chat-messages">
-                                    <!-- Messages will be populated here -->
                                 </div>
                                 <div class="mini-chat-input">
                                     <input type="text" id="miniChatInput" placeholder="Type..." maxlength="200">
@@ -449,7 +397,6 @@
             </div>
         </div>
 
-        <!-- Create Room Modal -->
         <div class="modal" id="createRoomModal">
             <div class="modal-content">
                 <h2>Create New Room</h2>
@@ -530,7 +477,6 @@
             </div>
         </div>
 
-        <!-- Join Room Modal -->
         <div class="modal" id="joinRoomModal">
             <div class="modal-content">
                 <h2>Enter Room Password</h2>
@@ -547,7 +493,6 @@
             </div>
         </div>
 
-        <!-- Word Selection Modal (Custom Word Mode) -->
         <div class="modal" id="wordSelectionModal">
             <div class="modal-content word-selection-modal">
                 <div class="modal-icon" style="font-size: 4rem; text-align: center; margin-bottom: 20px;">✏️</div>
@@ -579,7 +524,6 @@
             </div>
         </div>
 
-        <!-- Coin Flip Modal -->
         <div class="modal" id="coinFlipModal">
             <div class="modal-content coin-flip-modal">
                 <h2 style="font-size: 2rem; margin-bottom: 10px;">Coin Flip</h2>
@@ -621,7 +565,6 @@
                         <div class="csgo-roulette-marker"></div>
                         <div class="csgo-roulette-window">
                             <div class="csgo-roulette-track" id="csgoRouletteTrack">
-                                <!-- Items will be inserted by JavaScript -->
                             </div>
                         </div>
                     </div>
@@ -634,7 +577,6 @@
             </div>
         </div>
 
-        <!-- Waiting for Word Modal -->
         <div class="modal" id="waitingForWordModal">
             <div class="modal-content">
                 <div class="modal-icon" style="font-size: 4rem; text-align: center; margin-bottom: 20px;">⏳</div>
@@ -648,7 +590,6 @@
             </div>
         </div>
 
-        <!-- Ask Question Modal (For Players Requesting Hints) -->
         <div class="modal" id="askQuestionModal">
             <div class="modal-content">
                 <div class="modal-icon" style="font-size: 3rem; text-align: center; margin-bottom: 15px;">❓</div>
@@ -681,7 +622,6 @@
             </div>
         </div>
 
-        <!-- Hint Request Modal (For Word Setter) -->
         <div class="modal" id="hintRequestModal">
             <div class="modal-content">
                 <div class="modal-icon" style="font-size: 3rem; text-align: center; margin-bottom: 15px;">💡</div>
@@ -690,7 +630,6 @@
                     A player has requested a hint
                 </p>
 
-                <!-- Player's Question Display -->
                 <div class="player-question-box" style="background: var(--bg-secondary); padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid var(--primary);">
                     <p id="playerQuestionLabel" style="margin: 0 0 8px 0; font-size: 0.85rem; color: var(--text-secondary);">Player's Question:</p>
                     <p id="playerQuestionText" style="margin: 0; font-size: 1rem; color: var(--text-primary); font-style: italic;">
@@ -722,7 +661,6 @@
             </div>
         </div>
 
-        <!-- Game Over Modal -->
         <div class="modal" id="gameOverModal">
             <div class="modal-content">
                 <div id="modalIcon" class="modal-icon" style="font-size: 4rem; margin-bottom: 20px; text-align: center;">🎉</div>
@@ -733,7 +671,6 @@
                     <p id="modalWord" class="modal-word">WORD</p>
                 </div>
                 <div id="finalScores" class="final-scores">
-                    <!-- Final scores will be populated here -->
                 </div>
                 <div class="modal-actions">
                     <button id="backToLobby" class="btn btn-secondary">Back to Lobby</button>
@@ -742,7 +679,6 @@
             </div>
         </div>
 
-        <!-- Settings Modal -->
         <div class="modal" id="settingsModal">
             <div class="modal-content settings-modal">
                 <h2>Settings</h2>
@@ -780,14 +716,12 @@
             </div>
         </div>
 
-        <!-- Notification Toast -->
         <div id="notificationToast" class="notification-toast hidden">
             <i class="fas fa-info-circle"></i>
             <span id="notificationMessage"></span>
         </div>
     </div>
 
-    <!-- Socket.io Client -->
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <script>window.GAME_SERVER_URL = 'https://hungmen-n24h.onrender.com';</script>
     <script src="script.js"></script>
